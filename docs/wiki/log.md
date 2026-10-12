@@ -8,7 +8,8 @@ Newest first. One entry per session, 2–5 bullets: what was done, what was lear
 - Learned: [[learnings/designing-agent-mechanics|how to find state, tools, skills and helpers]] (from examples outwards, add on demand).
 - **1a done:** `domain/tasks.py` (`TaskStatus`, frozen `Task`) and `tasks_syntax.py` (`parse_task_line`, `status_from_char`, `new_task_id`, `append_id`); 56 unit tests pass.
 - Learned: [[learnings/domain-models-and-task-syntax|domain vs syntax]]; Pydantic optional vs default; function vs classmethod; seeded randomness for tests; ID collision guard.
-- Next: 1b, frontmatter + daily-note parser per 0002.
+- 1b-1/1b-2 done: `frontmatter.py` (`split_frontmatter`, keeps body start line, errors as data, `yaml.safe_load`) and `daily_syntax.py` (`split_sections`: `##` only, unknown → Log, code fences skipped); `domain/daily.py` (`SectionKind`, `Section`). Chose own split over `python-frontmatter` (it strips leading body lines, raises on unrendered `{{date}}`). 78 unit tests pass.
+- Next: 1b-3, tasks with section/meeting/parent context and `DailyNote`.
 
 ## 2026-10-11
 
