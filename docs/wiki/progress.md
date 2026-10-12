@@ -30,6 +30,11 @@ Phase 1: domain models and vault I/O (no LLM).
   - [x] `uv run langgraph dev`, run from Studio with context; tracing on; saved an assistant (2026-10-11)
   - [x] Can explain: `langgraph.json` → `graphs`, `State` vs `Context`, partial state updates (2026-10-11)
 - [ ] **1. Domain models and vault I/O** (no LLM). Read: `domain/`, `config.py`.
+  - [x] 1a. `Task` model + `tasks_syntax` (parse task line, new ID, append ID), unit tests (2026-10-12)
+  - [ ] 1b. Frontmatter + daily-note parser per 0002 (sections, tags, tasks with section/parent context)
+  - [ ] 1c. Entity model + index with aliases, slug → path resolution with allowed-folder check
+  - [ ] 1d. Fixture vault in `tests/fixtures/vault/` (invented data); parser tests run against it
+  - [ ] 1e. Settings (`WIKI_VAULT_PATH`, `task_ids`) per paid-media `config.py`
 - [ ] **2. Ingest graph v1**: extraction, routing, `FileDiff` reducer. Read: `tools/compute.py`, `tools/artifacts.py`.
 - [ ] **3. HITL and persistence**: `interrupt()`, `Command(resume=…)`, SQLite checkpointer, digests, git commit. Read: `docs/architecture/writes-and-approvals.md`, `tools/writes.py`.
 - [ ] **4. Assistant deep agent**: filesystem backend, permissions, skills, review subagent. Read: `runtime/local.py`, `workspace/skills/`.

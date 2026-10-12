@@ -2,6 +2,14 @@
 
 Newest first. One entry per session, 2–5 bullets: what was done, what was learned, what's next.
 
+## 2026-10-12
+
+- Phase 1 started; split into steps 1a–1e in [[progress]]. First exercise: `Task` model + `tasks_syntax`.
+- Learned: [[learnings/designing-agent-mechanics|how to find state, tools, skills and helpers]] (from examples outwards, add on demand).
+- **1a done:** `domain/tasks.py` (`TaskStatus`, frozen `Task`) and `tasks_syntax.py` (`parse_task_line`, `status_from_char`, `new_task_id`, `append_id`); 56 unit tests pass.
+- Learned: [[learnings/domain-models-and-task-syntax|domain vs syntax]]; Pydantic optional vs default; function vs classmethod; seeded randomness for tests; ID collision guard.
+- Next: 1b, frontmatter + daily-note parser per 0002.
+
 ## 2026-10-11
 
 - Created the vault at `~/Work` with the planned folder layout; moved the first daily note into `00_raw/daily/`; `git init` and initial commit (`c977ec0`).
