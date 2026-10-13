@@ -19,7 +19,8 @@ Newest first. One entry per session, 2–5 bullets: what was done, what was lear
 - Phase 2 designed with the user ([[decisions/0004-ingest-graph-design|0004]]), including a review loop: approve / approve some / reject / edit / revise with feedback (re-extract with previous facts + feedback). Changed state design: `facts` dict merged by key instead of an `operator.add` edits list, so re-runs replace rather than duplicate.
 - **2a written (not committed, awaiting review):** `domain/facts.py` (model-facing `SectionFacts`, each fact cites `line`, names or slugs allowed) and `domain/changes.py` (`AppendId` only into `00_raw/daily/`, `AppendToSection`/`CreateFile` only into agent folders, `FileDiff` with sha256 digest). 216 unit tests pass.
 - Experiment: Meetings section → `SectionFacts`. `qwen3:4b` returned nothing; `gemma4:12b` returned the `#decision` line as a project update and missed Sam's note. 2d needs a better prompt, an example, and the tag-coverage check.
-- Next: user review of 2a, then 2b `render_diffs`.
+- 2a approved and committed (`8bfeb4c`). **2b written (awaiting review):** `diffs.py`: `render_diffs(edits, read)` groups edits per file, applies them (creates first), returns `FileDiff`s plus warnings (bad files skipped, others still render). `AppendToSection` inserts after the section's last non-blank line (fences and subheadings respected, CRLF kept) or adds the heading at the end. Raw notes are re-checked: only ` ^t-…` suffixes may change. `vault_reader` decodes bytes (keeps CRLF, exact hash) and refuses symlinks out of the vault. 234 unit tests pass.
+- Next: user review of 2b, then 2c code nodes (`load_note`, `assign_ids`, `track_tasks`).
 
 ## 2026-10-11
 

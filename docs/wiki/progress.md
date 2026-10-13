@@ -39,7 +39,7 @@ Phase 2: ingest graph v1 (structured extraction, routing, `FileDiff` reducer).
   - [x] 1e. Settings (`WIKI_VAULT_PATH`, `task_ids`) per paid-media `config.py` (2026-10-12)
 - [ ] **2. Ingest graph v1**: extraction, routing, `FileDiff` reducer. Read: `tools/compute.py`, `tools/artifacts.py`. Design: [[decisions/0004-ingest-graph-design|0004]].
   - [x] 2a. Domain models: `SectionFacts` + fact types, `Edit` (`AppendId`, `AppendToSection`, `CreateFile`), `FileDiff` with digest (2026-10-12)
-  - [ ] 2b. `render_diffs`: apply edits per file, sha256, unified diff
+  - [x] 2b. `render_diffs`: apply edits per file, sha256, unified diff (2026-10-12)
   - [ ] 2c. Code nodes: `load_note`, `assign_ids`, `track_tasks` (`90_meta/tasks.json`, mapping rules 1–3)
   - [ ] 2d. `extract` with structured output; scripted fake model in tests; prompt tuned on fixture notes
   - [ ] 2e. `route`, graph wiring (`Send` fan-out, merge-by-key reducer), Studio run on `~/WorkDev`
