@@ -10,6 +10,7 @@ from typing import Any
 from llm_wiki.domain.daily import DailyNote, Section, SectionKind
 from llm_wiki.domain.tasks import Task
 from llm_wiki.frontmatter import split_frontmatter
+from llm_wiki.inline_syntax import find_links, find_tags
 from llm_wiki.tasks_syntax import parse_task_line, status_from_char
 
 # "## Name", exactly level 2, optional closing hashes ("## Tasks ##").
@@ -97,7 +98,7 @@ def split_sections(body: str, body_start_line: int = 1) -> list[Section]:
 
 
 def _section_tasks(section: Section, path: str) -> list[Task]:
-    """Find the tasks in one section, with their `###` heading and parent bullet."""
+    """Find the tasks in one section, with `###` heading, parent, links and tags."""
     tasks: list[Task] = []
     subheading: str | None = None
     open_bullets: list[tuple[int, str]] = []  # (indent width, text), innermost last
@@ -137,6 +138,8 @@ def _section_tasks(section: Section, path: str) -> list[Task]:
                     section=section.kind,
                     subheading=subheading,
                     parent=parent,
+                    links=find_links(parsed.text),
+                    tags=find_tags(parsed.text),
                 )
             )
         label = parsed.text if parsed is not None else item.group("content").strip()

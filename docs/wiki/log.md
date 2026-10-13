@@ -10,7 +10,9 @@ Newest first. One entry per session, 2–5 bullets: what was done, what was lear
 - Learned: [[learnings/domain-models-and-task-syntax|domain vs syntax]]; Pydantic optional vs default; function vs classmethod; seeded randomness for tests; ID collision guard.
 - 1b-1/1b-2 done: `frontmatter.py` (`split_frontmatter`, keeps body start line, errors as data, `yaml.safe_load`) and `daily_syntax.py` (`split_sections`: `##` only, unknown → Log, code fences skipped); `domain/daily.py` (`SectionKind`, `Section`). Chose own split over `python-frontmatter` (it strips leading body lines, raises on unrendered `{{date}}`). 78 unit tests pass.
 - 1b-3 done: `parse_daily_note(path, text) -> DailyNote` in `daily_syntax.py`; `Task` gains `section`, `subheading`, `parent` (indent stack); date = frontmatter, else filename, warning on drift; problems are warnings, never exceptions. `SectionKind` moved to `domain/common.py` to avoid a circular import. 91 unit tests pass.
-- Next: 1b-4, tags (`#win`, `#decision`, `#blocked`) and `[[links]]` per line.
+- Committed 1b-3 (`7e2f60a`). Created a **dev vault** at `~/WorkDev` (own git repo, baseline `bf6607d`): same layout, template and Obsidian settings as `~/Work`, plus an invented sample note `00_raw/daily/2026-10-12.md`. It's a playground for Obsidian and `langgraph dev`; reset with `git reset --hard && git clean -fd`. The frozen pytest inputs stay in `tests/fixtures/vault/` (1d). The parser reads the sample cleanly: 12 tasks, the fenced checkbox skipped, no warnings.
+- **1b done.** 1b-4: `inline_syntax.py` (`find_links`, `find_tags`). `Task` gains `links` and `tags` from its own line; inline code, embeds, URLs, `[[a#b]]` and `#42` are excluded. 119 unit tests pass. Learned: [[learnings/parsing-notes-with-line-numbers|parsing notes with line numbers]].
+- Next: 1c, entity model and alias index (slug → path, allowed-folder check).
 
 ## 2026-10-11
 

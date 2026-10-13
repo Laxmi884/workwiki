@@ -31,7 +31,8 @@ Phase 1: domain models and vault I/O (no LLM).
   - [x] Can explain: `langgraph.json` → `graphs`, `State` vs `Context`, partial state updates (2026-10-11)
 - [ ] **1. Domain models and vault I/O** (no LLM). Read: `domain/`, `config.py`.
   - [x] 1a. `Task` model + `tasks_syntax` (parse task line, new ID, append ID), unit tests (2026-10-12)
-  - [ ] 1b. Frontmatter + daily-note parser per 0002 (sections, tags, tasks with section/parent context)
+  - [x] 1b. Frontmatter + daily-note parser per 0002 (sections, tags, tasks with section/parent context) (2026-10-12)
+  - [x] Dev vault `~/WorkDev` (invented data, own git repo) for manual runs (2026-10-12)
   - [ ] 1c. Entity model + index with aliases, slug → path resolution with allowed-folder check
   - [ ] 1d. Fixture vault in `tests/fixtures/vault/` (invented data); parser tests run against it
   - [ ] 1e. Settings (`WIKI_VAULT_PATH`, `task_ids`) per paid-media `config.py`

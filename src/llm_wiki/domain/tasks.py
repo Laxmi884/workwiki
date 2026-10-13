@@ -30,6 +30,8 @@ class Task(BaseModel):
         section: The daily-note section the task sits in, if known.
         subheading: The enclosing `###` heading (a meeting title in Meetings), if any.
         parent: Text of the enclosing parent bullet, if the task is nested.
+        links: `[[link]]` targets on the task line, e.g. ("project-atlas",).
+        tags: Tags on the task line, lowercased without "#", e.g. ("blocked",).
     """
 
     model_config = ConfigDict(frozen=True)
@@ -42,3 +44,5 @@ class Task(BaseModel):
     section: SectionKind | None = None
     subheading: str | None = None
     parent: str | None = None
+    links: tuple[str, ...] = ()
+    tags: tuple[str, ...] = ()

@@ -16,6 +16,7 @@ One note per concept. Template: `learnings/_template.md`.
 - [[learnings/context-and-assistants|Context and assistants]]: State vs Context, assistants as saved configs, dev vs real vault
 - [[learnings/designing-agent-mechanics|Finding state, tools, skills and helpers]]: where each piece comes from and when to add it
 - [[learnings/domain-models-and-task-syntax|Domain models and task syntax]]: frozen `Task`, `tasks_syntax` translator, None vs default, regex split, ID collisions
+- [[learnings/parsing-notes-with-line-numbers|Parsing notes with line numbers]]: frontmatter split, sections, fences, indent stack, links/tags, errors as data
 
 ## Decisions
 

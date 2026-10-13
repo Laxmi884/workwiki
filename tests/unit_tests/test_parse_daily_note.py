@@ -97,6 +97,23 @@ def test_note_fields():
     assert note.warnings == ()
 
 
+def test_tasks_carry_links_and_tags_from_their_own_line():
+    text = (
+        "## Meetings\n"
+        "### Sync with [[person-sam]]\n"
+        "- [ ] Get sign-off from [[person-alex|Alex]] #blocked ^t-k3x9q2\n"
+        "- [ ] Plain follow-up\n"
+    )
+    first, second = parse_daily_note(PATH, text).tasks
+    assert (first.links, first.tags, first.id) == (
+        ("person-alex",),
+        ("blocked",),
+        "t-k3x9q2",
+    )
+    # The ### heading's link stays in `subheading`; it is not copied to the task.
+    assert (second.links, second.tags) == ((), ())
+
+
 def test_subheading_clears_parent():
     note = parse_daily_note(
         PATH, "## Meetings\n- Old topic\n### New meeting\n    - [ ] a\n"
