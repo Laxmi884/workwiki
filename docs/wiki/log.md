@@ -14,7 +14,8 @@ Newest first. One entry per session, 2–5 bullets: what was done, what was lear
 - **1b done.** 1b-4: `inline_syntax.py` (`find_links`, `find_tags`). `Task` gains `links` and `tags` from its own line; inline code, embeds, URLs, `[[a#b]]` and `#42` are excluded. 119 unit tests pass. Learned: [[learnings/parsing-notes-with-line-numbers|parsing notes with line numbers]].
 - Committed 1b-4 (`10560ce`). **1c done:** `domain/entities.py` (`EntityKind`, frozen `Entity`, `SLUG_PATTERN`) and `entity_index.py` (`path_for` maps slug prefix → one folder and rejects anything else; `build_index`/`load_index` read `title`/`aliases`, bad pages become warnings; `lookup`, `alias_mentions` for mapping rule 3). A dev vault run found alias matches inside `[[links]]`; fixed with `inline_syntax.plain_text`. Added 5 entity pages to `~/WorkDev` (`d0e548b`). 153 unit tests pass. Learned: [[learnings/entity-slugs-and-alias-index|entity slugs and the alias index]].
 - Committed 1c (`b0e7310`). **1d done:** `tests/fixtures/vault/` holds a clean note (copied from `~/WorkDev`), a messy note (date drift, `## tasks`, unknown heading, tab indent, empty checkbox, link to a person with no page, alias without link, carried tasks with changed status), the template, 5 entity pages and one stray page. A `fixture_vault` pytest fixture (read only) and `test_fixture_vault.py` run the parser and index end to end. 161 unit tests pass.
-- Next: 1e, settings (`WIKI_VAULT_PATH`) per paid-media `config.py`.
+- Committed 1d (`993e05d`). **1e done, phase 1 done:** `config.py` `Settings` (pydantic-settings, `WIKI_` prefix): `vault_path` required, `~` expanded, must exist; `task_ids` only `inline`. `.env` points at `~/WorkDev`; `.env.example` documents both. 168 unit tests pass. Learned: settings vs context, added to [[learnings/context-and-assistants|Context and assistants]].
+- Next: phase 2. First pick the cloud model, then design the ingest graph's state and nodes.
 
 ## 2026-10-11
 

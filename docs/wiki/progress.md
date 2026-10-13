@@ -4,11 +4,13 @@ Single source of truth for project status. Updated at the end of every session.
 
 ## Current focus
 
-Phase 1: domain models and vault I/O (no LLM).
+Phase 2: ingest graph v1 (structured extraction, routing, `FileDiff` reducer).
 
 ## Open decisions
 
-- Cloud model for development. Needed by phase 2.
+- Cloud model for development. Needed now (phase 2).
+- How `Context.vault_path` and `Settings.vault_path` combine (proposal: Context optional, falls back to Settings).
+- Where task → project mapping (0002 rules 1–5) and the task index live; needed by phase 2.
 
 ## Setup
 
@@ -29,13 +31,13 @@ Phase 1: domain models and vault I/O (no LLM).
   - [x] Fix package rename (`src/llm_wiki`, pyproject, imports, `langgraph.json`), upgrade `langgraph-api` (2026-10-11)
   - [x] `uv run langgraph dev`, run from Studio with context; tracing on; saved an assistant (2026-10-11)
   - [x] Can explain: `langgraph.json` → `graphs`, `State` vs `Context`, partial state updates (2026-10-11)
-- [ ] **1. Domain models and vault I/O** (no LLM). Read: `domain/`, `config.py`.
+- [x] **1. Domain models and vault I/O** (no LLM) (2026-10-12). Read: `domain/`, `config.py`.
   - [x] 1a. `Task` model + `tasks_syntax` (parse task line, new ID, append ID), unit tests (2026-10-12)
   - [x] 1b. Frontmatter + daily-note parser per 0002 (sections, tags, tasks with section/parent context) (2026-10-12)
   - [x] Dev vault `~/WorkDev` (invented data, own git repo) for manual runs (2026-10-12)
   - [x] 1c. Entity model + index with aliases, slug → path resolution with allowed-folder check (2026-10-12)
   - [x] 1d. Fixture vault in `tests/fixtures/vault/` (invented data); parser tests run against it (2026-10-12)
-  - [ ] 1e. Settings (`WIKI_VAULT_PATH`, `task_ids`) per paid-media `config.py`
+  - [x] 1e. Settings (`WIKI_VAULT_PATH`, `task_ids`) per paid-media `config.py` (2026-10-12)
 - [ ] **2. Ingest graph v1**: extraction, routing, `FileDiff` reducer. Read: `tools/compute.py`, `tools/artifacts.py`.
 - [ ] **3. HITL and persistence**: `interrupt()`, `Command(resume=…)`, SQLite checkpointer, digests, git commit. Read: `docs/architecture/writes-and-approvals.md`, `tools/writes.py`.
 - [ ] **4. Assistant deep agent**: filesystem backend, permissions, skills, review subagent. Read: `runtime/local.py`, `workspace/skills/`.
