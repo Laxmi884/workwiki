@@ -12,7 +12,8 @@ Newest first. One entry per session, 2–5 bullets: what was done, what was lear
 - 1b-3 done: `parse_daily_note(path, text) -> DailyNote` in `daily_syntax.py`; `Task` gains `section`, `subheading`, `parent` (indent stack); date = frontmatter, else filename, warning on drift; problems are warnings, never exceptions. `SectionKind` moved to `domain/common.py` to avoid a circular import. 91 unit tests pass.
 - Committed 1b-3 (`7e2f60a`). Created a **dev vault** at `~/WorkDev` (own git repo, baseline `bf6607d`): same layout, template and Obsidian settings as `~/Work`, plus an invented sample note `00_raw/daily/2026-10-12.md`. It's a playground for Obsidian and `langgraph dev`; reset with `git reset --hard && git clean -fd`. The frozen pytest inputs stay in `tests/fixtures/vault/` (1d). The parser reads the sample cleanly: 12 tasks, the fenced checkbox skipped, no warnings.
 - **1b done.** 1b-4: `inline_syntax.py` (`find_links`, `find_tags`). `Task` gains `links` and `tags` from its own line; inline code, embeds, URLs, `[[a#b]]` and `#42` are excluded. 119 unit tests pass. Learned: [[learnings/parsing-notes-with-line-numbers|parsing notes with line numbers]].
-- Next: 1c, entity model and alias index (slug → path, allowed-folder check).
+- Committed 1b-4 (`10560ce`). **1c done:** `domain/entities.py` (`EntityKind`, frozen `Entity`, `SLUG_PATTERN`) and `entity_index.py` (`path_for` maps slug prefix → one folder and rejects anything else; `build_index`/`load_index` read `title`/`aliases`, bad pages become warnings; `lookup`, `alias_mentions` for mapping rule 3). A dev vault run found alias matches inside `[[links]]`; fixed with `inline_syntax.plain_text`. Added 5 entity pages to `~/WorkDev` (`d0e548b`). 153 unit tests pass. Learned: [[learnings/entity-slugs-and-alias-index|entity slugs and the alias index]].
+- Next: 1d, fixture vault in `tests/fixtures/vault/`.
 
 ## 2026-10-11
 

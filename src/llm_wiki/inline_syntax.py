@@ -21,6 +21,15 @@ def _without_code(text: str) -> str:
     return _CODE_RE.sub(" ", text)
 
 
+def plain_text(text: str) -> str:
+    """Return `text` with inline code and `[[links]]` blanked out.
+
+    Use it before searching prose, so "atlas" inside "[[project-atlas]]" or
+    "#tag" inside "[[a#tag]]" is not found.
+    """
+    return _LINK_RE.sub(" ", _without_code(text))
+
+
 def _unique(items: list[str]) -> tuple[str, ...]:
     return tuple(dict.fromkeys(items))  # dedupe, keep first-seen order
 
@@ -41,6 +50,5 @@ def find_tags(text: str) -> tuple[str, ...]:
 
     "Fixed it #win #Win, see #42" -> ("win",)
     """
-    text = _LINK_RE.sub(" ", _without_code(text))  # [[a#b]] holds no tag
-    names = (m.group("name").lower() for m in _TAG_RE.finditer(text))
+    names = (m.group("name").lower() for m in _TAG_RE.finditer(plain_text(text)))
     return _unique([n for n in names if _HAS_LETTER_RE.search(n)])

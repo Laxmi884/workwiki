@@ -1,6 +1,6 @@
 import pytest
 
-from llm_wiki.inline_syntax import find_links, find_tags
+from llm_wiki.inline_syntax import find_links, find_tags, plain_text
 
 
 @pytest.mark.parametrize(
@@ -46,3 +46,8 @@ def test_find_links(text, expected):
 )
 def test_find_tags(text, expected):
     assert find_tags(text) == expected
+
+
+def test_plain_text_blanks_links_and_code_only():
+    text = "Ship [[project-atlas|Atlas]] with `atlas cli` today #win"
+    assert plain_text(text).split() == ["Ship", "with", "today", "#win"]
