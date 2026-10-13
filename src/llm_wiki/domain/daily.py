@@ -2,20 +2,14 @@
 
 from __future__ import annotations
 
-from enum import StrEnum
+import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from llm_wiki.domain.common import SectionKind
+from llm_wiki.domain.tasks import Task
 
-class SectionKind(StrEnum):
-    """The fixed daily-note sections. Each one feeds a different extractor."""
-
-    CARRIED_OVER = "carried_over"
-    TASKS = "tasks"
-    MEETINGS = "meetings"
-    LOG = "log"  # also any unknown section, and text before the first heading
-    HELPED = "helped"
-    LEARNED = "learned"
+__all__ = ["DailyNote", "Section", "SectionKind"]
 
 
 class Section(BaseModel):
@@ -34,3 +28,25 @@ class Section(BaseModel):
     heading: str
     start_line: int = Field(ge=1)
     lines: tuple[str, ...]
+
+
+class DailyNote(BaseModel):
+    """A parsed daily note.
+
+    Attributes:
+        path: Vault-relative path, e.g. "00_raw/daily/2026-10-12.md".
+        date: From frontmatter, else the filename; None if neither is a valid date.
+        template: Frontmatter `template`, "daily-v1" if missing.
+        sections: The note's `##` sections in file order.
+        tasks: Every task in the note, with context, in file order.
+        warnings: Problems found while parsing (bad frontmatter, date drift, ...).
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    path: str
+    date: datetime.date | None
+    template: str
+    sections: tuple[Section, ...]
+    tasks: tuple[Task, ...]
+    warnings: tuple[str, ...] = ()

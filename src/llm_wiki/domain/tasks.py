@@ -6,6 +6,8 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from llm_wiki.domain.common import SectionKind
+
 
 class TaskStatus(StrEnum):
     """Status of a task which is maintained in the task index."""
@@ -25,6 +27,9 @@ class Task(BaseModel):
         status: The status of the task (OPEN, IN_PROGRESS, DONE, CANCELLED).
         source_path: The path to the file containing the task.
         line_no: The 1-based line number of the task in its file.
+        section: The daily-note section the task sits in, if known.
+        subheading: The enclosing `###` heading (a meeting title in Meetings), if any.
+        parent: Text of the enclosing parent bullet, if the task is nested.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -34,3 +39,6 @@ class Task(BaseModel):
     status: TaskStatus
     source_path: str
     line_no: int = Field(ge=1)
+    section: SectionKind | None = None
+    subheading: str | None = None
+    parent: str | None = None
