@@ -26,3 +26,4 @@ Numbered, one per decision. Template: `decisions/_template.md`.
 - [[decisions/0001-task-ids|0001]]: task IDs are Obsidian block IDs, matched by ID only; two code-only writes to `00_raw/`; daily-note rollover
 - [[decisions/0002-daily-note-format|0002]]: daily note sections, tags, `daily-v1` template; task → project mapping order
 - [[decisions/0003-model-selection|0003]]: any provider via one `provider:model` string; `WIKI_MODEL` default, Studio assistant / run context overrides
+- [[decisions/0004-ingest-graph-design|0004]]: ingest graph: code around a narrow extract step, edits → diffs with digests, review loop with feedback

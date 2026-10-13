@@ -1,0 +1,43 @@
+---
+id: 0004
+date: 2026-10-12
+status: accepted
+---
+
+# 0004: Ingest graph design: code around a narrow model step, edits → diffs, review loop
+
+## Context
+
+Phase 2 turns one daily note into proposed vault changes. The model must stay narrow (read prose only),
+every write must be checkable and approvable, and the user must be able to correct missed or wrong
+extractions, not only approve or reject.
+
+## Options
+
+- One agent with file tools reads the note and edits pages: flexible, but unpredictable steps and hard
+  to review.
+- Fixed graph: code parses and routes, model extracts structured facts per section, code renders exact
+  diffs; review step with approve / reject / edit / revise-with-feedback: chosen.
+
+## Decision
+
+- Nodes: `load_note` → `assign_ids` → `track_tasks` → fan-out (`Send`, one per prose section) →
+  `extract` → `route` → `render_diffs` → (phase 3) `review` (`interrupt`) → `apply`.
+- Model step: `SectionFacts` (decisions, wins, person notes, help, learnings, project updates), each
+  fact citing its `line`. Names may be slugs or plain names; code resolves them. Tasks are code only.
+- State: `facts` is a dict keyed per section with a merge-by-key reducer (parallel-safe, a re-run
+  replaces its own key); `route` rebuilds `edits` from all facts each round; `feedback` holds the
+  user's revise messages.
+- Writes: nodes emit small `Edit`s (`AppendId`, `AppendToSection`, `CreateFile`); `render_diffs` merges
+  them per file into one `FileDiff` (before sha256, after text, unified diff, digest). Allowed folders
+  are part of each edit's type.
+- Review answers (phase 3): approve, approve some, reject, edit (user text replaces a diff),
+  revise (feedback → re-extract with previous facts + feedback, max 3 rounds).
+- Task index: code-owned `90_meta/tasks.json`. Mapping rules 1–3 in v1; rule 4 (model proposal) later.
+- Every model-written line links its source note, e.g. `([[2026-10-12]])`. Facts not in the note go
+  into the note, not into feedback.
+
+## Why
+
+Deterministic work stays testable code, the model only does what code cannot (read prose), and every
+change is an exact, hashed diff the user can approve, edit or send back with feedback.
