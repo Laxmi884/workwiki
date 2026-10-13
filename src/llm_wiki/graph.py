@@ -1,23 +1,30 @@
-"""LangGraph single-node graph template.
+"""Scaffold graph: answers `user_query` with the chosen model.
 
-Returns a predefined response. Replace logic and configuration as needed.
+Placeholder until the phase-2 ingest graph; it shows how a run picks its model.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict
+from typing import Any
 
 from langgraph.graph import StateGraph
 from langgraph.runtime import Runtime
 from typing_extensions import TypedDict
 
+from llm_wiki.config import get_settings
+from llm_wiki.models import choose_model_spec, make_chat_model
 
-class Context(TypedDict):
-    """Context parameters for the agent.
 
-    Set these when creating assistants OR when invoking the graph.
-    See: https://langchain-ai.github.io/langgraph/cloud/how-tos/configuration_cloud/
+class Context(TypedDict, total=False):
+    """Per-run settings. Set them on a Studio assistant or pass `context=` on invoke.
+
+    Every key is optional; a missing key falls back to the `WIKI_*` setting.
+
+    Attributes:
+        vault_path: Vault folder (not used yet).
+        model: "provider:model", e.g. "ollama:llama3.1:8b",
+            "anthropic:claude-haiku-5-5", "openrouter:openai/gpt-5-mini".
     """
 
     vault_path: str
@@ -26,32 +33,30 @@ class Context(TypedDict):
 
 @dataclass
 class State:
-    """Input state for the agent.
+    """Graph state.
 
-    Defines the initial structure of incoming data.
-    See: https://langchain-ai.github.io/langgraph/concepts/low_level/#state
+    Attributes:
+        user_query: The question.
+        answer: The model's reply.
+        model_used: The "provider:model" that answered.
     """
 
     user_query: str
-    
+    answer: str = ""
+    model_used: str = ""
 
 
-async def call_model(state: State, runtime: Runtime[Context]) -> Dict[str, Any]:
-    """Process input and returns output.
-
-    Can use runtime context to alter behavior.
-    """
-    return {
-        "user_query": "output from call_model (Scaffolded). "
-        f"Configured with vault path {(runtime.context or {}).get('vault_path')} and model {(runtime.context or {}).get('model')}."
-        f"User query: {state.user_query}."
-    }
+async def call_model(state: State, runtime: Runtime[Context]) -> dict[str, Any]:
+    """Answer the query with the run's model (context `model`, else WIKI_MODEL)."""
+    context = runtime.context or {}
+    spec = choose_model_spec(context.get("model"), get_settings().model)
+    reply = await make_chat_model(spec).ainvoke(state.user_query)
+    return {"answer": reply.text, "model_used": spec.spec}
 
 
-# Define the graph
 graph = (
     StateGraph(State, context_schema=Context)
     .add_node(call_model)
     .add_edge("__start__", "call_model")
-    .compile(name="New Graph")
+    .compile(name="llm-wiki scaffold")
 )

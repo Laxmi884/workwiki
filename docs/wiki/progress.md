@@ -8,7 +8,7 @@ Phase 2: ingest graph v1 (structured extraction, routing, `FileDiff` reducer).
 
 ## Open decisions
 
-- Cloud model for development. Needed now (phase 2).
+- Which cloud model to use alongside the local default (mechanism settled in [[decisions/0003-model-selection|0003]]; dev default `ollama:qwen3:4b`).
 - How `Context.vault_path` and `Settings.vault_path` combine (proposal: Context optional, falls back to Settings).
 - Where task → project mapping (0002 rules 1–5) and the task index live; needed by phase 2.
 
