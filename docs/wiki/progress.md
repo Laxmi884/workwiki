@@ -43,6 +43,11 @@ Phase 3: HITL and persistence (`interrupt()` review incl. people questions and t
   - [x] 2d. `extract` with structured output; scripted fake model in tests; prompt tuned on fixture notes (2026-10-13)
   - [x] 2e. `route`, graph wiring (`Send` fan-out, merge-by-key reducer), Studio run on `~/WorkDev` (2026-10-13)
 - [ ] **3. HITL and persistence**: `interrupt()`, `Command(resume=…)`, SQLite checkpointer, digests, git commit. Read: `docs/architecture/writes-and-approvals.md`, `tools/writes.py`.
+  - [x] 3a. Ingest ledger `90_meta/ingest-ledger.json`: skip unchanged notes; edited notes give facts only from new lines (2026-10-13)
+  - [ ] 3b. `review` node with `interrupt()`: diffs, people and inbox questions; `Command(resume=…)`
+  - [ ] 3c. Revise loop (feedback → re-extract, max 3), edit, "make page" for decisions
+  - [ ] 3d. `apply`: write approved files only if `before_sha256` still matches, read back
+  - [ ] 3e. SQLite checkpointer; git commit of the vault
 - [ ] **4. Assistant deep agent**: filesystem backend, permissions, skills, review subagent. Read: `runtime/local.py`, `workspace/skills/`.
 - [ ] **5. Middleware**: current date, write guard, redaction, offload. Read: `middleware/`.
 - [ ] **6. Tests and evals**: scripted model, sample notes with expected diffs. Read: `testing/scripted_model.py`, `tests/eval/`.

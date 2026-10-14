@@ -57,6 +57,19 @@ extractions, not only approve or reject.
   concept pages; wins and help also on the quarter's impact page. Names that don't
   resolve go to `05_generated/inbox.md` (never dropped; phase 3 questions). A linked entity without
   a page gets a stub; a slug the model made up does not.
+- Ingest ledger (added 2026-10-13, 3a): `90_meta/ingest-ledger.json` keeps per note its hash (as
+  it will be after its task IDs are added) and a key per prose line ingested. Unchanged note → the
+  run stops; edited note → the model sees whole sections but may cite only new lines (old ones
+  marked `~`, context only), sections without new lines skip the model. A reworded line counts as
+  new; deleted lines don't remove wiki entries. A broken ledger stops ingest and is never
+  overwritten. The ledger update is a proposed diff, recorded only when approved. In 3d it moves
+  to `apply`: built last from the note as actually written, so it stays true when only some
+  diffs are approved (e.g. the note's ID diff rejected).
+- Approved = committed (added 2026-10-13, built in 3d/3e): approval records each diff's digest.
+  Before writing, the diff must still have the approved digest and the file must still match
+  `before_sha256` (otherwise that file is skipped and reported). After writing, each file is read
+  back and must match the approved after-hash. After the git commit, each file is read from the
+  commit (`HEAD`) and checked again; the commit message lists files with short digests.
 - Fact context comes from code, not the model (added 2026-10-13, built in 2e): from a fact's
   `line`, code adds the note date, the meeting (`###` heading above the line), who was there
   (links in that heading) and a link to the note; decision pages also quote the line (a link to

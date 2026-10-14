@@ -7,14 +7,16 @@ and `routing`.
 
 from __future__ import annotations
 
+import datetime
 from pathlib import Path
 from typing import Any
 
 from langchain_core.language_models import BaseChatModel
+from langgraph.graph import END
 from langgraph.runtime import Runtime
 from langgraph.types import Send
 
-from llm_wiki import extraction, routing, task_tracking
+from llm_wiki import extraction, ledger, routing, task_tracking
 from llm_wiki.config import get_settings
 from llm_wiki.daily_syntax import parse_daily_note
 from llm_wiki.diffs import VaultReader, render_diffs, vault_reader
@@ -58,17 +60,39 @@ def _daily_notes(vault: Path, read: VaultReader) -> list[DailyNote]:
 
 
 def load_note(state: IngestState, runtime: Runtime[IngestContext]) -> dict[str, Any]:
-    """Read and parse `note_path`. A missing note is a caller error and raises."""
+    """Read and parse `note_path` and check the ledger. A missing note raises.
+
+    Sets `skip_reason` (the run stops) for an unchanged note or a broken ledger, and
+    `seen_lines` (already-ingested prose lines) for an edited one.
+    """
     path = state["note_path"]
-    text = vault_reader(vault_path(runtime))(path)
+    read = vault_reader(vault_path(runtime))
+    text = read(path)
     if text is None:
         raise FileNotFoundError(f"note not found in vault: {path}")
     note = parse_daily_note(path, text)
-    return {
+    sha = sha256_text(text)
+    update: dict[str, Any] = {
         "note": note,
-        "note_sha256": sha256_text(text),
+        "note_sha256": sha,
         "warnings": [f"{path}: {w}" for w in note.warnings],
     }
+
+    known, problem = ledger.load_ledger(read(ledger.LEDGER_PATH))
+    entry = known.notes.get(path) if known is not None else None
+    if problem is not None:
+        update["skip_reason"] = problem
+    elif entry is not None and entry.sha256 == sha:
+        update["skip_reason"] = f"{path}: already ingested and unchanged"
+    if "skip_reason" in update:
+        update["warnings"] = [*update["warnings"], update["skip_reason"]]
+    update["seen_lines"] = list(entry.lines) if entry is not None else []
+    return update
+
+
+def after_load(state: IngestState) -> str:
+    """Stop here if `load_note` found nothing to do, else carry on."""
+    return END if state.get("skip_reason") else "assign_ids"
 
 
 def assign_ids(state: IngestState, runtime: Runtime[IngestContext]) -> dict[str, Any]:
@@ -111,6 +135,7 @@ def extract(state: ExtractInput, runtime: Runtime[IngestContext]) -> dict[str, A
         load_index(vault_path(runtime)),
         previous=state.get("previous"),
         feedback=state.get("feedback", []),
+        seen=frozenset(state.get("seen_lines", [])),
     )
     return {
         "facts": {str(section.start_line): facts},
@@ -119,9 +144,10 @@ def extract(state: ExtractInput, runtime: Runtime[IngestContext]) -> dict[str, A
 
 
 def fan_out(state: IngestState) -> list[Send] | str:
-    """Send each prose section to `extract` in parallel; none → straight to `route`."""
+    """Send each section with new prose to `extract` in parallel; none → `route`."""
     note = state["note"]
     tasks = extraction.task_lines(note)
+    seen = frozenset(state.get("seen_lines", []))
     facts = state.get("facts", {})
     sends = [
         Send(
@@ -131,10 +157,11 @@ def fan_out(state: IngestState) -> list[Send] | str:
                 "section_line": section.start_line,
                 "previous": facts.get(str(section.start_line)),
                 "feedback": state.get("feedback", []),
+                "seen_lines": state.get("seen_lines", []),
             },
         )
         for section in note.sections
-        if extraction.needs_model(section, tasks)
+        if extraction.needs_model(section, tasks, seen)
     ]
     return sends or "route"
 
@@ -153,7 +180,23 @@ def route(state: IngestState, runtime: Runtime[IngestContext]) -> dict[str, Any]
 
 
 def render(state: IngestState, runtime: Runtime[IngestContext]) -> dict[str, Any]:
-    """Render task and fact edits into one diff per file (nothing is written)."""
+    """Render task, fact and ledger edits into one diff per file (nothing is written).
+
+    The ledger records the note's hash *after* its task IDs are added, so once the
+    diffs are applied the next run sees the note as unchanged.
+    """
+    read = vault_reader(vault_path(runtime))
     edits = [*state.get("task_edits", []), *state.get("fact_edits", [])]
-    diffs, warnings = render_diffs(edits, vault_reader(vault_path(runtime)))
-    return {"diffs": diffs, "warnings": warnings}
+    diffs, warnings = render_diffs(edits, read)
+
+    note = state["note"]
+    note_after = [d.after_text for d in diffs if d.path == note.path]
+    sha = sha256_text(note_after[0]) if note_after else state["note_sha256"]
+    known, _ = ledger.load_ledger(read(ledger.LEDGER_PATH))  # valid: load_note checked
+    assert known is not None
+    now = datetime.datetime.now(datetime.UTC)
+    text = ledger.dump_ledger(ledger.record(known, note, sha, now))
+    ledger_diffs, ledger_warnings = render_diffs(
+        [ReplaceFile(path=ledger.LEDGER_PATH, text=text)], read
+    )
+    return {"diffs": diffs + ledger_diffs, "warnings": warnings + ledger_warnings}

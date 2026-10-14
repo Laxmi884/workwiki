@@ -13,7 +13,10 @@ Newest first. One entry per session, 2–5 bullets: what was done, what was lear
 - **2e written (awaiting review), phase 2 complete:** `routing.py` (facts → page edits with date, meeting and source; decisions as blocks in a quarterly log in a year folder, not a file each ("make page" in phase 3); quarter impact page; inbox for unmatched names; stubs for linked pages), `route`/`render`/`fan_out` nodes, `ingest/graph.py` registered as `ingest` in `langgraph.json`. 303 unit tests pass. Learned: [[learnings/send-fan-out-and-reducers|Send fan-out and reducers]].
 - Real run through `langgraph dev` on `~/WorkDev` (Nemotron): 4 parallel extracts, 9 diffs in 30s, no warnings, vault untouched.
 - 2e approved and committed; phase 2 done.
-- Next: phase 3 (review `interrupt` with people/inbox questions and "make page", apply once, ingest ledger, vault git commit).
+- Phase 3 split into 3a–3e in [[progress]]. **3a written (awaiting review):** `domain/ledger.py`, `ledger.py`; `load_note` stops on an unchanged note or a broken ledger; edited notes send only sections with new lines, old lines shown as `~` context and not citable. The ledger stores the note hash *after* task IDs, otherwise an applied run would never look unchanged. 316 unit tests pass.
+- Real run (Nemotron, scratch copy of `~/WorkDev`): first ingest 24s and 10 diffs; same note again stops in 0s; one added `#win` line → only Log sent to the model, 3 diffs, 8s.
+- 3a approved. Agreed: the ledger is built in `apply` from what was actually written (3d), and an approved = committed chain (digest → before-hash → read back → check the git commit) for 3d/3e (0004).
+- Next: 3b (`interrupt` review).
 
 ## 2026-10-12
 

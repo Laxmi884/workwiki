@@ -37,7 +37,9 @@ class IngestState(TypedDict, total=False):
     Attributes:
         note_path: Input: vault-relative note path, e.g. "00_raw/daily/2026-10-12.md".
         note: The parsed note (load_note).
-        note_sha256: Hash of the note text, for the ingest ledger (phase 3).
+        note_sha256: Hash of the note text, for the ingest ledger.
+        seen_lines: Keys of prose lines already ingested (ledger); only others give facts.
+        skip_reason: Set when there is nothing to do (unchanged note, broken ledger).
         task_ids: Line number → newly assigned task ID (assign_ids).
         task_edits: ID appends and the task index rewrite (assign_ids, track_tasks).
         facts: Section key (its start line, e.g. "20") → facts (extract).
@@ -50,6 +52,8 @@ class IngestState(TypedDict, total=False):
     note_path: str
     note: DailyNote
     note_sha256: str
+    seen_lines: list[str]
+    skip_reason: str
     task_ids: dict[int, str]
     task_edits: list[Edit]
     facts: Annotated[dict[str, SectionFacts], merge_facts]
@@ -77,9 +81,11 @@ class ExtractInput(TypedDict, total=False):
         section_line: Start line of the section to read; also its key in `facts`.
         previous: The section's facts from the last round, when revising.
         feedback: The user's revise messages.
+        seen_lines: Keys of prose lines already ingested; they're context only.
     """
 
     note: DailyNote
     section_line: int
     previous: SectionFacts | None
     feedback: list[str]
+    seen_lines: list[str]

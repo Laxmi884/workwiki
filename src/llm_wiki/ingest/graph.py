@@ -1,7 +1,9 @@
 """The ingest graph (decision 0004): one daily note in, proposed diffs out.
 
-    load_note → assign_ids → track_tasks ─┬─ Send → extract (one per prose section) ─┐
-                                          └─ (no prose) ─────────────────────────────┴→ route → render
+    load_note ──(unchanged note / broken ledger)──→ END
+        ↓
+    assign_ids → track_tasks ─┬─ Send → extract (one per section with new prose) ─┐
+                              └─ (no new prose) ─────────────────────────────────┴→ route → render
 
 Nothing is written to the vault yet; phase 3 adds review (`interrupt`) and apply.
 """
@@ -26,7 +28,7 @@ builder.add_node("route", nodes.route)
 builder.add_node("render", nodes.render)
 
 builder.add_edge(START, "load_note")
-builder.add_edge("load_note", "assign_ids")
+builder.add_conditional_edges("load_note", nodes.after_load, ["assign_ids", END])
 builder.add_edge("assign_ids", "track_tasks")
 builder.add_conditional_edges("track_tasks", nodes.fan_out, ["extract", "route"])
 builder.add_edge("extract", "route")

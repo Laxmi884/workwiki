@@ -5,14 +5,18 @@ Code prepares the input and checks the output; the model only reads prose.
 - Input: the section's prose lines, each numbered with its file line. Tasks (code
   handles them), blank lines, the `##` heading and fenced code are left out.
 - Hints: known entity slugs, the section's focus, and every `#win`/`#decision` line.
-- Checks: repeated facts and facts citing a line that wasn't shown are dropped (a
-  warning). Invalid output or a tagged line without a fact of its kind is sent back
+- Re-ingest (phase 3a): lines already ingested (`seen`, from the ledger) are shown
+  marked `~` as context; only new lines may be cited, and sections without new lines
+  skip the model.
+- Checks: repeated facts and facts citing a line that wasn't shown (or isn't new) are
+  dropped (a warning). Invalid output or a tagged line without a fact of its kind is sent back
   once with the problems listed; what is still wrong after that becomes a warning.
 """
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+import hashlib
+from collections.abc import Collection, Sequence
 from typing import Any
 
 from langchain_core.language_models import BaseChatModel
@@ -54,6 +58,8 @@ name as written.
 update, not a decision.
 - A person note is something about that person: goals, wishes, preferences.
 - A line tagged #decision must give a decision; a line tagged #win must give a win.
+- Lines shown with `~` instead of `|` are already in the wiki: read them as context,
+never cite them.
 
 Example. Lines:
   41 | ### Sync with [[person-dana-wu]] on [[project-orbit]]
@@ -89,14 +95,29 @@ def prose_lines(section: Section, task_lines: set[int]) -> list[tuple[int, str]]
     return lines
 
 
+def line_key(text: str) -> str:
+    """Return a short key for a prose line: same words, same key (indent/spacing ignored)."""
+    normal = " ".join(text.split())
+    return hashlib.sha256(normal.encode("utf-8")).hexdigest()[:16]
+
+
+def new_lines(
+    lines: Sequence[tuple[int, str]], seen: Collection[str]
+) -> list[tuple[int, str]]:
+    """Return the lines whose key isn't in `seen` (not ingested before)."""
+    return [(n, text) for n, text in lines if line_key(text) not in seen]
+
+
 def task_lines(note: DailyNote) -> set[int]:
     """Return the file lines of the note's tasks."""
     return {task.line_no for task in note.tasks}
 
 
-def needs_model(section: Section, tasks: set[int]) -> bool:
-    """Return whether the section has prose for the model to read."""
-    return section.kind in MODEL_SECTIONS and bool(prose_lines(section, tasks))
+def needs_model(section: Section, tasks: set[int], seen: Collection[str] = ()) -> bool:
+    """Return whether the section has new prose for the model to read."""
+    return section.kind in MODEL_SECTIONS and bool(
+        new_lines(prose_lines(section, tasks), seen)
+    )
 
 
 def tagged_lines(lines: Sequence[tuple[int, str]]) -> dict[str, list[int]]:
@@ -123,9 +144,15 @@ def build_messages(
     entities: EntityIndex,
     previous: SectionFacts | None = None,
     feedback: Sequence[str] = (),
+    seen: Collection[str] = (),
 ) -> list[BaseMessage]:
-    """Build the prompt. With `previous` and `feedback` it asks for a revised answer."""
-    numbered = "\n".join(f"{n:>4} | {text}" for n, text in lines)
+    """Build the prompt. With `previous` and `feedback` it asks for a revised answer.
+
+    Lines in `seen` are marked `~` (context only), new lines `|`.
+    """
+    numbered = "\n".join(
+        f"{n:>4} {'~' if line_key(text) in seen else '|'} {text}" for n, text in lines
+    )
     parts = [
         f"Section: {section.heading or '(before the first heading)'}",
         _FOCUS[section.kind],
@@ -134,7 +161,7 @@ def build_messages(
     ]
     required = [
         f"- line {n} is tagged #{tag}: it must give one of `{_TAGS_NEEDED[tag]}`"
-        for tag, nums in tagged_lines(lines).items()
+        for tag, nums in tagged_lines(new_lines(lines, seen)).items()
         for n in nums
     ]
     if required:
@@ -151,14 +178,18 @@ def build_messages(
 
 
 def check_facts(
-    facts: SectionFacts, lines: Sequence[tuple[int, str]]
+    facts: SectionFacts,
+    lines: Sequence[tuple[int, str]],
+    seen: Collection[str] = (),
 ) -> tuple[SectionFacts, list[str], list[str]]:
-    """Drop repeats and facts citing unshown lines; list uncovered tagged lines.
+    """Keep facts citing new shown lines, without repeats; list uncovered tagged lines.
 
     Returns:
         (kept facts, what was dropped, tagged lines left uncovered)
     """
+    citable = new_lines(lines, seen)
     shown = {n for n, _ in lines}
+    allowed = {n for n, _ in citable}
     dropped: list[str] = []
     kept: dict[str, list[Any]] = {}
     for field in SectionFacts.model_fields:
@@ -167,8 +198,10 @@ def check_facts(
         for fact in getattr(facts, field):
             if fact in kept[field]:
                 repeats += 1
-            elif fact.line in shown:
+            elif fact.line in allowed:
                 kept[field].append(fact)
+            elif fact.line in shown:
+                dropped.append(f"{field} fact cites line {fact.line}, already ingested")
             else:
                 dropped.append(f"{field} fact cites line {fact.line}, not in section")
         if repeats:
@@ -178,7 +211,7 @@ def check_facts(
     missing = [
         f"line {n} is tagged #{tag} but has no item in `{field}`"
         for tag, field in _TAGS_NEEDED.items()
-        for n in tagged_lines(lines)[tag]
+        for n in tagged_lines(citable)[tag]
         if n not in {fact.line for fact in getattr(checked, field)}
     ]
     return checked, dropped, missing
@@ -192,6 +225,7 @@ def extract_section(
     *,
     previous: SectionFacts | None = None,
     feedback: Sequence[str] = (),
+    seen: Collection[str] = (),
     retries: int = 1,
 ) -> tuple[SectionFacts, list[str]]:
     """Ask the model for the section's facts; check them and retry with the problems.
@@ -200,7 +234,7 @@ def extract_section(
         (facts, warnings). Facts are empty if the model never gave valid output.
     """
     lines = prose_lines(section, tasks)
-    messages = build_messages(section, lines, entities, previous, feedback)
+    messages = build_messages(section, lines, entities, previous, feedback, seen)
     structured = model.with_structured_output(SectionFacts, include_raw=True)
 
     # Code repairs repeats and stray citations (`repaired`); only what it can't fix
@@ -212,7 +246,7 @@ def extract_section(
         if not isinstance(parsed, SectionFacts):
             problems = [f"invalid output ({result.get('parsing_error')})"]
         else:
-            facts, repaired, problems = check_facts(parsed, lines)
+            facts, repaired, problems = check_facts(parsed, lines, seen)
         if not problems:
             break
         messages = [
