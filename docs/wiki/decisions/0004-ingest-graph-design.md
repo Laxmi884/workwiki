@@ -36,6 +36,15 @@ extractions, not only approve or reject.
 - Task index: code-owned `90_meta/tasks.json`. Mapping rules 1–3 in v1; rule 4 (model proposal) later.
 - Every model-written line links its source note, e.g. `([[2026-10-12]])`. Facts not in the note go
   into the note, not into feedback.
+- Task records keep `people` (person links) and `tags` from the task line (added 2026-10-13), so
+  tasks without a project can be found by person or `#blocked`.
+- People clarification (added 2026-10-13, built in 2d/2e/3): unlinked names (alias matches by code,
+  unknown names from the model, ambiguous matches) become questions in the same review `interrupt`:
+  this person / other existing person / new person / not a person. `00_raw/` stays untouched; the
+  answer goes into `tasks.json` and facts. Confirming a name adds it as an alias on the person page
+  automatically, so it is not asked again. Names resolved by alias are still listed in the review
+  (shown, not asked) so a wrong match can be changed. A name that becomes an alias of two people is
+  ambiguous and asked each time; a `[[link]]` in the note always wins without a question.
 
 ## Why
 

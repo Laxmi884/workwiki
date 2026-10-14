@@ -2,7 +2,13 @@ import pytest
 
 from llm_wiki import diffs
 from llm_wiki.diffs import RenderError, apply_edit, render_diffs, vault_reader
-from llm_wiki.domain.changes import AppendId, AppendToSection, CreateFile, sha256_text
+from llm_wiki.domain.changes import (
+    AppendId,
+    AppendToSection,
+    CreateFile,
+    ReplaceFile,
+    sha256_text,
+)
 
 NOTE = "00_raw/daily/2026-10-12.md"
 SAM = "20_people/person-sam-ortiz.md"
@@ -172,3 +178,9 @@ def test_reader_refuses_symlink_out_of_vault(tmp_path):
     (vault / SAM).symlink_to(outside)
     with pytest.raises(RenderError, match="outside the vault"):
         vault_reader(vault)(SAM)
+
+
+def test_replace_file_creates_or_overwrites():
+    edit = ReplaceFile(path="90_meta/tasks.json", text='{"version": 1}\n')
+    assert apply_edit(None, edit) == '{"version": 1}\n'
+    assert apply_edit("old", edit) == '{"version": 1}\n'

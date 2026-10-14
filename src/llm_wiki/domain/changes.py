@@ -7,6 +7,7 @@ if the file still hashes to `before_sha256`.
 Where each edit may write is part of its type (CLAUDE.md, decision 0001):
 - `AppendId` only touches `00_raw/daily/` (the one code-only write to raw notes).
 - `AppendToSection` and `CreateFile` only touch the agent-owned folders.
+- `ReplaceFile` only rewrites code-owned `90_meta/*.json` files (e.g. the task index).
 """
 
 from __future__ import annotations
@@ -26,6 +27,7 @@ from pydantic import (
 )
 
 RAW_DAILY_FOLDER = "00_raw/daily/"
+META_FOLDER = "90_meta/"
 WRITABLE_FOLDERS = (
     "05_generated/",
     "10_projects/",
@@ -64,9 +66,18 @@ def _raw_daily_note(path: str) -> str:
     return path
 
 
+def _meta_json(path: str) -> str:
+    if not path.startswith(META_FOLDER) or not path.endswith(".json"):
+        raise ValueError(
+            f"whole-file rewrites only for {META_FOLDER}*.json, not {path!r}"
+        )
+    return path
+
+
 VaultPath = Annotated[str, AfterValidator(_vault_relative)]
 WritablePath = Annotated[VaultPath, AfterValidator(_writable_markdown)]
 RawDailyPath = Annotated[VaultPath, AfterValidator(_raw_daily_note)]
+MetaJsonPath = Annotated[VaultPath, AfterValidator(_meta_json)]
 
 
 class AppendId(BaseModel):
@@ -113,8 +124,20 @@ class CreateFile(BaseModel):
     text: str
 
 
-# One of the three, chosen by `kind` when parsing a dict.
-Edit = Annotated[AppendId | AppendToSection | CreateFile, Field(discriminator="kind")]
+class ReplaceFile(BaseModel):
+    """Write a whole code-owned file (create or overwrite), e.g. `90_meta/tasks.json`."""
+
+    model_config = ConfigDict(frozen=True)
+
+    kind: Literal["replace_file"] = "replace_file"
+    path: MetaJsonPath
+    text: str
+
+
+# One of the four, chosen by `kind` when parsing a dict.
+Edit = Annotated[
+    AppendId | AppendToSection | CreateFile | ReplaceFile, Field(discriminator="kind")
+]
 
 
 def sha256_text(text: str) -> str:

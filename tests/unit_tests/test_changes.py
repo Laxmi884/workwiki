@@ -6,6 +6,7 @@ from llm_wiki.domain.changes import (
     AppendToSection,
     CreateFile,
     FileDiff,
+    ReplaceFile,
     sha256_text,
 )
 
@@ -123,3 +124,13 @@ def test_digest_is_in_the_dump():
 def test_diff_needs_at_least_one_edit():
     with pytest.raises(pydantic.ValidationError):
         FileDiff(path=SAM, before_sha256=None, after_text="", unified_diff="", edits=())
+
+
+# --- ReplaceFile ----------------------------------------------------------------
+
+
+def test_replace_file_only_for_meta_json():
+    assert ReplaceFile(path="90_meta/tasks.json", text="{}").kind == "replace_file"
+    for path in ("90_meta/notes.md", "20_people/person-sam.json", "00_raw/x.json"):
+        with pytest.raises(pydantic.ValidationError, match="whole-file rewrites"):
+            ReplaceFile(path=path, text="{}")

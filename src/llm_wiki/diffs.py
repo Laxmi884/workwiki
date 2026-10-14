@@ -19,6 +19,7 @@ from llm_wiki.domain.changes import (
     CreateFile,
     Edit,
     FileDiff,
+    ReplaceFile,
     sha256_text,
 )
 from llm_wiki.tasks_syntax import append_id
@@ -139,6 +140,8 @@ def apply_edit(text: str | None, edit: Edit) -> str:
     Raises:
         RenderError: The edit doesn't fit the file (exists / missing / not a task line).
     """
+    if isinstance(edit, ReplaceFile):
+        return edit.text
     if isinstance(edit, CreateFile):
         if text is not None:
             raise RenderError("file already exists")
