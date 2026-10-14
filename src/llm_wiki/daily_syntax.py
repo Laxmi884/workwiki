@@ -37,7 +37,8 @@ _KIND_BY_NAME: dict[str, SectionKind] = {
 }
 
 
-def _is_fence(line: str) -> bool:
+def is_fence(line: str) -> bool:
+    """Return whether the line opens or closes a fenced code block."""
     return line.lstrip().startswith(_FENCE_PREFIXES)
 
 
@@ -82,7 +83,7 @@ def split_sections(body: str, body_start_line: int = 1) -> list[Section]:
             )
 
     for i, line in enumerate(body.splitlines()):
-        if _is_fence(line):
+        if is_fence(line):
             in_fence = not in_fence
         m = None if in_fence else _HEADING_RE.match(line)
         if m is None:
@@ -105,7 +106,7 @@ def _section_tasks(section: Section, path: str) -> list[Task]:
     in_fence = False
 
     for i, line in enumerate(section.lines):
-        if _is_fence(line):
+        if is_fence(line):
             in_fence = not in_fence
             continue
         if in_fence:

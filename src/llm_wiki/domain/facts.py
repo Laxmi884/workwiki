@@ -14,6 +14,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
+MAX_PER_KIND = 20  # facts of one kind from one section
+
 
 class _Fact(BaseModel):
     model_config = ConfigDict(frozen=True)
@@ -43,7 +45,9 @@ class Decision(_Fact):
 class Win(_Fact):
     """An achievement worth remembering for a performance review."""
 
-    text: str = Field(description="What was achieved, in one sentence.")
+    text: str = Field(
+        description="What was achieved. Keep the specifics the note gives (names, dates, numbers, reasons); one to three sentences."
+    )
     project: str | None = Field(
         default=None, description="Project slug or name; null if none."
     )
@@ -53,14 +57,18 @@ class PersonNote(_Fact):
     """Something worth remembering about a person (goals, preferences, context)."""
 
     person: str = Field(description="Person slug (e.g. 'person-sam-ortiz') or name.")
-    note: str = Field(description="The fact about them, in one sentence.")
+    note: str = Field(
+        description="The fact about them. Keep the specifics the note gives (names, dates, numbers, reasons); one to three sentences."
+    )
 
 
 class Help(_Fact):
     """Help the author gave someone."""
 
     person: str = Field(description="Who was helped: slug or name.")
-    what: str = Field(description="What the help was, in one sentence.")
+    what: str = Field(
+        description="What the help was. Keep the specifics the note gives (names, dates, numbers, reasons); one to three sentences."
+    )
     minutes: int | None = Field(
         default=None,
         ge=1,
@@ -74,14 +82,18 @@ class Learning(_Fact):
     topic: str = Field(
         description="Concept slug (e.g. 'concept-feature-flags') or a short topic name."
     )
-    summary: str = Field(description="What was learned, in one sentence.")
+    summary: str = Field(
+        description="What was learned. Keep the specifics the note gives (names, dates, numbers, reasons); one to three sentences."
+    )
 
 
 class ProjectUpdate(_Fact):
     """Progress, a problem or a change of plan on a project (not a task)."""
 
     project: str = Field(description="Project slug or name.")
-    note: str = Field(description="The update, in one sentence.")
+    note: str = Field(
+        description="The update. Keep the specifics the note gives (names, dates, numbers, reasons); one to three sentences."
+    )
 
 
 class SectionFacts(BaseModel):
@@ -92,12 +104,18 @@ class SectionFacts(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    decisions: list[Decision] = Field(default_factory=list)
-    wins: list[Win] = Field(default_factory=list)
-    person_notes: list[PersonNote] = Field(default_factory=list)
-    helps: list[Help] = Field(default_factory=list)
-    learnings: list[Learning] = Field(default_factory=list)
-    project_updates: list[ProjectUpdate] = Field(default_factory=list)
+    # max_length becomes maxItems in the JSON schema: local models decoding against
+    # it must close the list, instead of repeating items until the token limit.
+    decisions: list[Decision] = Field(default_factory=list, max_length=MAX_PER_KIND)
+    wins: list[Win] = Field(default_factory=list, max_length=MAX_PER_KIND)
+    person_notes: list[PersonNote] = Field(
+        default_factory=list, max_length=MAX_PER_KIND
+    )
+    helps: list[Help] = Field(default_factory=list, max_length=MAX_PER_KIND)
+    learnings: list[Learning] = Field(default_factory=list, max_length=MAX_PER_KIND)
+    project_updates: list[ProjectUpdate] = Field(
+        default_factory=list, max_length=MAX_PER_KIND
+    )
 
     def cited_lines(self) -> set[int]:
         """Return the line numbers any fact cites (used to check `#win`/`#decision` lines)."""

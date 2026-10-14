@@ -8,7 +8,7 @@ Phase 2: ingest graph v1 (structured extraction, routing, `FileDiff` reducer).
 
 ## Open decisions
 
-- Which cloud model to use alongside the local default (mechanism settled in [[decisions/0003-model-selection|0003]]; dev default `ollama:qwen3:4b`).
+- Which cloud model to use alongside the local default (mechanism settled in [[decisions/0003-model-selection|0003]]). `WIKI_MODEL` is now `openrouter:nvidia/nemotron-3-ultra-550b-a55b:free`, which extracts the fixture note correctly; `gemma4:12b` misses person notes.
 
 ## Setup
 
@@ -40,7 +40,7 @@ Phase 2: ingest graph v1 (structured extraction, routing, `FileDiff` reducer).
   - [x] 2a. Domain models: `SectionFacts` + fact types, `Edit` (`AppendId`, `AppendToSection`, `CreateFile`), `FileDiff` with digest (2026-10-12)
   - [x] 2b. `render_diffs`: apply edits per file, sha256, unified diff (2026-10-12)
   - [x] 2c. Code nodes: `load_note`, `assign_ids`, `track_tasks` (`90_meta/tasks.json`, mapping rules 1–3) (2026-10-12)
-  - [ ] 2d. `extract` with structured output; scripted fake model in tests; prompt tuned on fixture notes
+  - [x] 2d. `extract` with structured output; scripted fake model in tests; prompt tuned on fixture notes (2026-10-13)
   - [ ] 2e. `route`, graph wiring (`Send` fan-out, merge-by-key reducer), Studio run on `~/WorkDev`
 - [ ] **3. HITL and persistence**: `interrupt()`, `Command(resume=…)`, SQLite checkpointer, digests, git commit. Read: `docs/architecture/writes-and-approvals.md`, `tools/writes.py`.
 - [ ] **4. Assistant deep agent**: filesystem backend, permissions, skills, review subagent. Read: `runtime/local.py`, `workspace/skills/`.

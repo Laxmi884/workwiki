@@ -2,6 +2,15 @@
 
 Newest first. One entry per session, 2–5 bullets: what was done, what was learned, what's next.
 
+## 2026-10-13
+
+- 2c approved. Agreed a people-clarification step for unlinked names (added to [[decisions/0004-ingest-graph-design|0004]]): asked in the review, confirmed names become aliases automatically, alias matches are shown so they can be changed, same-name people are asked each time.
+- Committed 2c (`d9bba16`).
+- **2d written (awaiting review):** `extraction.py` (numbered prose lines, worked example, known slugs, required `#win`/`#decision` lines, revise with previous facts + feedback; code drops repeats and stray citations, retries once only for invalid output or an uncovered tag), `extract` node + `merge_facts` reducer, `ScriptedModel` for tests. 283 unit tests pass.
+- Real runs on the fixture note: OpenRouter `nemotron-3-ultra` got every fact first try; `gemma4:12b` hung (hidden thinking, then looping JSON) until `reasoning=False`, a token cap and `maxItems` on the fact lists; it still misses Sam's person note. Learned: [[learnings/structured-extraction-with-checks|structured extraction with code checks]].
+- 2d review changes: fact fields ask for detail (names, dates, numbers, reasons; 1–3 sentences), up to 20 facts per kind, Ollama window 32k and output cap 8192. Decision context (date, meeting, attendees, line link) will come from code in 2e ([[decisions/0004-ingest-graph-design|0004]]).
+- Next: user review of 2d, then 2e (`route`, graph wiring, Studio run).
+
 ## 2026-10-12
 
 - Phase 1 started; split into steps 1a–1e in [[progress]]. First exercise: `Task` model + `tasks_syntax`.
@@ -22,8 +31,7 @@ Newest first. One entry per session, 2–5 bullets: what was done, what was lear
 - 2a approved and committed (`8bfeb4c`). **2b written (awaiting review):** `diffs.py`: `render_diffs(edits, read)` groups edits per file, applies them (creates first), returns `FileDiff`s plus warnings (bad files skipped, others still render). `AppendToSection` inserts after the section's last non-blank line (fences and subheadings respected, CRLF kept) or adds the heading at the end. Raw notes are re-checked: only ` ^t-…` suffixes may change. `vault_reader` decodes bytes (keeps CRLF, exact hash) and refuses symlinks out of the vault. 234 unit tests pass.
 - 2b approved and committed (`d4a3aca`). Agreed 2c rules: IDs seeded from the note path (same note → same IDs); status: newest note date wins, same date (other note) done/cancelled wins, a later open reopens; project sticky, a later explicit link overrides.
 - **2c written (awaiting review):** `domain/task_index.py` (`TaskRecord`, `TaskIndex`), `task_tracking.py` (`assign_ids`, `map_project` rules 1–3 incl. inheriting the parent task's project, `update_task_index`, load/dump; a broken `tasks.json` is reported, never overwritten), `ReplaceFile` edit (only `90_meta/*.json`), `ingest/state.py` and `ingest/nodes.py` (`load_note`, `assign_ids`, `track_tasks`; vault = context `vault_path`, else `WIKI_VAULT_PATH`). `TaskRecord` also keeps `people` (person links) and `tags` from the task line, so ad-hoc tasks without a project can still be found by person or `#blocked`. 269 unit tests pass.
-- 2c approved. Agreed a people-clarification step for unlinked names (added to [[decisions/0004-ingest-graph-design|0004]]): asked in the review, confirmed names become aliases automatically, alias matches are shown so they can be changed, same-name people are asked each time.
-- Next: 2d `extract` (prompt, structured output, scripted model).
+- Next: user review of 2c.
 
 ## 2026-10-11
 

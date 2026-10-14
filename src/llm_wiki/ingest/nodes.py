@@ -1,7 +1,7 @@
-"""Code-only ingest nodes: read the note, assign task IDs, update the task index.
+"""Ingest nodes: read the note, assign task IDs, update the task index, extract facts.
 
 Each node reads the vault through `vault_reader` (no writes) and returns a partial
-state update. The pure logic lives in `daily_syntax` and `task_tracking`.
+state update. The pure logic lives in `daily_syntax`, `task_tracking` and `extraction`.
 """
 
 from __future__ import annotations
@@ -9,16 +9,18 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from langchain_core.language_models import BaseChatModel
 from langgraph.runtime import Runtime
 
-from llm_wiki import task_tracking
+from llm_wiki import extraction, task_tracking
 from llm_wiki.config import get_settings
 from llm_wiki.daily_syntax import parse_daily_note
 from llm_wiki.diffs import VaultReader, vault_reader
 from llm_wiki.domain.changes import RAW_DAILY_FOLDER, ReplaceFile, sha256_text
 from llm_wiki.domain.daily import DailyNote
 from llm_wiki.entity_index import load_index
-from llm_wiki.ingest.state import IngestContext, IngestState
+from llm_wiki.ingest.state import ExtractInput, IngestContext, IngestState
+from llm_wiki.models import choose_model_spec, make_chat_model
 
 
 def vault_path(runtime: Runtime[IngestContext]) -> Path:
@@ -27,6 +29,20 @@ def vault_path(runtime: Runtime[IngestContext]) -> Path:
     if context.get("vault_path"):
         return Path(context["vault_path"]).expanduser().resolve()
     return get_settings().vault_path
+
+
+def chat_model(runtime: Runtime[IngestContext]) -> BaseChatModel:
+    """Return the run's model: context `model`, else `WIKI_MODEL` (decision 0003)."""
+    context = runtime.context or {}
+    spec = choose_model_spec(context.get("model"), get_settings().model)
+    if spec.provider == "ollama":
+        # Local models: no hidden "thinking" (minutes per call). Ollama's default
+        # 4096-token window is too small for prompt + detailed answer; the output cap
+        # is large and only stops a runaway answer.
+        return make_chat_model(
+            spec, temperature=0, reasoning=False, num_ctx=32768, num_predict=8192
+        )
+    return make_chat_model(spec, temperature=0)
 
 
 def _daily_notes(vault: Path, read: VaultReader) -> list[DailyNote]:
@@ -80,3 +96,21 @@ def track_tasks(state: IngestState, runtime: Runtime[IngestContext]) -> dict[str
         text = task_tracking.dump_task_index(updated)
         edits.append(ReplaceFile(path=task_tracking.TASK_INDEX_PATH, text=text))
     return {"task_edits": edits, "warnings": warnings}
+
+
+def extract(state: ExtractInput, runtime: Runtime[IngestContext]) -> dict[str, Any]:
+    """Extract one prose section's facts with the model (2e sends one per section)."""
+    note = state["note"]
+    (section,) = [s for s in note.sections if s.start_line == state["section_line"]]
+    facts, warnings = extraction.extract_section(
+        chat_model(runtime),
+        section,
+        extraction.task_lines(note),
+        load_index(vault_path(runtime)),
+        previous=state.get("previous"),
+        feedback=state.get("feedback", []),
+    )
+    return {
+        "facts": {str(section.start_line): facts},
+        "warnings": [f"{note.path}: {w}" for w in warnings],
+    }

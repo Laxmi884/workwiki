@@ -9,6 +9,14 @@ from typing_extensions import TypedDict
 
 from llm_wiki.domain.changes import Edit
 from llm_wiki.domain.daily import DailyNote
+from llm_wiki.domain.facts import SectionFacts
+
+
+def merge_facts(
+    old: dict[str, SectionFacts], new: dict[str, SectionFacts]
+) -> dict[str, SectionFacts]:
+    """Reducer: parallel extracts add their section's key; a re-run replaces its own."""
+    return {**old, **new}
 
 
 class IngestContext(TypedDict, total=False):
@@ -24,7 +32,7 @@ class IngestContext(TypedDict, total=False):
 
 
 class IngestState(TypedDict, total=False):
-    """What flows between ingest nodes. Facts, feedback and diffs arrive in 2d/2e.
+    """What flows between ingest nodes. Diffs arrive in 2e.
 
     Attributes:
         note_path: Input: vault-relative note path, e.g. "00_raw/daily/2026-10-12.md".
@@ -32,6 +40,8 @@ class IngestState(TypedDict, total=False):
         note_sha256: Hash of the note text, for the ingest ledger (phase 3).
         task_ids: Line number → newly assigned task ID (assign_ids).
         task_edits: ID appends and the task index rewrite (assign_ids, track_tasks).
+        facts: Section key (its start line, e.g. "20") → facts (extract).
+        feedback: The user's revise messages (phase 3 review).
         warnings: Problems found anywhere; nodes append.
     """
 
@@ -40,4 +50,22 @@ class IngestState(TypedDict, total=False):
     note_sha256: str
     task_ids: dict[int, str]
     task_edits: list[Edit]
+    facts: Annotated[dict[str, SectionFacts], merge_facts]
+    feedback: list[str]
     warnings: Annotated[list[str], operator.add]
+
+
+class ExtractInput(TypedDict, total=False):
+    """What one `extract` run gets (2e sends one per prose section).
+
+    Attributes:
+        note: The parsed note.
+        section_line: Start line of the section to read; also its key in `facts`.
+        previous: The section's facts from the last round, when revising.
+        feedback: The user's revise messages.
+    """
+
+    note: DailyNote
+    section_line: int
+    previous: SectionFacts | None
+    feedback: list[str]

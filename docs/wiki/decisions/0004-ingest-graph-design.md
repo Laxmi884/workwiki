@@ -45,6 +45,12 @@ extractions, not only approve or reject.
   automatically, so it is not asked again. Names resolved by alias are still listed in the review
   (shown, not asked) so a wrong match can be changed. A name that becomes an alias of two people is
   ambiguous and asked each time; a `[[link]]` in the note always wins without a question.
+  Later: the model may use context (e.g. "Sam" in the Atlas sync → whoever is on Atlas) to
+  pre-select an answer, never to skip the question (same rule as mapping rule 4).
+- Fact context comes from code, not the model (added 2026-10-13, built in 2e): from a fact's
+  `line`, code adds the note date, the meeting (`###` heading above the line), who was there
+  (links in that heading) and a link to the exact line. The model's own fields keep the detail the
+  note gives (names, dates, numbers, reasons; one to three sentences).
 
 ## Why
 

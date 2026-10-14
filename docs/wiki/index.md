@@ -18,6 +18,7 @@ One note per concept. Template: `learnings/_template.md`.
 - [[learnings/domain-models-and-task-syntax|Domain models and task syntax]]: frozen `Task`, `tasks_syntax` translator, None vs default, regex split, ID collisions
 - [[learnings/parsing-notes-with-line-numbers|Parsing notes with line numbers]]: frontmatter split, sections, fences, indent stack, links/tags, errors as data
 - [[learnings/entity-slugs-and-alias-index|Entity slugs and the alias index]]: model passes slugs, code picks the folder; aliases, ambiguity as data
+- [[learnings/structured-extraction-with-checks|Structured extraction with code checks]]: schema output, code repairs vs retries, scripted model, local-model loops
 
 ## Decisions
 
