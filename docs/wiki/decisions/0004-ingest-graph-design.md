@@ -47,9 +47,20 @@ extractions, not only approve or reject.
   ambiguous and asked each time; a `[[link]]` in the note always wins without a question.
   Later: the model may use context (e.g. "Sam" in the Atlas sync → whoever is on Atlas) to
   pre-select an answer, never to skip the question (same rule as mapping rule 4).
+- Routing (added 2026-10-13, 2e): decisions go into a quarterly log
+  `30_decisions/<year>/decisions-<year>-q<n>.md` as a short block under the date (`### title`, then
+  When, People, Project, Rationale, Source with the quoted line), not one file per decision; in
+  phase 3 review a decision can be marked "make page" to get its own page. Logs live in year folders
+  (`40_impact/<year>/impact-<year>-q<n>.md` likewise) so a year's review is one folder. Updates,
+  wins and decisions go under `## Updates` / `## Wins` / `## Decisions` on project pages; person
+  notes and help under `## Notes` / `## Help given` on person pages; learnings under `## Notes` on
+  concept pages; wins and help also on the quarter's impact page. Names that don't
+  resolve go to `05_generated/inbox.md` (never dropped; phase 3 questions). A linked entity without
+  a page gets a stub; a slug the model made up does not.
 - Fact context comes from code, not the model (added 2026-10-13, built in 2e): from a fact's
   `line`, code adds the note date, the meeting (`###` heading above the line), who was there
-  (links in that heading) and a link to the exact line. The model's own fields keep the detail the
+  (links in that heading) and a link to the note; decision pages also quote the line (a link to
+  the exact line would need a block ID in `00_raw/`, which only tasks may get). The model's own fields keep the detail the
   note gives (names, dates, numbers, reasons; one to three sentences).
 
 ## Why

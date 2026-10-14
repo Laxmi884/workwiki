@@ -7,7 +7,7 @@ from typing import Annotated
 
 from typing_extensions import TypedDict
 
-from llm_wiki.domain.changes import Edit
+from llm_wiki.domain.changes import Edit, FileDiff
 from llm_wiki.domain.daily import DailyNote
 from llm_wiki.domain.facts import SectionFacts
 
@@ -32,7 +32,7 @@ class IngestContext(TypedDict, total=False):
 
 
 class IngestState(TypedDict, total=False):
-    """What flows between ingest nodes. Diffs arrive in 2e.
+    """What flows between ingest nodes.
 
     Attributes:
         note_path: Input: vault-relative note path, e.g. "00_raw/daily/2026-10-12.md".
@@ -42,6 +42,8 @@ class IngestState(TypedDict, total=False):
         task_edits: ID appends and the task index rewrite (assign_ids, track_tasks).
         facts: Section key (its start line, e.g. "20") → facts (extract).
         feedback: The user's revise messages (phase 3 review).
+        fact_edits: Edits from all facts, rebuilt each round (route).
+        diffs: One proposed diff per changed file (render).
         warnings: Problems found anywhere; nodes append.
     """
 
@@ -52,7 +54,19 @@ class IngestState(TypedDict, total=False):
     task_edits: list[Edit]
     facts: Annotated[dict[str, SectionFacts], merge_facts]
     feedback: list[str]
+    fact_edits: list[Edit]
+    diffs: list[FileDiff]
     warnings: Annotated[list[str], operator.add]
+
+
+class IngestInput(TypedDict):
+    """What a run starts with (the Studio input form).
+
+    Attributes:
+        note_path: Vault-relative note path, e.g. "00_raw/daily/2026-10-12.md".
+    """
+
+    note_path: str
 
 
 class ExtractInput(TypedDict, total=False):

@@ -4,7 +4,8 @@
     "."
   ],
   "graphs": {
-    "agent": "./src/llm_wiki/graph.py:graph"
+    "agent": "./src/llm_wiki/graph.py:graph",
+    "ingest": "./src/llm_wiki/ingest/graph.py:graph"
   },
   "env": ".env",
   "image_distro": "wolfi"

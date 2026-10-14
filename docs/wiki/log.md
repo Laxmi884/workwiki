@@ -9,7 +9,11 @@ Newest first. One entry per session, 2–5 bullets: what was done, what was lear
 - **2d written (awaiting review):** `extraction.py` (numbered prose lines, worked example, known slugs, required `#win`/`#decision` lines, revise with previous facts + feedback; code drops repeats and stray citations, retries once only for invalid output or an uncovered tag), `extract` node + `merge_facts` reducer, `ScriptedModel` for tests. 283 unit tests pass.
 - Real runs on the fixture note: OpenRouter `nemotron-3-ultra` got every fact first try; `gemma4:12b` hung (hidden thinking, then looping JSON) until `reasoning=False`, a token cap and `maxItems` on the fact lists; it still misses Sam's person note. Learned: [[learnings/structured-extraction-with-checks|structured extraction with code checks]].
 - 2d review changes: fact fields ask for detail (names, dates, numbers, reasons; 1–3 sentences), up to 20 facts per kind, Ollama window 32k and output cap 8192. Decision context (date, meeting, attendees, line link) will come from code in 2e ([[decisions/0004-ingest-graph-design|0004]]).
-- Next: user review of 2d, then 2e (`route`, graph wiring, Studio run).
+- Committed 2d (`3767c88`).
+- **2e written (awaiting review), phase 2 complete:** `routing.py` (facts → page edits with date, meeting and source; decisions as blocks in a quarterly log in a year folder, not a file each ("make page" in phase 3); quarter impact page; inbox for unmatched names; stubs for linked pages), `route`/`render`/`fan_out` nodes, `ingest/graph.py` registered as `ingest` in `langgraph.json`. 303 unit tests pass. Learned: [[learnings/send-fan-out-and-reducers|Send fan-out and reducers]].
+- Real run through `langgraph dev` on `~/WorkDev` (Nemotron): 4 parallel extracts, 9 diffs in 30s, no warnings, vault untouched.
+- 2e approved and committed; phase 2 done.
+- Next: phase 3 (review `interrupt` with people/inbox questions and "make page", apply once, ingest ledger, vault git commit).
 
 ## 2026-10-12
 

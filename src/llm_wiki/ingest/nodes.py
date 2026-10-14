@@ -1,7 +1,8 @@
-"""Ingest nodes: read the note, assign task IDs, update the task index, extract facts.
+"""Ingest nodes: note → task IDs and index → facts → page edits → diffs.
 
 Each node reads the vault through `vault_reader` (no writes) and returns a partial
-state update. The pure logic lives in `daily_syntax`, `task_tracking` and `extraction`.
+state update. The pure logic lives in `daily_syntax`, `task_tracking`, `extraction`
+and `routing`.
 """
 
 from __future__ import annotations
@@ -11,11 +12,12 @@ from typing import Any
 
 from langchain_core.language_models import BaseChatModel
 from langgraph.runtime import Runtime
+from langgraph.types import Send
 
-from llm_wiki import extraction, task_tracking
+from llm_wiki import extraction, routing, task_tracking
 from llm_wiki.config import get_settings
 from llm_wiki.daily_syntax import parse_daily_note
-from llm_wiki.diffs import VaultReader, vault_reader
+from llm_wiki.diffs import VaultReader, render_diffs, vault_reader
 from llm_wiki.domain.changes import RAW_DAILY_FOLDER, ReplaceFile, sha256_text
 from llm_wiki.domain.daily import DailyNote
 from llm_wiki.entity_index import load_index
@@ -114,3 +116,44 @@ def extract(state: ExtractInput, runtime: Runtime[IngestContext]) -> dict[str, A
         "facts": {str(section.start_line): facts},
         "warnings": [f"{note.path}: {w}" for w in warnings],
     }
+
+
+def fan_out(state: IngestState) -> list[Send] | str:
+    """Send each prose section to `extract` in parallel; none → straight to `route`."""
+    note = state["note"]
+    tasks = extraction.task_lines(note)
+    facts = state.get("facts", {})
+    sends = [
+        Send(
+            "extract",
+            {
+                "note": note,
+                "section_line": section.start_line,
+                "previous": facts.get(str(section.start_line)),
+                "feedback": state.get("feedback", []),
+            },
+        )
+        for section in note.sections
+        if extraction.needs_model(section, tasks)
+    ]
+    return sends or "route"
+
+
+def route(state: IngestState, runtime: Runtime[IngestContext]) -> dict[str, Any]:
+    """Turn all facts into page edits (rebuilt from scratch each round)."""
+    vault = vault_path(runtime)
+    read = vault_reader(vault)
+    edits, warnings = routing.route_facts(
+        state["note"],
+        state.get("facts", {}),
+        load_index(vault),
+        lambda path: read(path) is not None,
+    )
+    return {"fact_edits": edits, "warnings": warnings}
+
+
+def render(state: IngestState, runtime: Runtime[IngestContext]) -> dict[str, Any]:
+    """Render task and fact edits into one diff per file (nothing is written)."""
+    edits = [*state.get("task_edits", []), *state.get("fact_edits", [])]
+    diffs, warnings = render_diffs(edits, vault_reader(vault_path(runtime)))
+    return {"diffs": diffs, "warnings": warnings}
