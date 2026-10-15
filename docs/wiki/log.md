@@ -10,7 +10,8 @@ Newest first. One entry per session, 2–5 bullets: what was done, what was lear
 - First real daily note (user's own, on a scratch copy of `~/WorkDev`): IDs and statuses right for all 11 tasks, but no project or person links (plain-text names, no pages), done work not offered as wins, a blocker in a sub-bullet lost, and empty `- ` sections still sent to the model.
 - Fixed before 3b commit: empty bullets are not prose, so unfilled sections skip the model (4 calls → 1); task people now come from names (title/alias, longest match first) in the task, its parent bullet and the `###` heading ("1:1 with Joanna"); a name two people share links neither and is warned. 341 unit tests pass.
 - Memory for user suggestions: none yet beyond aliases. Proposed vault files (`90_meta/rules.md` + aliases), saved via approved diffs from a "remember this" review option in 3c; compared with LangSmith Context Hub (cloud, team-oriented) and kept vault-first with Context Hub as a later option.
-- Next: user review of 3b + these fixes, then 3c (revise loop, edit, "make page", people/new-project questions, win candidates, remember).
+- 3b + fixes approved and committed (`37d3638`) with decision 0005.
+- Next: 3c (revise loop, edit, "make page", people/new-project questions, win candidates, remember).
 
 ## 2026-10-13
 
