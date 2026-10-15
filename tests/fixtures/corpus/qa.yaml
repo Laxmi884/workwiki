@@ -1,0 +1,32 @@
+# Second-brain questions over the vault after 2026-11-27 (invented data).
+# answer: the facts a correct answer must contain. unanswerable: the notes don't say.
+- {q: "What was the original Atlas GA date?", answer: "Nov 18"}
+- {q: "Why did Atlas GA slip the first time, and to when?", answer: "Load test failed at 1.4k concurrent users because the connection pool was exhausted; GA moved from Nov 18 to Dec 2"}
+- {q: "Why did Atlas GA slip the second time, and to when?", answer: "The security review found guessable export links needing signed URLs; GA moved from Dec 2 to Dec 9"}
+- {q: "What is the current Atlas GA date and was it confirmed?", answer: "Dec 9; the Nov 26 go/no-go decided GO"}
+- {q: "What did we decide about caching, and did that change?", answer: "Nov 4: no cache layer before GA (too risky); reversed Nov 12: read-through cache for the dashboard endpoint only"}
+- {q: "How did the dashboard cache perform at launch?", answer: "Shipped behind flag dash-cache with a 70% hit rate on day one"}
+- {q: "How did dashboard p95 latency change over the month?", answer: "1.8s (target under 1s), 1.1s after the events index, 0.9s under load after pool tuning, 0.95s at the 2.5k-user retest"}
+- {q: "What does Marta want for her career, and has it changed?", answer: "First wanted to move to the platform team within a year; on Nov 16 she wanted to stay on Atlas through Q1 and own the on-call rotation redesign; also wants to mentor an intern and get feedback on her first design doc"}
+- {q: "What work is Marta leading or doing on Atlas?", answer: "Leads the export rewrite; tuned PgBouncer pool settings; picked up the signed URL work; drafted the export rate limit PR"}
+- {q: "Which customer keeps asking for scheduled exports and what exactly do they want?", answer: "Northwind; weekly scheduled CSV exports emailed to their finance team; they may churn; told it's planned for Q1, not GA"}
+- {q: "What do customers want around login?", answer: "SSO with Okta (Northwind and others); SCIM provisioning is separate and usually wanted too"}
+- {q: "Besides scheduled exports, what else has Northwind asked for?", answer: "SSO with Okta and an audit log export"}
+- {q: "Who were the interview candidates and what happened?", answer: "Lena (backend): strong on Postgres, good second round, offer accepted, starts Jan 5; Omar (frontend): declined after second round, not enough systems depth"}
+- {q: "When does Lena start?", answer: "Jan 5"}
+- {q: "How have I helped Hana this month?", answer: "Reviewed her payments v2 API spec (45 min), helped scope the export API to two endpoints (40 min), helped write payments v2 data requirements (30 min)"}
+- {q: "How much time did I spend helping Priya, and on what?", answer: "Grafana alert rules (20 min) and threat model diagrams (1h): 80 minutes"}
+- {q: "List my wins this month.", answer: "Found missing index on events query; events index cut p95 1.8s to 1.1s; retest passed at 2.5k users; cache shipped with 70% hit rate; CI suite 14 to 6 min; rate limiter dropped abuse alerts to zero; Lena accepted the offer"}
+- {q: "What did the security review conclude?", answer: "Passed with two minor findings (no rate limit on the export endpoint, no audit log for admin actions), both to be fixed before GA"}
+- {q: "What is the Atlas rollback plan?", answer: "Turn the atlas-ga feature flag off; Priya owns the rollback"}
+- {q: "When is the Atlas customer webinar and who is involved?", answer: "Dec 10, the day after GA; Viktor collects questions"}
+- {q: "What is the payments v2 target date and why?", answer: "April, moved from March because the Atlas export API is late"}
+- {q: "What is Sam going to work on after GA?", answer: "Lead Atlas Search starting Dec 14, trying Postgres full-text search first and a separate service only if needed"}
+- {q: "Is Sam working toward a promotion?", answer: "Yes, we'll write a promotion case in Q1"}
+- {q: "Who is Dev Okafor?", answer: "From the security team; ran the Atlas security review and wanted a threat model doc by Nov 20"}
+- {q: "What did I learn about PgBouncer?", answer: "Transaction pooling breaks session-level prepared statements"}
+- {q: "How long will our presigned export URLs last?", answer: "5 minutes (the S3 default is 15)"}
+- {q: "Who is Viktor?", answer: "Support; passes on customer requests (scheduled exports, SSO, audit log export)"}
+- {q: "Who owns the GA runbook?", answer: "Priya"}
+- {q: "What is Lena's last name?", answer: "", unanswerable: true}
+- {q: "How many users signed up on Atlas GA day?", answer: "", unanswerable: true}

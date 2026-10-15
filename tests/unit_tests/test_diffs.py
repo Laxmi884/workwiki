@@ -214,3 +214,23 @@ def test_add_alias_already_there_changes_nothing():
 def test_add_alias_refuses_broken_frontmatter():
     with pytest.raises(RenderError, match="can't add alias"):
         apply_edit("---\n: [\n---\n", AddAlias(path=PAGE, alias="Sammy"))
+
+
+def test_replace_section_replaces_body_or_adds_it_after_the_title():
+    from llm_wiki.diffs import apply_edit
+    from llm_wiki.domain.changes import ReplaceSection
+
+    page = "---\ntype: project\n---\n# Atlas\n\nIntro.\n\n## Updates\n- a\n"
+    edit = ReplaceSection(
+        path="10_projects/project-atlas.md",
+        heading="## Current state",
+        lines=("GA Dec 9.",),
+    )
+    added = apply_edit(page, edit)
+    assert added == (
+        "---\ntype: project\n---\n# Atlas\n\n## Current state\nGA Dec 9.\n"
+        "\nIntro.\n\n## Updates\n- a\n"
+    )
+    again = apply_edit(added, edit.model_copy(update={"lines": ("GA Dec 16.",)}))
+    assert "GA Dec 16." in again and "GA Dec 9." not in again
+    assert again.count("## Current state") == 1 and again.endswith("## Updates\n- a\n")

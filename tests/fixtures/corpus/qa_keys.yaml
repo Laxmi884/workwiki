@@ -1,0 +1,33 @@
+# Code-checked key facts per Q&A question (same order as qa.yaml). Each item is a group
+# of accepted wordings (case-insensitive substrings); a correct answer contains one of
+# each group. Unanswerable questions need a "notes don't say".
+- [["nov 18", "november 18"]]
+- [["1.4k", "1,400", "1400"], ["pool"], ["dec 2", "december 2"]]
+- [["guessable"], ["signed url"], ["dec 9", "december 9"]]
+- [["dec 9", "december 9"], ["go/no-go", "go for", "confirmed", "decided go", "\"go\""]]
+- [["not to add", "no cache", "not add a cache", "no-cache", "decided against"], ["revers"], ["read-through", "dashboard endpoint"]]
+- [["70%", "70 %"]]
+- [["1.8"], ["1.1"], ["0.9"]]
+- [["platform"], ["stay on atlas", "through q1"], ["on-call", "on call"]]
+- [["export rewrite"], ["pgbouncer", "pool"], ["signed url"]]
+- [["northwind"], ["weekly"], ["finance"]]
+- [["okta"], ["sso"]]
+- [["sso", "okta"], ["audit log"]]
+- [["lena"], ["omar"], ["accept", "offer", "jan 5"], ["declin", "not enough systems", "rejected", "no hire"]]
+- [["jan 5", "january 5"]]
+- [["45"], ["40"], ["30"]]
+- [["80", "1h 20", "1 hour 20"]]
+- [["index"], ["2.5k", "2,500", "2500", "retest"], ["70%", "cache"], ["14", "6 min", "ci"], ["rate limit", "abuse"], ["lena"]]
+- [["two minor", "2 minor", "two findings", "passed"], ["rate limit"], ["audit log"]]
+- [["atlas-ga"], ["priya"]]
+- [["dec 10", "december 10"], ["viktor"]]
+- [["april"], ["export api"]]
+- [["search"], ["dec 14", "december 14"], ["full-text", "full text"]]
+- [["promotion", "promo"], ["q1"]]
+- [["security"], ["threat model", "review"]]
+- [["prepared statement"]]
+- [["5 min", "five min"]]
+- [["support"], ["customer"]]
+- [["priya"]]
+- unanswerable
+- unanswerable

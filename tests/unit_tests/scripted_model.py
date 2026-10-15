@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 from typing import Any
+from uuid import uuid4
 
+from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
+from langchain_core.messages import AIMessage
 from pydantic import BaseModel
 
 from llm_wiki.domain.facts import NameScan
@@ -72,3 +75,20 @@ class _NameScanner:
     def invoke(self, messages: list[Any]) -> dict[str, Any]:
         self.owner.name_calls.append(list(messages))
         return {"raw": None, "parsed": self.owner.names, "parsing_error": None}
+
+
+class ToolScript(GenericFakeChatModel):
+    """A chat model for agents: replies with the scripted `AIMessage`s in order.
+
+    `bind_tools` is accepted and ignored, so scripted tool calls go straight to the
+    agent's tool node. Build calls with `call(name, **args)`.
+    """
+
+    def bind_tools(self, tools: Any, **kwargs: Any) -> ToolScript:
+        return self
+
+
+def call(name: str, **args: Any) -> AIMessage:
+    """Return an AIMessage asking for one tool call."""
+    tool_call = {"name": name, "args": args, "id": f"call-{uuid4().hex[:8]}"}
+    return AIMessage(content="", tool_calls=[tool_call])

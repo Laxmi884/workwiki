@@ -1,0 +1,32 @@
+# Preferences the simulated reviewer teaches. Each is said as review feedback on day `after`
+# and saved to 90_meta/rules.md (an approved "remember this"); later days are checked.
+- id: P1
+  after: 2026-11-04
+  check: chores
+  rule: >-
+    Routine chores are never wins and are not filed anywhere: updating the status page,
+    booking or moving rooms and meetings, sending reports or notes.
+- id: P2
+  after: 2026-11-06
+  check: one_on_one
+  rule: >-
+    Notes from a 1:1 with someone go on that person's page under "## 1:1 notes",
+    not "## Notes".
+- id: P3
+  after: 2026-11-10
+  check: customer
+  rule: >-
+    Customer requests go on the project page under "## Customer asks", naming the customer
+    (if known) and who passed it on.
+- id: P4
+  after: 2026-11-13
+  check: interview
+  rule: >-
+    Interview candidates never get person pages. Interview notes and outcomes go on
+    [[project-hiring-q4]] under "## Interviews", candidate by first name.
+- id: P5
+  after: 2026-11-18
+  check: state
+  rule: >-
+    When a project's dates, status or scope change, rewrite that project's
+    "## Current state" (update_summary) so it shows the latest dates and status.

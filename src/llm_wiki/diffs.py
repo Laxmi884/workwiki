@@ -23,6 +23,7 @@ from llm_wiki.domain.changes import (
     Edit,
     FileDiff,
     ReplaceFile,
+    ReplaceSection,
     UserText,
     sha256_text,
 )
@@ -157,7 +158,39 @@ def apply_edit(text: str | None, edit: Edit) -> str:
         return _append_id(text, edit)
     if isinstance(edit, AddAlias):
         return _add_alias(text, edit)
+    if isinstance(edit, ReplaceSection):
+        return _replace_section(text, edit)
     return _append_to_section(text, edit)
+
+
+def _replace_section(text: str, edit: ReplaceSection) -> str:
+    """Replace the section's body; if missing, add it after the first `# ` title."""
+    eol = _eol(text)
+    lines = _with_final_eol(text.splitlines(keepends=True), eol)
+    body = [line + eol for line in edit.lines]
+    found = _find_section(lines, edit.heading)
+    if found is not None:
+        start, end = found
+        gap = [eol] if end < len(lines) else []
+        return "".join([*lines[: start + 1], *body, *gap, *lines[end:]])
+    title = next(
+        (i for i, line in enumerate(lines) if (_heading_key(line) or (0,))[0] == 1),
+        None,
+    )
+    if title is None:
+        gap = [eol] if lines and lines[-1].strip() else []
+        return "".join([*lines, *gap, edit.heading + eol, *body])
+    rest = lines[title + 1 :]
+    return "".join(
+        [
+            *lines[: title + 1],
+            eol,
+            edit.heading + eol,
+            *body,
+            *([eol] if rest and rest[0].strip() else []),
+            *rest,
+        ]
+    )
 
 
 def _add_alias(text: str, edit: AddAlias) -> str:

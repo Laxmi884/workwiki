@@ -1,0 +1,163 @@
+# Expected facts per corpus day (decision 0006 round 2). Invented data.
+# anchor: a phrase unique to the note line (code finds the line number).
+# pages: acceptable page path substrings ("*" = any page). DL = decision log or page.
+# pref: which preference the fact tests once that preference is active:
+#   one_on_one → person page, section "## 1:1 notes" (P2)
+#   customer   → project page, section "## Customer asks" (P3)
+#   interview  → project-hiring-q4, section "## Interviews", no candidate page (P4)
+#   state      → the project's "## Current state" mentions `expect` (P5)
+# chores: lines that are never wins (P1). candidates: names that never get pages (P4).
+candidates: [Lena, Omar]
+days:
+  2026-11-02:
+    style: template
+    chores: ["Update Atlas status page"]
+    facts:
+      - {anchor: "GA target confirmed", pages: [project-atlas], kind: update}
+      - {anchor: "Load test scheduled", pages: [project-atlas], kind: update}
+      - {anchor: "own the GA runbook", pages: [project-atlas, person-priya-nair], kind: update}
+      - {anchor: "joined today as a senior", pages: [person-marta], kind: person}
+      - {anchor: "deep Postgres experience", pages: [person-marta], kind: person}
+      - {anchor: "Showed Marta how", pages: [impact-2026, person-marta], kind: help}
+      - {anchor: "ramp virtual users", pages: ["*"], kind: learning}
+  2026-11-03:
+    style: template
+    facts:
+      - {anchor: "move to the platform team", pages: [person-marta], kind: person, pref: one_on_one}
+      - {anchor: "worried about the on-call", pages: [person-marta, project-atlas], kind: person, pref: one_on_one}
+      - {anchor: "lead the export rewrite", pages: [decisions-2026-q4, 30_decisions/decision-, project-atlas, person-marta], kind: decision}
+      - {anchor: "keep asking for scheduled exports", pages: [project-atlas, person-viktor], kind: customer, pref: customer}
+      - {anchor: "Walked Viktor through", pages: [impact-2026, person-viktor], kind: help}
+  2026-11-04:
+    style: template
+    chores: ["Book a room for the GA retro"]
+    facts:
+      - {anchor: "not to add a cache layer", pages: [decisions-2026-q4, 30_decisions/decision-, project-atlas], kind: decision}
+      - {anchor: "p95 is 1.8s", pages: [project-atlas], kind: update}
+      - {anchor: "start the search feature", pages: [person-sam-ortiz, project-atlas, search], kind: update}
+      - {anchor: "full scan, missing index", pages: [impact-2026, project-atlas], kind: win}
+      - {anchor: "partial indexes", pages: ["*"], kind: learning}
+  2026-11-05:
+    style: template
+    chores: ["Send weekly status report"]
+    facts:
+      - {anchor: "present the search design", pages: [person-sam-ortiz], kind: person, pref: one_on_one}
+      - {anchor: "code review practice", pages: [person-sam-ortiz], kind: person, pref: one_on_one}
+      - {anchor: "cut dashboard p95", pages: [impact-2026, project-atlas], kind: win}
+      - {anchor: "Hana Kim's API spec", pages: [impact-2026, person-hana], kind: help}
+  2026-11-06:
+    style: template
+    chores: ["Write the load test report"]
+    facts:
+      - {anchor: "failed at 1.4k", pages: [project-atlas], kind: update}
+      - {anchor: "move GA from Nov 18 to Dec 2", pages: [decisions-2026-q4, 30_decisions/decision-, project-atlas], kind: decision}
+      - {anchor: "tune the PgBouncer", pages: [person-marta, project-atlas], kind: update}
+      - {anchor: "transaction pooling breaks", pages: ["*"], kind: learning}
+  2026-11-09:
+    style: terse
+    chores: ["standup moved", "update status page"]
+    facts:
+      - {anchor: "pool fix merged", pages: [project-atlas, person-marta], kind: update}
+      - {anchor: "payments v2 kickoff", pages: [person-hana, payments, project-atlas], kind: update}
+      - {anchor: "SSO with Okta", pages: [project-atlas, person-viktor], kind: customer, pref: customer}
+  2026-11-10:
+    style: terse
+    chores: ["moved GA retro"]
+    facts:
+      - {anchor: "mentor an intern", pages: [person-marta], kind: person, pref: one_on_one}
+      - {anchor: "p95 under load now 0.9s", pages: [project-atlas, person-marta], kind: update}
+      - {anchor: "Northwind (big customer)", pages: [project-atlas, person-viktor], kind: customer, pref: customer}
+  2026-11-11:
+    style: terse
+    chores: ["sent retest report"]
+    facts:
+      - {anchor: "retest passed", pages: [impact-2026, project-atlas], kind: win}
+      - {anchor: "GA Dec 2 confirmed", pages: [project-atlas], kind: update}
+      - {anchor: "export API v1 spec", pages: [payments, person-hana, project-atlas], kind: update}
+      - {anchor: "interview: Lena", pages: [project-hiring-q4], kind: interview, pref: interview}
+  2026-11-12:
+    style: terse
+    facts:
+      - {anchor: "security review booked", pages: [project-atlas], kind: update}
+      - {anchor: "reversed the no-cache call", pages: [decisions-2026-q4, 30_decisions/decision-, project-atlas], kind: decision}
+      - {anchor: "Northwind + 2 others", pages: [project-atlas, person-viktor], kind: customer, pref: customer}
+      - {anchor: "Grafana alert rules", pages: [impact-2026, person-priya-nair], kind: help}
+  2026-11-13:
+    style: terse
+    facts:
+      - {anchor: "interview: Omar", pages: [project-hiring-q4], kind: interview, pref: interview}
+      - {anchor: "hit rate 70%", pages: [impact-2026, project-atlas], kind: win}
+      - {anchor: "search design doc v1", pages: [person-sam-ortiz, search, project-atlas], kind: update}
+      - {anchor: "TTL plus explicit invalidation", pages: ["*"], kind: learning}
+  2026-11-16:
+    style: freeform
+    facts:
+      - {anchor: "stay on Atlas through Q1", pages: [person-marta], kind: person, pref: one_on_one}
+      - {anchor: "Northwind's CSM", pages: [project-atlas, person-viktor], kind: customer, pref: customer}
+      - {anchor: "Interviewed Lena again", pages: [project-hiring-q4], kind: interview, pref: interview}
+      - {anchor: "helping Hana scope", pages: [impact-2026, person-hana], kind: help}
+      - {anchor: "SCIM provisioning", pages: ["*"], kind: learning}
+  2026-11-17:
+    style: freeform
+    chores: ["Booked the GA retro room"]
+    facts:
+      - {anchor: "threat model doc by", pages: [project-atlas, person-dev], kind: update}
+      - {anchor: "pull Priya off feature work", pages: [project-atlas, person-priya-nair], kind: update}
+      - {anchor: "14 min to 6 min", pages: [impact-2026, project-atlas], kind: win}
+      - {anchor: "Sam presented the search design", pages: [person-sam-ortiz, search, project-atlas], kind: update}
+  2026-11-18:
+    style: freeform
+    facts:
+      - {anchor: "export links are guessable", pages: [project-atlas], kind: update}
+      - {anchor: "slip GA again", pages: [decisions-2026-q4, 30_decisions/decision-, project-atlas], kind: decision}
+      - {anchor: "picked up the signed URL", pages: [person-marta, project-atlas], kind: update}
+      - {anchor: "officially a project", pages: [payments, person-hana], kind: update}
+      - {anchor: "planned for Q1, not GA", pages: [project-atlas, person-viktor], kind: customer, pref: customer}
+  2026-11-19:
+    style: freeform
+    facts:
+      - {anchor: "lead the search project", pages: [person-sam-ortiz], kind: person, pref: one_on_one}
+      - {anchor: "Interviewed Omar again", pages: [project-hiring-q4], kind: interview, pref: interview}
+      - {anchor: "threat model diagrams", pages: [impact-2026, person-priya-nair], kind: help}
+  2026-11-20:
+    style: freeform
+    chores: ["Updated the status page"]
+    facts:
+      - {anchor: "Threat model doc sent", pages: [project-atlas], kind: update}
+      - {anchor: "customer webinar planned", pages: [project-atlas], kind: update}
+      - {anchor: "presigned S3 URLs", pages: ["*"], kind: learning}
+  2026-11-23:
+    style: mixed
+    facts:
+      - {anchor: "Review passed with two minor", pages: [project-atlas], kind: update, pref: state, project: project-atlas, expect: "passed"}
+      - {anchor: "Both findings must be fixed", pages: [project-atlas], kind: update}
+      - {anchor: "GA stays Dec 9", pages: [project-atlas], kind: update, pref: state, project: project-atlas, expect: "Dec 9"}
+      - {anchor: "Marta has a draft PR", pages: [project-atlas, person-marta], kind: update}
+  2026-11-24:
+    style: mixed
+    facts:
+      - {anchor: "feedback on her first design doc", pages: [person-marta], kind: person, pref: one_on_one}
+      - {anchor: "happier with on-call", pages: [person-marta], kind: person, pref: one_on_one}
+      - {anchor: "target moved from March to April", pages: [payments], kind: update, pref: state, project: payments, expect: "April"}
+      - {anchor: "weekly syncs on Tuesdays", pages: [payments, person-hana], kind: update}
+      - {anchor: "Lena accepted our offer", pages: [project-hiring-q4, impact-2026], kind: interview, pref: interview}
+  2026-11-25:
+    style: mixed
+    facts:
+      - {anchor: "abuse alerts dropped to zero", pages: [impact-2026, project-atlas], kind: win}
+      - {anchor: "Audit log is in review", pages: [project-atlas], kind: update}
+      - {anchor: "audit log export too", pages: [project-atlas, person-viktor], kind: customer, pref: customer}
+      - {anchor: "search indexing spike", pages: [impact-2026, person-sam-ortiz], kind: help}
+      - {anchor: "Token bucket", pages: ["*"], kind: learning}
+  2026-11-26:
+    style: mixed
+    chores: ["Send the go/no-go notes"]
+    facts:
+      - {anchor: "GO for Dec 9", pages: [decisions-2026-q4, 30_decisions/decision-, project-atlas], kind: decision, pref: state, project: project-atlas, expect: "GO"}
+      - {anchor: "Rollback plan", pages: [project-atlas, person-priya-nair], kind: update}
+  2026-11-27:
+    style: mixed
+    facts:
+      - {anchor: "lead Atlas Search starting", pages: [person-sam-ortiz, search], kind: person, pref: one_on_one}
+      - {anchor: "Postgres full-text search first", pages: [decisions-2026-q4, 30_decisions/decision-, search, person-sam-ortiz, project-atlas], kind: decision}
+      - {anchor: "payments v2 data requirements", pages: [impact-2026, person-hana], kind: help}

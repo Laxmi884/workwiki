@@ -126,6 +126,28 @@ class CreateFile(BaseModel):
     text: str
 
 
+class ReplaceSection(BaseModel):
+    """Replace the body of one `##` section; if missing, add it after the page title.
+
+    For short summaries that should show the latest state (a project's "## Current
+    state"), not grow like a log.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    kind: Literal["replace_section"] = "replace_section"
+    path: WritablePath
+    heading: str = Field(pattern=r"^## \S")
+    lines: tuple[str, ...] = Field(min_length=1)
+
+    @field_validator("lines")
+    @classmethod
+    def _single_lines(cls, lines: tuple[str, ...]) -> tuple[str, ...]:
+        if any("\n" in line or "\r" in line for line in lines):
+            raise ValueError("each line must be a single line")
+        return lines
+
+
 class AddAlias(BaseModel):
     """Add a name to an entity page's frontmatter `aliases` (a review answer)."""
 
@@ -170,7 +192,13 @@ class ReplaceFile(BaseModel):
 
 # One of these, chosen by `kind` when parsing a dict.
 Edit = Annotated[
-    AppendId | AppendToSection | CreateFile | ReplaceFile | AddAlias | UserText,
+    AppendId
+    | AppendToSection
+    | CreateFile
+    | ReplaceFile
+    | ReplaceSection
+    | AddAlias
+    | UserText,
     Field(discriminator="kind"),
 ]
 

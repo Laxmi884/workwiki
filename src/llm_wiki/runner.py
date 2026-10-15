@@ -21,6 +21,7 @@ from typing import Any, Literal
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
+from langgraph.graph import StateGraph
 from langgraph.types import Command
 from pydantic import BaseModel, ConfigDict
 
@@ -81,15 +82,26 @@ class IngestRunner:
         self,
         checkpointer: BaseCheckpointSaver,
         context: IngestContext | None = None,
+        graph_builder: StateGraph | None = None,
     ) -> None:
-        """Compile the graph with `checkpointer`; `context` is passed to every run."""
-        self.graph = builder.compile(checkpointer=checkpointer, name="ingest")
+        """Compile the graph with `checkpointer`; `context` is passed to every run.
+
+        `graph_builder` defaults to the ingest graph; the 0006 spike passes its own.
+        """
+        if graph_builder is None:
+            self.graph = builder.compile(checkpointer=checkpointer, name="ingest")
+        else:
+            self.graph = graph_builder.compile(checkpointer=checkpointer)
         self.context: IngestContext = context or {}
 
     @classmethod
-    def in_memory(cls, context: IngestContext | None = None) -> IngestRunner:
+    def in_memory(
+        cls,
+        context: IngestContext | None = None,
+        graph_builder: StateGraph | None = None,
+    ) -> IngestRunner:
         """Return a runner whose state lives only in this process (tests, quick tries)."""
-        return cls(InMemorySaver(serde=checkpoint_serializer()), context)
+        return cls(InMemorySaver(serde=checkpoint_serializer()), context, graph_builder)
 
     def _config(self, thread_id: str) -> dict[str, Any]:
         return {"configurable": {"thread_id": thread_id}}

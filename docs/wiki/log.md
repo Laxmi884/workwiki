@@ -2,6 +2,17 @@
 
 Newest first. One entry per session, 2–5 bullets: what was done, what was learned, what's next.
 
+## 2026-10-15
+
+- Spike 0006 built and run end to end by Claude (user asked; teaching later if adopted): `src/llm_wiki/ingest_agent/` (code-checked staging tools, read-only `/vault/` route, two skills), `ingest_agent` graph in `langgraph.json`, `IngestRunner(graph_builder=…)`, `scripts/compare_ingest.py`, two invented notes in `tests/fixtures/spike/`. 402 unit tests pass. Not committed.
+- Learned: deepagents writes oversized tool results to the backend past permissions (so the vault is a route, not the default), and parallel tool calls see stale state (so `finalize` re-checks the whole staging).
+- Result (Nemotron, 2 runs each): template note pipeline 9/9 vs agent 8/9; note shaped like the user's real one 8/12 vs 11/12; free-style note 6/6 vs 5/6 and 4/6. Agent uses 4–18× the input tokens and is less stable on free-style notes (0.64). One real revise round applied all feedback. Details in 0006.
+- Next: user decides on 0006.
+- Round 2 of 0006 (user asked for more models, skills, preferences, teacher→student, second brain; budget free + $2.50): agent v2 (5 skills, `update_summary`, `withdraw_fact`, free sections, rules.md as memory), 20-day invented corpus with labels/preferences/Q&A, sequential harness traced to LangSmith. 412 tests pass. $2.47 spent. Not committed.
+- Result: DeepSeek V4.1 Flash 97% right page first pass for $0.35/20 days, free Nemotron Ultra 93%, Glimmer 89% ($1.55), pipeline 74% and can't learn preferences; Nano 30B-A3B ~57% first pass, ~90% after review; teacher examples didn't help, teacher-as-reviewer matched label feedback. Q&A near ceiling (wikis 0.97–0.98 vs raw notes 0.93). Details and caveats in 0006.
+- **0006 decided: option B adopted** by the user. 0006 status accepted; 3c-2 pair 2 dropped. Next: teach the spike code, then the 0006 to-dos, then 3d/3e.
+- Learned: an LLM judge needs checking before trusting it (Gemini Flash Lite failed answers for adding a year); revise must keep the earlier filing; free providers need retries; the corpus mixed style and week, so growth effects can't be separated.
+
 ## 2026-10-14
 
 - Deployment researched and tested ([[decisions/0005-surfaces-and-deployment|0005]]): LangSmith hosted deployment needs Plus; the self-hosted Agent Server (images already local) runs free in "lite mode" with just a LangSmith key. First test failed only because the `.env` value is single-quoted and the shell kept the quotes. Decision: own runner + SQLite by default, servers optional.
@@ -16,6 +27,7 @@ Newest first. One entry per session, 2–5 bullets: what was done, what was lear
 - **3c-2 pair 1 written (awaiting review): wins + people questions.** `find_names` (one small structured call on task lines and `###` headings, parallel to `extract`; code keeps only names written in the cited lines with no page) and unresolved names in facts become review questions; done-for-the-first-time tasks are win candidates. `answer` (people: new / ignore / existing slug; wins) loops back to `track_tasks` with the answered pages known before they are written (`with_proposed`), no model call. 384 unit tests pass. Real run on the user's 2026-10-14 note: Eugene and Joanna found (not ELTV/UBM/Gitlab); answering made both pages, linked L7, L20–22, and put the 2 picked wins on the impact page. Name call 17–31s alone; the project groups it returns are too fine and vary between runs (pair 2 design).
 - Pair 1 approved and committed (`d18b63d`). User proposed letting deep agents with skills do extraction, wiki writing and remembering, keeping HITL and task IDs in code. Agreed to test it first: spike designed in [[decisions/0006-agent-ingest-spike|0006]] (agent stages edits, code checks them, same review); pair 2 paused.
 - Next: 3c (revise loop, edit, "make page", people/new-project questions, win candidates, remember).
+- Spike build design for 0006 agreed: Deep Agents APIs checked with context7 (`deepagents` 0.7.25: read-only via `FilesystemMiddleware` tools allowlist + `FilesystemPermission`, `DeepAgentState`, `memory`/`skills`). Separate `ingest_agent` graph with a `stage` node; staging tools whose calls code checks; review limited to approve/reject/revise/edit. Skills can live anywhere for the spike, and in the repo if B is adopted. Next: S1.
 
 ## 2026-10-13
 

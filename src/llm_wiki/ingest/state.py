@@ -27,10 +27,12 @@ class IngestContext(TypedDict, total=False):
     Attributes:
         vault_path: Vault folder, e.g. "~/WorkDev".
         model: "provider:model" for extraction (decision 0003).
+        skills_dir: Skills folder for the 0006 spike's ingest agent (default: its own).
     """
 
     vault_path: str
     model: str
+    skills_dir: str
 
 
 class IngestState(TypedDict, total=False):

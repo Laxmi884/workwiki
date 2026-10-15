@@ -4,11 +4,10 @@ Single source of truth for project status. Updated at the end of every session.
 
 ## Current focus
 
-Spike for [[decisions/0006-agent-ingest-spike|0006]]: an ingest deep agent that stages edits checked by code, producing the same review request; compare with the current pipeline on the same notes. Then back to phase 3 (3d apply, 3e SQLite + git).
+Option B of [[decisions/0006-agent-ingest-spike|0006]] adopted (2026-10-15): ingest by the `ingest_agent` deep agent with code-checked staging. Spike code (written by Claude, not committed) is being taught to the user lesson by lesson; then the 0006 to-dos, then phase 3 (3d apply, 3e SQLite + git) on top of the agent graph.
 
 ## Open decisions
 
-- Ingest by a deep agent with code guardrails vs the hand-built pipeline: spike proposed in [[decisions/0006-agent-ingest-spike|0006]] (2026-10-14). 3c-2 pair 2 (project grouping, sub-bullets) is paused until it is decided.
 - Which cloud model to use alongside the local default (mechanism settled in [[decisions/0003-model-selection|0003]]). `WIKI_MODEL` is now `openrouter:nvidia/nemotron-3-ultra-550b-a55b:free`, which extracts the fixture note correctly; `gemma4:12b` misses person notes.
 
 ## Setup
@@ -48,7 +47,10 @@ Spike for [[decisions/0006-agent-ingest-spike|0006]]: an ingest deep agent that 
   - [x] 3b. `review` node with `interrupt()`, `ReviewRequest`/`ReviewAnswer`, `runner.py` (`start`/`resume`/`status`) without Studio ([[decisions/0005-surfaces-and-deployment|0005]]) (2026-10-14)
   - [x] 3c-1. Review loop: revise (feedback → re-extract, max 3), edit (user's full text for a
     wiki page), make page (decision gets its own page); each ends at a fresh review (2026-10-14)
-  - [x] 3c-2 pair 1: wins + people questions (2026-10-14). Pair 2 paused for 0006. From the first real note (2026-10-14): unknown names → people questions,
+  - [x] 3c-2 pair 1: wins + people questions (2026-10-14). Pair 2 dropped: 0006 adopted (2026-10-15).
+  - [x] 0006 spike + round 2 built and run by Claude; option B adopted (2026-10-15)
+  - [ ] 0006 teaching: user walks through the agent code (staging, agent, graph, skills)
+  - [ ] 0006 to-dos: page list up front, no "first time" in text, new people as pages or questions, withdraw a proposed page From the first real note (2026-10-14): unknown names → people questions,
     new-project proposals for unlinked tasks (mapping rule 4), done tasks offered as win
     candidates, task sub-bullets read by the model, "remember this" → approved edit to
     aliases / `90_meta/rules.md`
