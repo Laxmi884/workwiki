@@ -47,7 +47,7 @@ Phase 3: HITL and persistence (`interrupt()` review incl. people questions and t
   - [x] 3b. `review` node with `interrupt()`, `ReviewRequest`/`ReviewAnswer`, `runner.py` (`start`/`resume`/`status`) without Studio ([[decisions/0005-surfaces-and-deployment|0005]]) (2026-10-14)
   - [x] 3c-1. Review loop: revise (feedback → re-extract, max 3), edit (user's full text for a
     wiki page), make page (decision gets its own page); each ends at a fresh review (2026-10-14)
-  - [ ] 3c-2. From the first real note (2026-10-14): unknown names → people questions,
+  - [ ] 3c-2 (pair 1, wins + people questions, written 2026-10-14). From the first real note (2026-10-14): unknown names → people questions,
     new-project proposals for unlinked tasks (mapping rule 4), done tasks offered as win
     candidates, task sub-bullets read by the model, "remember this" → approved edit to
     aliases / `90_meta/rules.md`

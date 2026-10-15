@@ -3,6 +3,7 @@ import pytest
 from llm_wiki import diffs
 from llm_wiki.diffs import RenderError, apply_edit, render_diffs, vault_reader
 from llm_wiki.domain.changes import (
+    AddAlias,
     AppendId,
     AppendToSection,
     CreateFile,
@@ -184,3 +185,32 @@ def test_replace_file_creates_or_overwrites():
     edit = ReplaceFile(path="90_meta/tasks.json", text='{"version": 1}\n')
     assert apply_edit(None, edit) == '{"version": 1}\n'
     assert apply_edit("old", edit) == '{"version": 1}\n'
+
+
+# --- AddAlias (review answers) ----------------------------------------------------
+
+PAGE = "20_people/person-sam-ortiz.md"
+
+
+@pytest.mark.parametrize(
+    ("front", "aliases"),
+    [
+        ("title: Sam\naliases: [Sam]\n", "aliases:\n- Sam\n- Sammy\n"),
+        ("title: Sam\naliases: Sam\n", "aliases:\n- Sam\n- Sammy\n"),  # one string
+        ("title: Sam\n", "aliases:\n- Sammy\n"),  # none yet
+    ],
+)
+def test_add_alias_keeps_the_body(front, aliases):
+    text = f"---\n{front}---\n# Sam\n\nNotes.\n"
+    after = apply_edit(text, AddAlias(path=PAGE, alias="Sammy"))
+    assert after == f"---\ntitle: Sam\n{aliases}---\n# Sam\n\nNotes.\n"
+
+
+def test_add_alias_already_there_changes_nothing():
+    text = "---\naliases: [sammy]\n---\n# Sam\n"
+    assert apply_edit(text, AddAlias(path=PAGE, alias="Sammy")) == text
+
+
+def test_add_alias_refuses_broken_frontmatter():
+    with pytest.raises(RenderError, match="can't add alias"):
+        apply_edit("---\n: [\n---\n", AddAlias(path=PAGE, alias="Sammy"))

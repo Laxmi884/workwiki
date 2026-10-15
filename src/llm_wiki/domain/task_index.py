@@ -51,3 +51,21 @@ class TaskIndex(BaseModel):
 
     version: Literal[1] = 1
     tasks: dict[str, TaskRecord] = Field(default_factory=dict)
+
+
+class DoneTask(BaseModel):
+    """A task this note marks done for the first time: a possible win (review).
+
+    Attributes:
+        line: The task's line in the note.
+        task_id: Its ID.
+        text: The task text as written.
+        project: Its project slug, if mapped.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    line: int = Field(ge=1)
+    task_id: str
+    text: str
+    project: str | None = None

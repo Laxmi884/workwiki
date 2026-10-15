@@ -117,6 +117,13 @@ class SectionFacts(BaseModel):
         default_factory=list, max_length=MAX_PER_KIND
     )
 
+    def person_names(self) -> list[tuple[int, str]]:
+        """Return (line, name) for every person a fact names, in fact order."""
+        found = [(d.line, p) for d in self.decisions for p in d.people]
+        found += [(p.line, p.person) for p in self.person_notes]
+        found += [(h.line, h.person) for h in self.helps]
+        return found
+
     def cited_lines(self) -> set[int]:
         """Return the line numbers any fact cites (used to check `#win`/`#decision` lines)."""
         facts: list[_Fact] = [
@@ -128,3 +135,43 @@ class SectionFacts(BaseModel):
             *self.project_updates,
         ]
         return {fact.line for fact in facts}
+
+
+# --- names and projects in task lines (review questions, phase 3c-2) ---------------
+
+
+class PersonMention(BaseModel):
+    """A person named in the lines: a human, not a tool, system, team or acronym."""
+
+    model_config = ConfigDict(frozen=True)
+
+    name: str = Field(description="The name exactly as written, e.g. 'Eugene'.")
+    lines: list[int] = Field(
+        min_length=1, description="Line numbers (shown before each line) naming them."
+    )
+
+
+class ProjectGroup(BaseModel):
+    """Tasks that belong to the same piece of work, with a short name for it."""
+
+    model_config = ConfigDict(frozen=True)
+
+    name: str = Field(
+        description="Short project name taken from the task wording, e.g. "
+        "'Loss History'. Use a known project slug if one fits."
+    )
+    lines: list[int] = Field(
+        min_length=1, description="Line numbers of the tasks in this project."
+    )
+
+
+class NameScan(BaseModel):
+    """People named in the lines, and unlinked tasks grouped into projects.
+
+    Leave a list empty when nothing fits.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    people: list[PersonMention] = Field(default_factory=list, max_length=MAX_PER_KIND)
+    projects: list[ProjectGroup] = Field(default_factory=list, max_length=MAX_PER_KIND)

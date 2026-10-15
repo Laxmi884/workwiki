@@ -8,7 +8,8 @@ Where each edit may write is part of its type (CLAUDE.md, decision 0001):
 - `AppendId` only touches `00_raw/daily/` (the one code-only write to raw notes).
 - `AppendToSection` and `CreateFile` only touch the agent-owned folders.
 - `ReplaceFile` only rewrites code-owned `90_meta/*.json` files (e.g. the task index).
-- `UserText` (the user's own text from the review) only touches agent-owned pages.
+- `UserText` (the user's own text from the review) and `AddAlias` (a name the user
+  confirmed) only touch agent-owned pages.
 """
 
 from __future__ import annotations
@@ -125,6 +126,16 @@ class CreateFile(BaseModel):
     text: str
 
 
+class AddAlias(BaseModel):
+    """Add a name to an entity page's frontmatter `aliases` (a review answer)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    kind: Literal["add_alias"] = "add_alias"
+    path: WritablePath
+    alias: str = Field(min_length=1)
+
+
 class UserText(BaseModel):
     """The user's own full text for a wiki page, from an "edit" answer in the review.
 
@@ -159,7 +170,7 @@ class ReplaceFile(BaseModel):
 
 # One of these, chosen by `kind` when parsing a dict.
 Edit = Annotated[
-    AppendId | AppendToSection | CreateFile | ReplaceFile | UserText,
+    AppendId | AppendToSection | CreateFile | ReplaceFile | AddAlias | UserText,
     Field(discriminator="kind"),
 ]
 

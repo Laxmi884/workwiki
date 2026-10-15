@@ -12,8 +12,11 @@ import re
 from collections.abc import Callable, Iterable, Sequence
 from pathlib import Path
 
+import yaml
+
 from llm_wiki.domain.changes import (
     RAW_DAILY_FOLDER,
+    AddAlias,
     AppendId,
     AppendToSection,
     CreateFile,
@@ -23,6 +26,7 @@ from llm_wiki.domain.changes import (
     UserText,
     sha256_text,
 )
+from llm_wiki.frontmatter import split_frontmatter
 from llm_wiki.tasks_syntax import append_id
 
 VaultReader = Callable[[str], str | None]
@@ -151,7 +155,25 @@ def apply_edit(text: str | None, edit: Edit) -> str:
         raise RenderError("file does not exist")
     if isinstance(edit, AppendId):
         return _append_id(text, edit)
+    if isinstance(edit, AddAlias):
+        return _add_alias(text, edit)
     return _append_to_section(text, edit)
+
+
+def _add_alias(text: str, edit: AddAlias) -> str:
+    """Add `edit.alias` to the frontmatter `aliases` list; the body is kept as is."""
+    split = split_frontmatter(text)
+    if split.error is not None:
+        raise RenderError(f"can't add alias: {split.error}")
+    meta = dict(split.metadata)
+    aliases = meta.get("aliases") or []
+    aliases = list(aliases) if isinstance(aliases, list) else [aliases]
+    if any(str(a).casefold() == edit.alias.casefold() for a in aliases):
+        return text
+    meta["aliases"] = [*aliases, edit.alias]
+    return f"---\n{yaml.safe_dump(meta, sort_keys=False, allow_unicode=True)}---\n" + (
+        split.body
+    )
 
 
 # --- one file --------------------------------------------------------------------

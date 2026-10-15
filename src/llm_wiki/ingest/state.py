@@ -9,7 +9,9 @@ from typing_extensions import TypedDict
 
 from llm_wiki.domain.changes import Edit, FileDiff
 from llm_wiki.domain.daily import DailyNote
-from llm_wiki.domain.facts import SectionFacts
+from llm_wiki.domain.entities import Entity
+from llm_wiki.domain.facts import NameScan, SectionFacts
+from llm_wiki.domain.task_index import DoneTask
 
 
 def merge_facts(
@@ -42,6 +44,9 @@ class IngestState(TypedDict, total=False):
         skip_reason: Set when there is nothing to do (unchanged note, broken ledger).
         task_ids: Line number → newly assigned task ID (assign_ids).
         task_edits: ID appends and the task index rewrite (assign_ids, track_tasks).
+        task_projects: Task line → its project slug or None (track_tasks).
+        done_tasks: Tasks this note marks done for the first time (track_tasks).
+        name_scan: People and project groups in task lines and headings (find_names).
         facts: Section key (its start line, e.g. "20") → facts (extract).
         feedback: The user's revise messages, oldest first (review).
         revisions: How many revise rounds have run (at most `review.MAX_REVISIONS`).
@@ -51,8 +56,12 @@ class IngestState(TypedDict, total=False):
         fact_edits: Edits from all facts, rebuilt each round (route).
         diffs: One proposed diff per changed file (render).
         review_action: The user's last answer: "approve" or "reject" (the run ends),
-            or "revise", "make_page", "edit" (it loops back).
+            or "revise", "make_page", "edit", "answer" (it loops back).
         approved: Digests of the approved diffs; only these may be written (3d).
+        chosen_wins: Lines of done tasks the user picked as wins (review "answer").
+        new_entities: Pages the user asked for ("new"); proposed, not yet written.
+        new_aliases: Slug → names the user said are that entity.
+        ignored_names: Names the user said are not people (this run).
         warnings: Problems found anywhere; nodes append.
     """
 
@@ -63,6 +72,9 @@ class IngestState(TypedDict, total=False):
     skip_reason: str
     task_ids: dict[int, str]
     task_edits: list[Edit]
+    task_projects: dict[int, str | None]
+    done_tasks: list[DoneTask]
+    name_scan: NameScan
     facts: Annotated[dict[str, SectionFacts], merge_facts]
     feedback: list[str]
     revisions: int
@@ -72,6 +84,10 @@ class IngestState(TypedDict, total=False):
     diffs: list[FileDiff]
     review_action: str
     approved: list[str]
+    chosen_wins: list[int]
+    new_entities: list[Entity]
+    new_aliases: dict[str, list[str]]
+    ignored_names: list[str]
     warnings: Annotated[list[str], operator.add]
 
 
@@ -83,6 +99,18 @@ class IngestInput(TypedDict):
     """
 
     note_path: str
+
+
+class FindNamesInput(TypedDict):
+    """What `find_names` gets (sent alongside the extracts).
+
+    Attributes:
+        note: The parsed note.
+        task_projects: Task line → project slug or None; None lines may be grouped.
+    """
+
+    note: DailyNote
+    task_projects: dict[int, str | None]
 
 
 class ExtractInput(TypedDict, total=False):

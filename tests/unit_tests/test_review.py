@@ -135,6 +135,9 @@ def test_reject_approves_nothing():
         ({"action": "edit", "file": "f3", "text": "x"}, "f3 is 90_meta/ingest-ledger"),
         ({"action": "edit", "file": "f7", "text": "x"}, "unknown file ids ['f7']"),
         ({"action": "revise", "feedback": "x"}, "nothing to revise"),
+        ({"action": "answer"}, '"answer" needs people or wins'),
+        ({"action": "answer", "people": {"p1": "new"}}, "unknown person ids ['p1']"),
+        ({"action": "answer", "wins": ["w1"]}, "unknown win ids ['w1']"),
         ({"action": "approve", "note": "hi"}, "invalid answer (note:"),
         (None, "invalid answer"),
     ],
@@ -143,3 +146,8 @@ def test_bad_answers_are_explained(raw, message):
     answer, error = check_answer(REQUEST, raw)
     assert answer is None
     assert message in error
+
+
+def test_answer_with_no_wins_is_valid():
+    answer, error = check_answer(REQUEST, {"action": "answer", "wins": []})
+    assert error is None and answer.wins == ()

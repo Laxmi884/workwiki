@@ -5,23 +5,73 @@ Pure, so the `review` node only pauses and loops; see `ingest/nodes.py`.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Collection, Iterable, Mapping, Sequence
 from typing import Any
 
 import pydantic
 
 from llm_wiki.domain.changes import AppendToSection, Edit, FileDiff, is_wiki_page
-from llm_wiki.domain.facts import SectionFacts
+from llm_wiki.domain.daily import DailyNote
+from llm_wiki.domain.facts import NameScan, SectionFacts
 from llm_wiki.domain.review import (
     ReviewAnswer,
     ReviewDecision,
     ReviewFile,
     ReviewInboxItem,
+    ReviewPerson,
     ReviewRequest,
+    ReviewWin,
 )
-from llm_wiki.routing import INBOX_PATH
+from llm_wiki.domain.task_index import DoneTask
+from llm_wiki.entity_index import EntityIndex, kind_of, name_key
+from llm_wiki.names import is_known_person
+from llm_wiki.routing import INBOX_PATH, origin_of
 
 MAX_REVISIONS = 3
+
+
+def _plain_line(quote: str) -> str:
+    """Drop a task's checkbox and block ID: "[ ] Ping Eugene ^t-abc123" → "Ping Eugene"."""
+    return re.sub(r"\s\^t-[0-9a-z]{6}$", "", re.sub(r"^\[.\]\s*", "", quote))
+
+
+def people_questions(
+    note: DailyNote,
+    scan: NameScan | None,
+    facts: Mapping[str, SectionFacts],
+    entities: EntityIndex,
+    ignored: Collection[str] = (),
+) -> tuple[ReviewPerson, ...]:
+    """Names with no page, from the name scan and from facts, in note order.
+
+    Asked again each round against `entities` (vault + answered pages), so an answered
+    name drops out; ignored names never come back in this run.
+    """
+    skip = {name_key(n) for n in ignored}
+    lines_of: dict[str, tuple[str, set[int]]] = {}
+    found = [(n, p.name) for p in (scan.people if scan else []) for n in p.lines]
+    found += [
+        pair for key in sorted(facts, key=int) for pair in facts[key].person_names()
+    ]
+    for line, raw in found:
+        name = " ".join(raw.split())
+        key = name_key(name)
+        if not name or kind_of(name) is not None or key in skip:
+            continue
+        if is_known_person(name, entities):
+            continue
+        lines_of.setdefault(key, (name, set()))[1].add(line)
+    ordered = sorted(lines_of.values(), key=lambda item: min(item[1]))
+    return tuple(
+        ReviewPerson(
+            id=f"p{i}",
+            name=name,
+            lines=tuple(sorted(lines)),
+            context=_plain_line(origin_of(note, min(lines)).quote),
+        )
+        for i, (name, lines) in enumerate(ordered, start=1)
+    )
 
 
 def build_request(
@@ -35,6 +85,9 @@ def build_request(
     revisions: int = 0,
     can_revise: bool = False,
     edited: Collection[str] = (),
+    people: Sequence[ReviewPerson] = (),
+    done_tasks: Sequence[DoneTask] = (),
+    chosen_wins: Collection[int] = (),
 ) -> ReviewRequest:
     """Turn the rendered diffs and facts into what the user sees.
 
@@ -81,6 +134,17 @@ def build_request(
         revisions_left=max(MAX_REVISIONS - revisions, 0) if can_revise else 0,
         can_revise=can_revise,
         edited=tuple(p for p in edited if p in {d.path for d in diffs}),
+        people=tuple(people),
+        wins=tuple(
+            ReviewWin(
+                id=f"w{i}",
+                line=t.line,
+                text=t.text,
+                project=t.project,
+                chosen=t.line in chosen_wins,
+            )
+            for i, t in enumerate(done_tasks, start=1)
+        ),
     )
 
 
@@ -91,12 +155,27 @@ def _unknown(kind: str, given: Sequence[str], valid: Sequence[str]) -> str | Non
     return f"unknown {kind} ids {unknown}; valid ids: {', '.join(valid) or 'none'}"
 
 
+def _check_people(
+    request: ReviewRequest, people: Mapping[str, str], known: Collection[str]
+) -> str | None:
+    if error := _unknown("person", list(people), [p.id for p in request.people]):
+        return error
+    for pid, value in people.items():
+        if value not in ("new", "ignore") and value not in known:
+            return (
+                f'{pid}: {value!r} is not a person page; answer "new", "ignore" '
+                "or an existing person slug"
+            )
+    return None
+
+
 def check_answer(
-    request: ReviewRequest, raw: Any
+    request: ReviewRequest, raw: Any, known_people: Collection[str] = ()
 ) -> tuple[ReviewAnswer | None, str | None]:
     """Validate the user's answer. Returns (answer, None) or (None, why not).
 
-    "approve" and "reject" may be sent as plain strings.
+    "approve" and "reject" may be sent as plain strings. `known_people` are the person
+    slugs an "answer" may name.
     """
     if isinstance(raw, str):
         raw = {"action": raw.strip().lower()}
@@ -135,6 +214,12 @@ def check_answer(
                     f"{target.id} is {target.path}, which only code writes; "
                     "edit a wiki page instead"
                 )
+    elif answer.action == "answer":
+        error = _check_people(request, answer.people or {}, known_people)
+        if error is None:
+            error = _unknown(
+                "win", list(answer.wins or ()), [w.id for w in request.wins]
+            )
     else:
         error = None
     return (None, error) if error else (answer, None)

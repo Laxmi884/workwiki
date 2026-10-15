@@ -31,6 +31,9 @@ builder.add_node("assign_ids", nodes.assign_ids)
 builder.add_node("track_tasks", nodes.track_tasks)
 # A model call can fail on the network; retry it alone, not the whole parallel step.
 builder.add_node("extract", nodes.extract, retry_policy=RetryPolicy(max_attempts=3))
+builder.add_node(
+    "find_names", nodes.find_names, retry_policy=RetryPolicy(max_attempts=3)
+)
 builder.add_node("route", nodes.route)
 builder.add_node("render", nodes.render)
 builder.add_node("review", nodes.review_changes)
@@ -38,12 +41,17 @@ builder.add_node("review", nodes.review_changes)
 builder.add_edge(START, "load_note")
 builder.add_conditional_edges("load_note", nodes.after_load, ["assign_ids", END])
 builder.add_edge("assign_ids", "track_tasks")
-builder.add_conditional_edges("track_tasks", nodes.fan_out, ["extract", "route"])
+builder.add_conditional_edges(
+    "track_tasks", nodes.fan_out, ["extract", "find_names", "route"]
+)
 builder.add_edge("extract", "route")
+builder.add_edge("find_names", "route")
 builder.add_edge("route", "render")
 builder.add_edge("render", "review")
 builder.add_conditional_edges(
-    "review", nodes.after_review, ["extract", "route", "render", END]
+    "review",
+    nodes.after_review,
+    ["extract", "find_names", "track_tasks", "route", "render", END],
 )
 
 graph = builder.compile(name="ingest")

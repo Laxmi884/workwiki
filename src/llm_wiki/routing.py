@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import datetime
 import re
-from collections.abc import Callable, Collection
+from collections.abc import Callable, Collection, Sequence
 from dataclasses import dataclass
 
 import yaml
@@ -29,6 +29,7 @@ from llm_wiki.domain.changes import AppendToSection, CreateFile, Edit
 from llm_wiki.domain.daily import DailyNote
 from llm_wiki.domain.entities import EntityKind
 from llm_wiki.domain.facts import Decision, SectionFacts
+from llm_wiki.domain.task_index import DoneTask
 from llm_wiki.entity_index import EntityIndex, kind_of, path_for
 from llm_wiki.inline_syntax import find_links
 
@@ -256,17 +257,29 @@ def _route_decision(r: _Router, d: Decision, own_page: bool) -> None:
         r.append(r.page(project), DECISIONS, o.bullet(f"{d.title} (see [[{see}]])"))
 
 
+def _route_win(r: _Router, line: int, text: str, project_name: str | None) -> None:
+    """Put a win on the quarter's impact page and, if known, on its project page."""
+    o = origin_of(r.note, line)
+    project = r.resolve(project_name, EntityKind.PROJECT)
+    suffix = f" ({_link(project, project_name)})" if project_name else ""
+    r.impact(WINS, o.bullet(text + suffix))
+    if project:
+        r.append(r.page(project), WINS, o.bullet(text))
+
+
 def route_facts(
     note: DailyNote,
     facts: dict[str, SectionFacts],
     entities: EntityIndex,
     exists: Callable[[str], bool],
     decision_pages: Collection[int] = (),
+    task_wins: Sequence[DoneTask] = (),
 ) -> tuple[list[Edit], list[str]]:
     """Turn every section's facts into edits. `exists(path)` checks the vault.
 
     `decision_pages` holds the note lines of decisions the user wants on their own
-    page (review "make page").
+    page (review "make page"); `task_wins` the done tasks the user picked as wins, in
+    their words.
 
     Returns:
         (edits, warnings). Sections are routed in note order, facts in answer order.
@@ -284,12 +297,7 @@ def route_facts(
         for d in f.decisions:
             _route_decision(r, d, own_page=d.line in decision_pages)
         for w in f.wins:
-            o = origin_of(note, w.line)
-            project = r.resolve(w.project, EntityKind.PROJECT)
-            suffix = f" ({_link(project, w.project)})" if w.project else ""
-            r.impact(WINS, o.bullet(w.text + suffix))
-            if project:
-                r.append(r.page(project), WINS, o.bullet(w.text))
+            _route_win(r, w.line, w.text, w.project)
         for p in f.person_notes:
             o = origin_of(note, p.line)
             if person := r.resolve(p.person, EntityKind.PERSON):
@@ -318,4 +326,6 @@ def route_facts(
                 r.append(r.page(project), UPDATES, o.bullet(u.note))
             else:
                 r.inbox(o, f"update on {u.project!r}: {u.note}")
+    for t in task_wins:
+        _route_win(r, t.line, t.text, t.project)
     return r.edits, warnings

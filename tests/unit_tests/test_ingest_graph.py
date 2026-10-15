@@ -3,8 +3,6 @@
 import importlib
 import shutil
 
-import pytest
-
 from llm_wiki.domain.facts import (
     Decision,
     Help,
@@ -80,22 +78,20 @@ def test_note_to_diffs_end_to_end(fixture_vault, monkeypatch):
     ]
 
 
-def test_note_without_prose_skips_the_model(tmp_path, monkeypatch):
+def test_note_without_prose_only_scans_names(tmp_path, monkeypatch):
     vault = tmp_path / "vault"
     (vault / "00_raw/daily").mkdir(parents=True)
     (vault / "00_raw/daily/2026-10-15.md").write_text(
         "---\ndate: 2026-10-15\n---\n## Tasks\n- [ ] only a task\n"
     )
-
-    def no_model(runtime):
-        pytest.fail("no prose, so no model call")
-
-    monkeypatch.setattr(nodes, "chat_model", no_model)
+    model = BySection({}, SectionFacts())
+    monkeypatch.setattr(nodes, "chat_model", lambda runtime: model)
     state = ingest_graph.graph.invoke(
         {"note_path": "00_raw/daily/2026-10-15.md"},
         context={"vault_path": str(vault)},
     )
     assert state.get("facts", {}) == {}
+    assert (len(model.calls), len(model.name_calls)) == (0, 1)  # no extraction
     assert [d.path for d in state["diffs"]] == [
         "00_raw/daily/2026-10-15.md",
         "90_meta/tasks.json",

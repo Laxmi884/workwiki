@@ -53,7 +53,7 @@ def path_for(slug: str) -> str:
     return f"{FOLDER_BY_KIND[kind]}/{slug}.md"
 
 
-def _name_key(name: str) -> str:
+def name_key(name: str) -> str:
     """Compare names case- and spacing-insensitively."""
     return " ".join(name.split()).casefold()
 
@@ -75,7 +75,7 @@ class EntityIndex:
 
     def lookup(self, name: str) -> tuple[Entity, ...]:
         """Entities whose slug, title or an alias equals `name`. Two or more: ambiguous."""
-        return tuple(self.entities[s] for s in self.by_name.get(_name_key(name), ()))
+        return tuple(self.entities[s] for s in self.by_name.get(name_key(name), ()))
 
     def alias_mentions(
         self, text: str, kind: EntityKind | None = None
@@ -89,7 +89,7 @@ class EntityIndex:
             entity
             for entity in self.entities.values()
             if (kind is None or entity.kind is kind)
-            and any(_contains_phrase(text, alias) for alias in entity.aliases)
+            and any(contains_phrase(text, alias) for alias in entity.aliases)
         )
 
     def name_mentions(
@@ -130,7 +130,7 @@ def _phrase_re(phrase: str) -> re.Pattern[str]:
     return re.compile(r"(?<!\w)" + r"\s+".join(words) + r"(?!\w)", re.IGNORECASE)
 
 
-def _contains_phrase(text: str, phrase: str) -> bool:
+def contains_phrase(text: str, phrase: str) -> bool:
     """Return whether `phrase` is in `text` as whole words (any case, any spacing)."""
     return _phrase_re(phrase).search(text) is not None
 
@@ -192,10 +192,14 @@ def build_index(pages: Iterable[tuple[str, str]]) -> EntityIndex:
         if entity is not None:
             entities[entity.slug] = entity
 
+    return _index(entities, warnings)
+
+
+def _index(entities: Mapping[str, Entity], warnings: list[str]) -> EntityIndex:
     by_name: dict[str, list[str]] = {}
     for entity in entities.values():
         for name in (entity.slug, entity.title, *entity.aliases):
-            slugs = by_name.setdefault(_name_key(name), [])
+            slugs = by_name.setdefault(name_key(name), [])
             if entity.slug not in slugs:
                 slugs.append(entity.slug)
     for key, slugs in by_name.items():
@@ -203,10 +207,30 @@ def build_index(pages: Iterable[tuple[str, str]]) -> EntityIndex:
             warnings.append(f"name {key!r} is shared by {', '.join(slugs)}")
 
     return EntityIndex(
-        entities=entities,
+        entities=dict(entities),
         by_name={key: tuple(slugs) for key, slugs in by_name.items()},
         warnings=tuple(warnings),
     )
+
+
+def with_proposed(
+    index: EntityIndex,
+    new_entities: Iterable[Entity] = (),
+    new_aliases: Mapping[str, Iterable[str]] | None = None,
+) -> EntityIndex:
+    """Return `index` plus pages and aliases the user confirmed in the review.
+
+    They aren't written yet, but task mapping and routing must already treat them as
+    known (so "Eugene" links in the same review that created his page).
+    """
+    entities = dict(index.entities)
+    for entity in new_entities:
+        entities.setdefault(entity.slug, entity)
+    for slug, aliases in (new_aliases or {}).items():
+        if (entity := entities.get(slug)) is not None:
+            merged = tuple(dict.fromkeys([*entity.aliases, *aliases]))
+            entities[slug] = entity.model_copy(update={"aliases": merged})
+    return _index(dict(sorted(entities.items(), key=lambda kv: kv[1].path)), [])
 
 
 def load_index(vault: Path) -> EntityIndex:

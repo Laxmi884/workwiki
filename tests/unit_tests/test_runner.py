@@ -5,7 +5,14 @@ import shutil
 
 import pytest
 
-from llm_wiki.domain.facts import Decision, Learning, SectionFacts
+from llm_wiki.domain.facts import (
+    Decision,
+    Learning,
+    NameScan,
+    PersonMention,
+    PersonNote,
+    SectionFacts,
+)
 from llm_wiki.ingest import nodes
 from llm_wiki.runner import IngestRunner
 
@@ -208,3 +215,123 @@ def test_checkpoints_restore_our_types_without_warnings(runner, caplog):
     started = runner.start(NOTE)
     runner.resume(started.thread_id, "approve")
     assert not [r for r in caplog.records if "unregistered type" in r.getMessage()]
+
+
+# --- questions: people and wins (3c-2) ----------------------------------------------
+
+NAMES_NOTE = "00_raw/daily/2026-10-14.md"
+NAMES_TEXT = (
+    "---\ndate: 2026-10-14\n---\n"  # 1-3
+    "## Tasks\n"  # 4
+    "- [ ] Report changes for Eugene\n"  # 5
+    "- [x] Risk culture docs and prod ticket\n"  # 6
+    "- [x] Fix login redirect for [[project-atlas]]\n"  # 7
+    "## Meetings\n"  # 8
+    "### 1:1 with Joanna\n"  # 9
+    "- Joanna wants a demo of the AI use cases\n"  # 10
+    "- [ ] Give heat maps to Joanna\n"  # 11
+)
+
+
+@pytest.fixture
+def names_runner(tmp_path, fixture_vault, monkeypatch):
+    vault = tmp_path / "vault"
+    shutil.copytree(fixture_vault, vault)
+    (vault / NAMES_NOTE).write_text(NAMES_TEXT)
+    model = BySection(
+        {
+            "Meetings": SectionFacts(
+                person_notes=[
+                    PersonNote(line=10, person="Joanna", note="Wants an AI demo.")
+                ]
+            )
+        },
+        SectionFacts(),
+        names=NameScan(
+            people=[
+                PersonMention(name="Eugene", lines=[5]),
+                PersonMention(name="Joanna", lines=[9, 11]),
+            ]
+        ),
+    )
+    monkeypatch.setattr(nodes, "chat_model", lambda runtime: model)
+    runner = IngestRunner.in_memory(context={"vault_path": str(vault)})
+    return runner, model
+
+
+def _tasks(result):
+    text = _file(result, "90_meta/tasks.json").diff
+    added = "".join(
+        line[1:] + "\n"
+        for line in text.splitlines()
+        if line.startswith("+") and not line.startswith("+++")
+    )
+    return {t["line"]: t for t in json.loads(added)["tasks"].values()}
+
+
+def test_unknown_names_and_done_tasks_become_questions(names_runner):
+    runner, model = names_runner
+    started = runner.start(NAMES_NOTE)
+    review = started.review
+    assert [(p.id, p.name, p.lines, p.context) for p in review.people] == [
+        ("p1", "Eugene", (5,), "Report changes for Eugene"),
+        ("p2", "Joanna", (9, 10, 11), "### 1:1 with Joanna"),
+    ]
+    assert [(w.id, w.line, w.project, w.chosen) for w in review.wins] == [
+        ("w1", 6, None, False),
+        ("w2", 7, "project-atlas", False),
+    ]
+    assert len(model.name_calls) == 1
+
+
+def test_answer_makes_pages_links_tasks_and_adds_wins_without_the_model(names_runner):
+    runner, model = names_runner
+    started = runner.start(NAMES_NOTE)
+    calls = (len(model.calls), len(model.name_calls))
+    answer = {"action": "answer", "people": {"p1": "new", "p2": "new"}, "wins": ["w2"]}
+    again = runner.resume(started.thread_id, answer)
+
+    assert (len(model.calls), len(model.name_calls)) == calls  # no model call
+    review = again.review
+    assert review.people == ()  # answered names are known now
+    assert [w.chosen for w in review.wins] == [False, True]
+    paths = [f.path for f in review.files]
+    assert "05_generated/inbox.md" not in paths  # Joanna's note found her page
+    eugene = _file(again, "20_people/person-eugene.md")
+    assert eugene.change == "new" and "aliases:\n- Eugene\n" in eugene.after_text
+    joanna = _file(again, "20_people/person-joanna.md").after_text
+    assert "## Notes\n- 2026-10-14 · 1:1 with Joanna: Wants an AI demo." in joanna
+    tasks = _tasks(again)
+    assert (tasks[5]["people"], tasks[11]["people"]) == (
+        ["person-eugene"],
+        ["person-joanna"],
+    )
+    impact = _file(again, "40_impact/2026/impact-2026-q4.md").after_text
+    assert "Fix login redirect for [[project-atlas]]" in impact
+    assert "Risk culture" not in impact
+
+
+def test_answer_with_an_existing_slug_adds_an_alias(names_runner):
+    runner, _ = names_runner
+    started = runner.start(NAMES_NOTE)
+    again = runner.resume(
+        started.thread_id, {"action": "answer", "people": {"p1": "person-sam-ortiz"}}
+    )
+    assert [p.name for p in again.review.people] == ["Joanna"]
+    sam = _file(again, "20_people/person-sam-ortiz.md").after_text
+    assert "- Eugene\n" in sam.split("---")[1]
+    assert _tasks(again)[5]["people"] == ["person-sam-ortiz"]
+
+
+def test_ignored_and_unknown_answers(names_runner):
+    runner, _ = names_runner
+    started = runner.start(NAMES_NOTE)
+    bad = runner.resume(
+        started.thread_id, {"action": "answer", "people": {"p1": "person-nobody"}}
+    )
+    assert bad.review.error.startswith("p1: 'person-nobody' is not a person page")
+    again = runner.resume(
+        started.thread_id, {"action": "answer", "people": {"p1": "ignore"}}
+    )
+    assert [p.name for p in again.review.people] == ["Joanna"]
+    assert all("eugene" not in f.path for f in again.review.files)

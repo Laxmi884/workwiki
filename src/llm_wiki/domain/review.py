@@ -51,6 +51,41 @@ class ReviewDecision(BaseModel):
     page: bool = False
 
 
+class ReviewPerson(BaseModel):
+    """A name with no page: answer "new", "ignore" or an existing person slug.
+
+    Attributes:
+        name: As written, e.g. "Eugene".
+        lines: Note lines naming them.
+        context: The first of those lines, to recognise them by.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    id: str
+    name: str
+    lines: tuple[int, ...]
+    context: str
+
+
+class ReviewWin(BaseModel):
+    """A task done in this note; picked ones go to the impact page as wins.
+
+    Attributes:
+        text: The task as written (no rewording).
+        project: Its project slug, if mapped.
+        chosen: Whether it is picked (an earlier "answer").
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    id: str
+    line: int
+    text: str
+    project: str | None = None
+    chosen: bool = False
+
+
 class ReviewInboxItem(BaseModel):
     """A fact whose person, project or topic matched no page (3c adds answers)."""
 
@@ -72,6 +107,8 @@ class ReviewRequest(BaseModel):
         revisions_left: How many more "revise" answers are allowed.
         can_revise: False when the note has no prose for the model to read again.
         edited: Paths whose text is the user's own (from "edit" answers).
+        people: Names with no page, to answer with "answer".
+        wins: Tasks done in this note; picked ones become wins.
         error: Why the previous answer was not accepted, if it wasn't.
     """
 
@@ -85,10 +122,12 @@ class ReviewRequest(BaseModel):
     revisions_left: int = 0
     can_revise: bool = False
     edited: tuple[str, ...] = ()
+    people: tuple[ReviewPerson, ...] = ()
+    wins: tuple[ReviewWin, ...] = ()
     error: str | None = None
 
 
-Action = Literal["approve", "reject", "revise", "make_page", "edit"]
+Action = Literal["approve", "reject", "revise", "make_page", "edit", "answer"]
 
 # Which optional fields each action takes ("reject" is the file list of an approval).
 _FIELDS: dict[str, set[str]] = {
@@ -97,6 +136,7 @@ _FIELDS: dict[str, set[str]] = {
     "revise": {"feedback"},
     "make_page": {"decisions"},
     "edit": {"file", "text"},
+    "answer": {"people", "wins"},
 }
 _REQUIRED: dict[str, set[str]] = {
     "revise": {"feedback"},
@@ -115,6 +155,8 @@ class ReviewAnswer(BaseModel):
         {"action": "revise", "feedback": "Also note X"}        re-read the note
         {"action": "make_page", "decisions": ["d1"]}           d1 gets its own page
         {"action": "edit", "file": "f4", "text": "..."}        f4's full new text
+        {"action": "answer", "people": {"p1": "new", "p2": "person-sam-ortiz",
+         "p3": "ignore"}, "wins": ["w2"]}                      questions
 
     Attributes:
         action: What to do.
@@ -123,6 +165,9 @@ class ReviewAnswer(BaseModel):
         decisions: make_page: decision IDs.
         file: edit: the file ID.
         text: edit: the file's complete new text.
+        people: answer: person question ID → "new" (make a page), "ignore" (not a
+            person) or an existing person slug (the name becomes its alias).
+        wins: answer: win IDs to put on the impact page; replaces earlier picks.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -133,16 +178,22 @@ class ReviewAnswer(BaseModel):
     decisions: tuple[str, ...] = Field(default=())
     file: str | None = None
     text: str | None = None
+    people: dict[str, str] | None = None
+    wins: tuple[str, ...] | None = None
 
     @model_validator(mode="after")
     def _fields_match_action(self) -> ReviewAnswer:
         given = {
             name
-            for name in ("reject", "feedback", "decisions", "file", "text")
-            if getattr(self, name) not in (None, (), "")
+            for name in ("reject", "feedback", "decisions", "file", "text", "people")
+            if getattr(self, name) not in (None, (), "", {})
         }
+        if self.wins is not None:  # [] is an answer too: pick none
+            given.add("wins")
         if extra := sorted(given - _FIELDS[self.action]):
             raise ValueError(f'{", ".join(extra)} not allowed with "{self.action}"')
         if missing := sorted(_REQUIRED.get(self.action, set()) - given):
             raise ValueError(f'"{self.action}" needs {", ".join(missing)}')
+        if self.action == "answer" and not given:
+            raise ValueError('"answer" needs people or wins')
         return self
