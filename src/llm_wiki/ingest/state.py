@@ -43,10 +43,15 @@ class IngestState(TypedDict, total=False):
         task_ids: Line number → newly assigned task ID (assign_ids).
         task_edits: ID appends and the task index rewrite (assign_ids, track_tasks).
         facts: Section key (its start line, e.g. "20") → facts (extract).
-        feedback: The user's revise messages (phase 3 review).
+        feedback: The user's revise messages, oldest first (review).
+        revisions: How many revise rounds have run (at most `review.MAX_REVISIONS`).
+        decision_pages: Note lines of decisions that get their own page (review).
+        overrides: Path → the user's own text for that page (review "edit"); a
+            revise or make_page clears them.
         fact_edits: Edits from all facts, rebuilt each round (route).
         diffs: One proposed diff per changed file (render).
-        review_action: The user's answer, "approve" or "reject" (review).
+        review_action: The user's last answer: "approve" or "reject" (the run ends),
+            or "revise", "make_page", "edit" (it loops back).
         approved: Digests of the approved diffs; only these may be written (3d).
         warnings: Problems found anywhere; nodes append.
     """
@@ -60,6 +65,9 @@ class IngestState(TypedDict, total=False):
     task_edits: list[Edit]
     facts: Annotated[dict[str, SectionFacts], merge_facts]
     feedback: list[str]
+    revisions: int
+    decision_pages: list[int]
+    overrides: dict[str, str]
     fact_edits: list[Edit]
     diffs: list[FileDiff]
     review_action: str

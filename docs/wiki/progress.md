@@ -45,11 +45,12 @@ Phase 3: HITL and persistence (`interrupt()` review incl. people questions and t
 - [ ] **3. HITL and persistence**: `interrupt()`, `Command(resume=…)`, SQLite checkpointer, digests, git commit. Read: `docs/architecture/writes-and-approvals.md`, `tools/writes.py`.
   - [x] 3a. Ingest ledger `90_meta/ingest-ledger.json`: skip unchanged notes; edited notes give facts only from new lines (2026-10-13)
   - [x] 3b. `review` node with `interrupt()`, `ReviewRequest`/`ReviewAnswer`, `runner.py` (`start`/`resume`/`status`) without Studio ([[decisions/0005-surfaces-and-deployment|0005]]) (2026-10-14)
-  - [ ] 3c. Revise loop (feedback → re-extract, max 3), edit, "make page" for decisions;
-    from the first real note (2026-10-14): unknown names → people questions, new-project
-    proposals for unlinked tasks (mapping rule 4), done tasks offered as win candidates,
-    task sub-bullets read by the model, "remember this" → approved edit to aliases /
-    `90_meta/rules.md`
+  - [x] 3c-1. Review loop: revise (feedback → re-extract, max 3), edit (user's full text for a
+    wiki page), make page (decision gets its own page); each ends at a fresh review (2026-10-14)
+  - [ ] 3c-2. From the first real note (2026-10-14): unknown names → people questions,
+    new-project proposals for unlinked tasks (mapping rule 4), done tasks offered as win
+    candidates, task sub-bullets read by the model, "remember this" → approved edit to
+    aliases / `90_meta/rules.md`
   - [ ] 3d. `apply`: write approved files only if `before_sha256` still matches, read back
   - [ ] 3e. SQLite checkpointer; git commit of the vault
 - [ ] **4. Assistant deep agent**: filesystem backend, permissions, skills, review subagent. Read: `runtime/local.py`, `workspace/skills/`.

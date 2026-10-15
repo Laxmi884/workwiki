@@ -7,7 +7,9 @@
   heading above the line) and a link to the note.
 - Decisions go to the quarter's decision log (`30_decisions/2026/decisions-2026-q4.md`)
   as a short block (date, meeting, people, project, rationale, source) and as a line on
-  their project page. Wins and help also go to the quarter's impact page
+  their project page. A decision marked "make page" in the review gets its own page
+  (`30_decisions/decision-<slug>.md`) with those details; the log then keeps only its
+  title, date and a link. Wins and help also go to the quarter's impact page
   (`40_impact/2026/impact-2026-q4.md`) for the brag sheet. Year folders keep a year's
   review in one place; logs there are not entity pages (the index reads only the
   top level of each entity folder).
@@ -18,7 +20,7 @@ from __future__ import annotations
 
 import datetime
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Collection
 from dataclasses import dataclass
 
 import yaml
@@ -169,16 +171,30 @@ class _Router:
         self.append(INBOX_PATH, f"## {origin.date}", origin.bullet(what))
 
 
-def _decision_entry(r: _Router, d: Decision) -> tuple[str, ...]:
-    """Return the decision's block in the log: a `###` title and its details."""
+def decision_slug(title: str, taken: Callable[[str], bool]) -> str:
+    """Return a free decision slug from the title, e.g. "decision-keep-the-old-bi-tool".
+
+    At most 8 words; "-2", "-3", … is added while `taken(slug)` says it's in use.
+    """
+    words = re.findall(r"[a-z0-9]+", title.lower())[:8] or ["untitled"]
+    base = "decision-" + "-".join(words)
+    slug, n = base, 2
+    while taken(slug):
+        slug, n = f"{base}-{n}", n + 1
+    return slug
+
+
+def _when(r: _Router, d: Decision) -> str:
+    o = origin_of(r.note, d.line)
+    return f"- **When:** {o.date}" + (f", {o.meeting}" if o.meeting else "")
+
+
+def _decision_details(r: _Router, d: Decision) -> list[str]:
+    """Return the decision's detail bullets: when, people, project, rationale, source."""
     o = origin_of(r.note, d.line)
     project = r.resolve(d.project, EntityKind.PROJECT)
     people = ", ".join(_link(r.resolve(n, EntityKind.PERSON), n) for n in d.people)
-    lines = [
-        "",
-        f"### {d.title}",
-        f"- **When:** {o.date}" + (f", {o.meeting}" if o.meeting else ""),
-    ]
+    lines = [_when(r, d)]
     if people:
         lines.append(f"- **People:** {people}")
     if d.project:
@@ -187,19 +203,57 @@ def _decision_entry(r: _Router, d: Decision) -> tuple[str, ...]:
         f"- **Rationale:** {d.rationale or 'Not recorded in the note.'}",
         f'- **Source:** [[{o.note}]]: "{o.quote}"',
     ]
-    return tuple(lines)
+    return lines
 
 
-def _route_decision(r: _Router, d: Decision) -> None:
-    """Add the decision to the quarter's log and, if known, to its project page."""
+def _decision_page(r: _Router, d: Decision) -> str:
+    """Create the decision's own page (review "make page") and return its slug."""
+    slug = decision_slug(
+        d.title,
+        lambda s: (
+            r.entities.get(s) is not None
+            or path_for(s) in r.created
+            or r.exists(path_for(s))
+        ),
+    )
+    meta = {"type": "decision", "title": d.title, "date": r.date, "status": "decided"}
+    text = "\n".join(
+        [
+            f"---\n{yaml.safe_dump(meta, sort_keys=False)}---",
+            f"# {d.title}",
+            "",
+            *_decision_details(r, d),
+            "",
+            "## Context",
+            "",
+            "## Consequences",
+            "",
+        ]
+    )
+    r.create(path_for(slug), text)
+    return slug
+
+
+def _route_decision(r: _Router, d: Decision, own_page: bool) -> None:
+    """Add the decision to the quarter's log and, if known, to its project page.
+
+    With `own_page` the details go on the decision's page and the log keeps a short
+    entry (title, when, page link); otherwise the log holds the full block.
+    """
     path = decision_log_path(r.date)
     quarter = f"{r.date.year} Q{(r.date.month - 1) // 3 + 1}"
     r.create(path, f"---\ntype: decision-log\n---\n# Decisions {quarter}\n")
-    r.append(path, f"## {r.date}", *_decision_entry(r, d))
+    if own_page:
+        slug = _decision_page(r, d)
+        entry = [_when(r, d), f"- **Page:** [[{slug}]]"]
+        see = slug
+    else:
+        entry = _decision_details(r, d)
+        see = path.rsplit("/", 1)[-1].removesuffix(".md")
+    r.append(path, f"## {r.date}", "", f"### {d.title}", *entry)
     if project := r.resolve(d.project, EntityKind.PROJECT):
         o = origin_of(r.note, d.line)
-        log = path.rsplit("/", 1)[-1].removesuffix(".md")
-        r.append(r.page(project), DECISIONS, o.bullet(f"{d.title} (see [[{log}]])"))
+        r.append(r.page(project), DECISIONS, o.bullet(f"{d.title} (see [[{see}]])"))
 
 
 def route_facts(
@@ -207,8 +261,12 @@ def route_facts(
     facts: dict[str, SectionFacts],
     entities: EntityIndex,
     exists: Callable[[str], bool],
+    decision_pages: Collection[int] = (),
 ) -> tuple[list[Edit], list[str]]:
     """Turn every section's facts into edits. `exists(path)` checks the vault.
+
+    `decision_pages` holds the note lines of decisions the user wants on their own
+    page (review "make page").
 
     Returns:
         (edits, warnings). Sections are routed in note order, facts in answer order.
@@ -216,11 +274,15 @@ def route_facts(
     if note.date is None:
         return [], [f"{note.path}: no date, so its facts are not routed"]
     r = _Router(note, entities, exists)
-    warnings: list[str] = []
+    found = {d.line for f in facts.values() for d in f.decisions}
+    warnings = [
+        f"{note.path}:{line}: no decision found on this line any more; no page made"
+        for line in sorted(set(decision_pages) - found)
+    ]
     for key in sorted(facts, key=int):
         f = facts[key]
         for d in f.decisions:
-            _route_decision(r, d)
+            _route_decision(r, d, own_page=d.line in decision_pages)
         for w in f.wins:
             o = origin_of(note, w.line)
             project = r.resolve(w.project, EntityKind.PROJECT)

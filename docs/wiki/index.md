@@ -21,6 +21,7 @@ One note per concept. Template: `learnings/_template.md`.
 - [[learnings/structured-extraction-with-checks|Structured extraction with code checks]]: schema output, code repairs vs retries, scripted model, local-model loops
 - [[learnings/send-fan-out-and-reducers|Send fan-out and reducers]]: one `extract` per section in parallel, merge by key, retry one branch
 - [[learnings/interrupt-and-the-runner|interrupt() and our own runner]]: pause/resume with any checkpointer, nodes re-run on resume, allow-listing our types
+- [[learnings/review-loop|The review loop]]: conditional edges back from `review`, one round per resume, recursion limit per invoke
 
 ## Decisions
 

@@ -4,9 +4,13 @@
         ↓
     assign_ids → track_tasks ─┬─ Send → extract (one per section with new prose) ─┐
                               └─ (no new prose) ─────────────────────────────────┴→ route → render
-    render → review (interrupt: the user approves, approves some, or rejects) → END
+    render → review (interrupt) ──approve / reject──→ END
+               ├─ revise ────→ extract (again, with the feedback) → route → render → review
+               ├─ make_page ─→ route  (a decision gets its own page)
+               └─ edit ──────→ render (the user's own text for one page)
 
-Nothing is written to the vault yet; 3d adds `apply` after review. The graph is compiled
+Each loop ends at a fresh review, so approval is always for the final diffs. Nothing
+is written to the vault yet; 3d adds `apply` after review. The graph is compiled
 without a checkpointer: `langgraph dev`/Studio and the Agent Server bring their own, and
 `runner.py` compiles `builder` with ours (decision 0005).
 """
@@ -38,6 +42,8 @@ builder.add_conditional_edges("track_tasks", nodes.fan_out, ["extract", "route"]
 builder.add_edge("extract", "route")
 builder.add_edge("route", "render")
 builder.add_edge("render", "review")
-builder.add_edge("review", END)
+builder.add_conditional_edges(
+    "review", nodes.after_review, ["extract", "route", "render", END]
+)
 
 graph = builder.compile(name="ingest")

@@ -11,6 +11,7 @@ Newest first. One entry per session, 2–5 bullets: what was done, what was lear
 - Fixed before 3b commit: empty bullets are not prose, so unfilled sections skip the model (4 calls → 1); task people now come from names (title/alias, longest match first) in the task, its parent bullet and the `###` heading ("1:1 with Joanna"); a name two people share links neither and is warned. 341 unit tests pass.
 - Memory for user suggestions: none yet beyond aliases. Proposed vault files (`90_meta/rules.md` + aliases), saved via approved diffs from a "remember this" review option in 3c; compared with LangSmith Context Hub (cloud, team-oriented) and kept vault-first with Context Hub as a later option.
 - 3b + fixes approved and committed (`37d3638`) with decision 0005.
+- **3c-1 written (awaiting review):** review answers revise / make_page / edit loop back to extract / route / render and end at a fresh review (design in [[decisions/0004-ingest-graph-design|0004]]). 363 unit tests pass. Real Nemotron run on the scratch vault: make page 0s, edit 0s, editing `tasks.json` refused, revise 52s (dropped the edit with a warning), approve → 11 digests. Found and fixed: file IDs moved between rounds (now by path); a flaky test relied on the order of parallel model calls. Learned: [[learnings/review-loop|the review loop]].
 - Next: 3c (revise loop, edit, "make page", people/new-project questions, win candidates, remember).
 
 ## 2026-10-13

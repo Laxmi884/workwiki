@@ -18,7 +18,13 @@ from llm_wiki.domain.facts import (
     Win,
 )
 from llm_wiki.entity_index import load_index
-from llm_wiki.routing import INBOX_PATH, origin_of, resolve, route_facts
+from llm_wiki.routing import (
+    INBOX_PATH,
+    decision_slug,
+    origin_of,
+    resolve,
+    route_facts,
+)
 
 NOTE = "00_raw/daily/2026-10-12.md"
 DECISION_LOG = "30_decisions/2026/decisions-2026-q4.md"
@@ -124,6 +130,54 @@ def test_decision_is_a_block_in_the_quarter_log_and_a_line_on_the_project(
     assert heading == "## Decisions"
     assert line.startswith("- 2026-10-12 · Atlas weekly sync with [[person-alex-chen]]")
     assert "Keep the old BI tool until Q1 (see [[decisions-2026-q4]])" in line
+
+
+def test_make_page_moves_the_details_to_the_decisions_own_page(note, entities, exists):
+    decision = Decision(
+        line=23,
+        title="Keep the old BI tool until Q1",
+        rationale="Migration is blocked on the data export.",
+        project="project-atlas",
+    )
+    facts = {"20": SectionFacts(decisions=[decision])}
+    edits, warnings = route_facts(note, facts, entities, exists, decision_pages=[23])
+    assert warnings == []
+    page = "30_decisions/decision-keep-the-old-bi-tool-until-q1.md"
+    (created,) = [e for e in edits if isinstance(e, CreateFile) and e.path == page]
+    assert created.text.startswith(
+        "---\ntype: decision\ntitle: Keep the old BI tool until Q1\n"
+        "date: 2026-10-12\nstatus: decided\n---\n# Keep the old BI tool until Q1\n\n"
+        "- **When:** 2026-10-12, Atlas weekly sync"
+    )
+    assert "- **Rationale:** Migration is blocked on the data export." in created.text
+    assert created.text.endswith("## Context\n\n## Consequences\n")
+
+    ((_, *block),) = [
+        (e.heading, *e.lines)
+        for e in edits
+        if isinstance(e, AppendToSection) and e.path == DECISION_LOG
+    ]
+    assert block[1] == "### Keep the old BI tool until Q1"
+    assert block[3:] == ["- **Page:** [[decision-keep-the-old-bi-tool-until-q1]]"]
+    ((_, line),) = _appends(edits, ATLAS)
+    assert "(see [[decision-keep-the-old-bi-tool-until-q1]])" in line
+
+
+def test_decision_slug_is_short_and_free():
+    taken = {"decision-ship-it", "decision-ship-it-2"}
+    assert decision_slug("Ship it!", taken.__contains__) == "decision-ship-it-3"
+    long = decision_slug(
+        "one two three four five six seven eight nine", lambda s: False
+    )
+    assert long == "decision-one-two-three-four-five-six-seven-eight"
+    assert decision_slug("???", lambda s: False) == "decision-untitled"
+
+
+def test_page_for_a_line_without_a_decision_is_warned(note, entities, exists):
+    _, warnings = route_facts(note, {}, entities, exists, decision_pages=[23])
+    assert warnings == [
+        f"{NOTE}:23: no decision found on this line any more; no page made"
+    ]
 
 
 def test_two_decisions_share_the_date_heading_and_no_rationale_is_said(

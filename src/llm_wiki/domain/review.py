@@ -20,6 +20,9 @@ class ReviewFile(BaseModel):
         change: "new" (file is created) or "changed".
         digest: The `FileDiff` digest; approval is for exactly this change.
         diff: Unified diff to show.
+        editable: Whether an "edit" answer may replace its text (wiki pages only; not
+            the raw note or code-owned `90_meta/*.json`).
+        after_text: The proposed full text, the starting point for an edit.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -29,16 +32,23 @@ class ReviewFile(BaseModel):
     change: Literal["new", "changed"]
     digest: str
     diff: str
+    editable: bool = False
+    after_text: str = ""
 
 
 class ReviewDecision(BaseModel):
-    """A decision found in the note (3c adds "make page")."""
+    """A decision found in the note.
+
+    Attributes:
+        page: Whether it gets its own page (a "make_page" answer).
+    """
 
     model_config = ConfigDict(frozen=True)
 
     id: str
     title: str
     line: int
+    page: bool = False
 
 
 class ReviewInboxItem(BaseModel):
@@ -56,9 +66,12 @@ class ReviewRequest(BaseModel):
     Attributes:
         note: The ingested note.
         files: Proposed changes, one per file.
-        decisions: Decisions found (shown; answers come in 3c).
-        inbox: Unmatched facts (shown; answers come in 3c).
+        decisions: Decisions found; "make_page" gives one its own page.
+        inbox: Unmatched facts (shown; answers come in 3c-2).
         warnings: Problems found along the way.
+        revisions_left: How many more "revise" answers are allowed.
+        can_revise: False when the note has no prose for the model to read again.
+        edited: Paths whose text is the user's own (from "edit" answers).
         error: Why the previous answer was not accepted, if it wasn't.
     """
 
@@ -69,29 +82,67 @@ class ReviewRequest(BaseModel):
     decisions: tuple[ReviewDecision, ...] = ()
     inbox: tuple[ReviewInboxItem, ...] = ()
     warnings: tuple[str, ...] = ()
+    revisions_left: int = 0
+    can_revise: bool = False
+    edited: tuple[str, ...] = ()
     error: str | None = None
 
 
+Action = Literal["approve", "reject", "revise", "make_page", "edit"]
+
+# Which optional fields each action takes ("reject" is the file list of an approval).
+_FIELDS: dict[str, set[str]] = {
+    "approve": {"reject"},
+    "reject": set(),
+    "revise": {"feedback"},
+    "make_page": {"decisions"},
+    "edit": {"file", "text"},
+}
+_REQUIRED: dict[str, set[str]] = {
+    "revise": {"feedback"},
+    "make_page": {"decisions"},
+    "edit": {"file", "text"},
+}
+
+
 class ReviewAnswer(BaseModel):
-    """The user's answer.
+    """The user's answer: one action, with the fields that action takes.
 
     Examples:
-        {"action": "approve"}                     everything
-        {"action": "approve", "reject": ["f2"]}   all but f2
-        {"action": "reject"}                      nothing is written
+        {"action": "approve"}                                  everything
+        {"action": "approve", "reject": ["f2"]}                all but f2
+        {"action": "reject"}                                   nothing is written
+        {"action": "revise", "feedback": "Also note X"}        re-read the note
+        {"action": "make_page", "decisions": ["d1"]}           d1 gets its own page
+        {"action": "edit", "file": "f4", "text": "..."}        f4's full new text
 
     Attributes:
-        action: "approve" or "reject".
-        reject: File IDs to leave out of an approval.
+        action: What to do.
+        reject: approve: file IDs to leave out.
+        feedback: revise: what the model got wrong or missed.
+        decisions: make_page: decision IDs.
+        file: edit: the file ID.
+        text: edit: the file's complete new text.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    action: Literal["approve", "reject"]
+    action: Action
     reject: tuple[str, ...] = Field(default=())
+    feedback: str | None = None
+    decisions: tuple[str, ...] = Field(default=())
+    file: str | None = None
+    text: str | None = None
 
     @model_validator(mode="after")
-    def _reject_only_with_approve(self) -> ReviewAnswer:
-        if self.action == "reject" and self.reject:
-            raise ValueError('"reject" lists files only with "action": "approve"')
+    def _fields_match_action(self) -> ReviewAnswer:
+        given = {
+            name
+            for name in ("reject", "feedback", "decisions", "file", "text")
+            if getattr(self, name) not in (None, (), "")
+        }
+        if extra := sorted(given - _FIELDS[self.action]):
+            raise ValueError(f'{", ".join(extra)} not allowed with "{self.action}"')
+        if missing := sorted(_REQUIRED.get(self.action, set()) - given):
+            raise ValueError(f'"{self.action}" needs {", ".join(missing)}')
         return self

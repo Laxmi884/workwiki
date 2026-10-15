@@ -20,6 +20,7 @@ from llm_wiki.domain.changes import (
     Edit,
     FileDiff,
     ReplaceFile,
+    UserText,
     sha256_text,
 )
 from llm_wiki.tasks_syntax import append_id
@@ -140,7 +141,7 @@ def apply_edit(text: str | None, edit: Edit) -> str:
     Raises:
         RenderError: The edit doesn't fit the file (exists / missing / not a task line).
     """
-    if isinstance(edit, ReplaceFile):
+    if isinstance(edit, ReplaceFile | UserText):
         return edit.text
     if isinstance(edit, CreateFile):
         if text is not None:
@@ -177,12 +178,14 @@ def render_file(
 ) -> FileDiff | None:
     """Apply `edits` (all for `path`) to `before`. Returns None if nothing changes.
 
-    `CreateFile` edits run first, so a page can be created and appended to in one batch.
+    `CreateFile` edits run first, so a page can be created and appended to in one batch;
+    `UserText` (the user's own text) runs last and wins.
 
     Raises:
         RenderError: An edit doesn't fit, or a raw note would change beyond task IDs.
     """
-    ordered = sorted(edits, key=lambda e: not isinstance(e, CreateFile))  # stable
+    rank = {CreateFile: 0, UserText: 2}
+    ordered = sorted(edits, key=lambda e: rank.get(type(e), 1))  # stable
     text = before
     for edit in ordered:
         text = apply_edit(text, edit)

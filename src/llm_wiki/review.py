@@ -5,12 +5,12 @@ Pure, so the `review` node only pauses and loops; see `ingest/nodes.py`.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Collection, Iterable, Mapping, Sequence
 from typing import Any
 
 import pydantic
 
-from llm_wiki.domain.changes import AppendToSection, Edit, FileDiff
+from llm_wiki.domain.changes import AppendToSection, Edit, FileDiff, is_wiki_page
 from llm_wiki.domain.facts import SectionFacts
 from llm_wiki.domain.review import (
     ReviewAnswer,
@@ -21,6 +21,8 @@ from llm_wiki.domain.review import (
 )
 from llm_wiki.routing import INBOX_PATH
 
+MAX_REVISIONS = 3
+
 
 def build_request(
     note: str,
@@ -28,8 +30,19 @@ def build_request(
     facts: Mapping[str, SectionFacts],
     fact_edits: Iterable[Edit],
     warnings: Sequence[str],
+    *,
+    decision_pages: Collection[int] = (),
+    revisions: int = 0,
+    can_revise: bool = False,
+    edited: Collection[str] = (),
 ) -> ReviewRequest:
-    """Turn the rendered diffs and facts into what the user sees."""
+    """Turn the rendered diffs and facts into what the user sees.
+
+    Files are listed by path, so their IDs stay the same across review rounds while the
+    same files are proposed. Warnings are listed once each (a revise round can repeat
+    earlier ones).
+    """
+    diffs = sorted(diffs, key=lambda d: d.path)
     files = tuple(
         ReviewFile(
             id=f"f{i}",
@@ -37,12 +50,16 @@ def build_request(
             change="new" if d.before_sha256 is None else "changed",
             digest=d.digest,
             diff=d.unified_diff,
+            editable=is_wiki_page(d.path),
+            after_text=d.after_text if is_wiki_page(d.path) else "",
         )
         for i, d in enumerate(diffs, start=1)
     )
     found = [d for key in sorted(facts, key=int) for d in facts[key].decisions]
     decisions = tuple(
-        ReviewDecision(id=f"d{i}", title=d.title, line=d.line)
+        ReviewDecision(
+            id=f"d{i}", title=d.title, line=d.line, page=d.line in decision_pages
+        )
         for i, d in enumerate(found, start=1)
     )
     inbox_lines = [
@@ -60,8 +77,18 @@ def build_request(
         files=files,
         decisions=decisions,
         inbox=inbox,
-        warnings=tuple(warnings),
+        warnings=tuple(dict.fromkeys(warnings)),
+        revisions_left=max(MAX_REVISIONS - revisions, 0) if can_revise else 0,
+        can_revise=can_revise,
+        edited=tuple(p for p in edited if p in {d.path for d in diffs}),
     )
+
+
+def _unknown(kind: str, given: Sequence[str], valid: Sequence[str]) -> str | None:
+    unknown = [i for i in given if i not in valid]
+    if not unknown:
+        return None
+    return f"unknown {kind} ids {unknown}; valid ids: {', '.join(valid) or 'none'}"
 
 
 def check_answer(
@@ -81,16 +108,40 @@ def check_answer(
             for e in exc.errors()
         )
         return None, f"invalid answer ({problems})"
-    known = {f.id for f in request.files}
-    unknown = [i for i in answer.reject if i not in known]
-    if unknown:
-        valid = ", ".join(f.id for f in request.files)
-        return None, f"unknown file ids {unknown}; valid ids: {valid}"
-    return answer, None
+
+    file_ids = [f.id for f in request.files]
+    if answer.action == "approve":
+        error = _unknown("file", answer.reject, file_ids)
+    elif answer.action == "revise":
+        if not request.can_revise:
+            error = "nothing to revise: the note has no prose for the model to read"
+        elif request.revisions_left == 0:
+            error = (
+                f"revise limit reached ({MAX_REVISIONS}); approve, edit, make_page "
+                "or reject"
+            )
+        else:
+            error = None
+    elif answer.action == "make_page":
+        error = _unknown(
+            "decision", answer.decisions, [d.id for d in request.decisions]
+        )
+    elif answer.action == "edit":
+        error = _unknown("file", [answer.file or ""], file_ids)
+        if error is None:
+            (target,) = [f for f in request.files if f.id == answer.file]
+            if not target.editable:
+                error = (
+                    f"{target.id} is {target.path}, which only code writes; "
+                    "edit a wiki page instead"
+                )
+    else:
+        error = None
+    return (None, error) if error else (answer, None)
 
 
 def approved_digests(request: ReviewRequest, answer: ReviewAnswer) -> list[str]:
     """Return the digests of the files the answer approves (none for "reject")."""
-    if answer.action == "reject":
+    if answer.action != "approve":
         return []
     return [f.digest for f in request.files if f.id not in answer.reject]

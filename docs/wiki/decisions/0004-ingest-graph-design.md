@@ -57,6 +57,15 @@ extractions, not only approve or reject.
   concept pages; wins and help also on the quarter's impact page. Names that don't
   resolve go to `05_generated/inbox.md` (never dropped; phase 3 questions). A linked entity without
   a page gets a stub; a slug the model made up does not.
+- Review loop (added 2026-10-14, 3c-1): besides approve/reject the review takes revise
+  (re-extract every prose section with all feedback so far; max 3), make_page and edit, one
+  action per answer; each loops back only as far as needed (extract / route / render) and ends
+  at a fresh review, so approval is always for the final digests. Make page: the decision's
+  details move to `30_decisions/decision-<slug>.md` (slug from the title, `-2` if taken, plus
+  empty Context/Consequences headings); the quarterly log keeps title, When and a page link.
+  Edit: the user sends a wiki page's full new text (not raw notes, not `90_meta/*.json`); a
+  later revise or make_page drops edits with a warning. Review files are listed by path so
+  their IDs stay stable across rounds.
 - Ingest ledger (added 2026-10-13, 3a): `90_meta/ingest-ledger.json` keeps per note its hash (as
   it will be after its task IDs are added) and a key per prose line ingested. Unchanged note → the
   run stops; edited note → the model sees whole sections but may cite only new lines (old ones

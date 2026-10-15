@@ -8,6 +8,7 @@ Where each edit may write is part of its type (CLAUDE.md, decision 0001):
 - `AppendId` only touches `00_raw/daily/` (the one code-only write to raw notes).
 - `AppendToSection` and `CreateFile` only touch the agent-owned folders.
 - `ReplaceFile` only rewrites code-owned `90_meta/*.json` files (e.g. the task index).
+- `UserText` (the user's own text from the review) only touches agent-owned pages.
 """
 
 from __future__ import annotations
@@ -124,6 +125,28 @@ class CreateFile(BaseModel):
     text: str
 
 
+class UserText(BaseModel):
+    """The user's own full text for a wiki page, from an "edit" answer in the review.
+
+    It replaces whatever the other edits produced for the file, so it is applied last.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    kind: Literal["user_text"] = "user_text"
+    path: WritablePath
+    text: str
+
+
+def is_wiki_page(path: str) -> bool:
+    """Return whether `path` is a page the user may edit in the review (not raw, not json)."""
+    try:
+        _writable_markdown(_vault_relative(path))
+    except ValueError:
+        return False
+    return True
+
+
 class ReplaceFile(BaseModel):
     """Write a whole code-owned file (create or overwrite), e.g. `90_meta/tasks.json`."""
 
@@ -134,9 +157,10 @@ class ReplaceFile(BaseModel):
     text: str
 
 
-# One of the four, chosen by `kind` when parsing a dict.
+# One of these, chosen by `kind` when parsing a dict.
 Edit = Annotated[
-    AppendId | AppendToSection | CreateFile | ReplaceFile, Field(discriminator="kind")
+    AppendId | AppendToSection | CreateFile | ReplaceFile | UserText,
+    Field(discriminator="kind"),
 ]
 
 

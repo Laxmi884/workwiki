@@ -20,7 +20,12 @@ from llm_wiki import extraction, ledger, review, routing, task_tracking
 from llm_wiki.config import get_settings
 from llm_wiki.daily_syntax import parse_daily_note
 from llm_wiki.diffs import VaultReader, render_diffs, vault_reader
-from llm_wiki.domain.changes import RAW_DAILY_FOLDER, ReplaceFile, sha256_text
+from llm_wiki.domain.changes import (
+    RAW_DAILY_FOLDER,
+    ReplaceFile,
+    UserText,
+    sha256_text,
+)
 from llm_wiki.domain.daily import DailyNote
 from llm_wiki.entity_index import load_index
 from llm_wiki.ingest.state import ExtractInput, IngestContext, IngestState
@@ -175,18 +180,25 @@ def route(state: IngestState, runtime: Runtime[IngestContext]) -> dict[str, Any]
         state.get("facts", {}),
         load_index(vault),
         lambda path: read(path) is not None,
+        decision_pages=state.get("decision_pages", []),
     )
     return {"fact_edits": edits, "warnings": warnings}
 
 
 def render(state: IngestState, runtime: Runtime[IngestContext]) -> dict[str, Any]:
-    """Render task, fact and ledger edits into one diff per file (nothing is written).
+    """Render task, fact, user-text and ledger edits into one diff per file.
 
-    The ledger records the note's hash *after* its task IDs are added, so once the
-    diffs are applied the next run sees the note as unchanged.
+    Nothing is written. The user's own text (review "edit") is applied last, so it
+    replaces what the other edits produced for that page. The ledger records the note's
+    hash *after* its task IDs are added, so once the diffs are applied the next run
+    sees the note as unchanged.
     """
     read = vault_reader(vault_path(runtime))
-    edits = [*state.get("task_edits", []), *state.get("fact_edits", [])]
+    edits = [
+        *state.get("task_edits", []),
+        *state.get("fact_edits", []),
+        *(UserText(path=p, text=t) for p, t in state.get("overrides", {}).items()),
+    ]
     diffs, warnings = render_diffs(edits, read)
 
     note = state["note"]
@@ -202,17 +214,30 @@ def render(state: IngestState, runtime: Runtime[IngestContext]) -> dict[str, Any
     return {"diffs": diffs + ledger_diffs, "warnings": warnings + ledger_warnings}
 
 
+def _can_revise(state: IngestState) -> bool:
+    note = state["note"]
+    tasks = extraction.task_lines(note)
+    seen = frozenset(state.get("seen_lines", []))
+    return any(extraction.needs_model(s, tasks, seen) for s in note.sections)
+
+
 def review_changes(state: IngestState) -> dict[str, Any]:
     """Pause for the user's review; ask again, with the reason, until the answer is valid.
 
-    Runs from the top on every resume, so it has no side effects: it only reads state.
+    Runs from the top on every resume, so it has no side effects: it only reads state
+    and returns the update for the chosen action (`after_review` routes on it).
     """
+    overrides = state.get("overrides", {})
     request = review.build_request(
         state["note"].path,
         state.get("diffs", []),
         state.get("facts", {}),
         state.get("fact_edits", []),
         state.get("warnings", []),
+        decision_pages=state.get("decision_pages", []),
+        revisions=state.get("revisions", 0),
+        can_revise=_can_revise(state),
+        edited=list(overrides),
     )
     while True:
         raw = interrupt(request.model_dump(mode="json"))
@@ -220,7 +245,41 @@ def review_changes(state: IngestState) -> dict[str, Any]:
         if answer is not None:
             break
         request = request.model_copy(update={"error": error})
-    return {
-        "review_action": answer.action,
-        "approved": review.approved_digests(request, answer),
-    }
+
+    update: dict[str, Any] = {"review_action": answer.action, "approved": []}
+    dropped = [f"your edit of {p} was dropped by {answer.action}" for p in overrides]
+    if answer.action in ("approve", "reject"):
+        update["approved"] = review.approved_digests(request, answer)
+    elif answer.action == "revise":
+        assert answer.feedback is not None
+        update |= {
+            "feedback": [*state.get("feedback", []), answer.feedback],
+            "revisions": state.get("revisions", 0) + 1,
+            "overrides": {},
+            "warnings": dropped,
+        }
+    elif answer.action == "make_page":
+        lines = {d.line for d in request.decisions if d.id in answer.decisions}
+        pages = sorted({*state.get("decision_pages", []), *lines})
+        update |= {"decision_pages": pages, "overrides": {}, "warnings": dropped}
+    else:  # edit
+        (target,) = [f for f in request.files if f.id == answer.file]
+        assert answer.text is not None
+        update["overrides"] = {**overrides, target.path: answer.text}
+    return update
+
+
+def after_review(state: IngestState) -> list[Send] | str:
+    """Approve/reject end the run; the other answers go back as far as they need.
+
+    revise → extract (the model reads the note again with the feedback),
+    make_page → route (same facts, new places), edit → render (same edits + user text).
+    """
+    action = state.get("review_action")
+    if action == "revise":
+        return fan_out(state)
+    if action == "make_page":
+        return "route"
+    if action == "edit":
+        return "render"
+    return END
