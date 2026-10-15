@@ -3,7 +3,8 @@
 Code prepares the input and checks the output; the model only reads prose.
 
 - Input: the section's prose lines, each numbered with its file line. Tasks (code
-  handles them), blank lines, the `##` heading and fenced code are left out.
+  handles them), blank lines, empty bullets ("- " from the template), the `##`
+  heading and fenced code are left out, so an unfilled section skips the model.
 - Hints: known entity slugs, the section's focus, and every `#win`/`#decision` line.
 - Re-ingest (phase 3a): lines already ingested (`seen`, from the ledger) are shown
   marked `~` as context; only new lines may be cited, and sections without new lines
@@ -16,6 +17,7 @@ Code prepares the input and checks the output; the model only reads prose.
 from __future__ import annotations
 
 import hashlib
+import re
 from collections.abc import Collection, Sequence
 from typing import Any
 
@@ -78,6 +80,10 @@ Answer:
 _TAGS_NEEDED = {"decision": "decisions", "win": "wins"}  # tag → SectionFacts field
 
 
+# A blank line, or a bullet with nothing after it: "-", "- ", "*", "1.".
+_EMPTY_BULLET = re.compile(r"^\s*(?:(?:[-*+]|\d+[.)])\s*)?$")
+
+
 def prose_lines(section: Section, task_lines: set[int]) -> list[tuple[int, str]]:
     """Return (file line, text) for the lines the model reads."""
     lines: list[tuple[int, str]] = []
@@ -87,7 +93,7 @@ def prose_lines(section: Section, task_lines: set[int]) -> list[tuple[int, str]]
         if is_fence(text):
             in_fence = not in_fence
             continue
-        if in_fence or not text.strip() or line_no in task_lines:
+        if in_fence or _EMPTY_BULLET.match(text) or line_no in task_lines:
             continue
         if i == 0 and section.heading:  # the `##` heading itself
             continue

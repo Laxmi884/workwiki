@@ -14,9 +14,9 @@ from typing import Any
 from langchain_core.language_models import BaseChatModel
 from langgraph.graph import END
 from langgraph.runtime import Runtime
-from langgraph.types import Send
+from langgraph.types import Send, interrupt
 
-from llm_wiki import extraction, ledger, routing, task_tracking
+from llm_wiki import extraction, ledger, review, routing, task_tracking
 from llm_wiki.config import get_settings
 from llm_wiki.daily_syntax import parse_daily_note
 from llm_wiki.diffs import VaultReader, render_diffs, vault_reader
@@ -200,3 +200,27 @@ def render(state: IngestState, runtime: Runtime[IngestContext]) -> dict[str, Any
         [ReplaceFile(path=ledger.LEDGER_PATH, text=text)], read
     )
     return {"diffs": diffs + ledger_diffs, "warnings": warnings + ledger_warnings}
+
+
+def review_changes(state: IngestState) -> dict[str, Any]:
+    """Pause for the user's review; ask again, with the reason, until the answer is valid.
+
+    Runs from the top on every resume, so it has no side effects: it only reads state.
+    """
+    request = review.build_request(
+        state["note"].path,
+        state.get("diffs", []),
+        state.get("facts", {}),
+        state.get("fact_edits", []),
+        state.get("warnings", []),
+    )
+    while True:
+        raw = interrupt(request.model_dump(mode="json"))
+        answer, error = review.check_answer(request, raw)
+        if answer is not None:
+            break
+        request = request.model_copy(update={"error": error})
+    return {
+        "review_action": answer.action,
+        "approved": review.approved_digests(request, answer),
+    }

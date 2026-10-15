@@ -67,6 +67,13 @@ def test_only_prose_sections_need_the_model(note):
     }
 
 
+def test_empty_bullets_are_not_prose_so_an_unfilled_section_skips_the_model():
+    body = "## Log\n\n- \n\n## Helped\n-\n* \n1.\n## Learned\n- Cookies need a domain\n"
+    note = parse_daily_note(NOTE, body)
+    wanted = [s.kind for s in note.sections if needs_model(s, task_lines(note))]
+    assert wanted == [SectionKind.LEARNED]
+
+
 def test_tagged_lines(note):
     tasks = task_lines(note)
     meetings = prose_lines(_section(note, SectionKind.MEETINGS), tasks)

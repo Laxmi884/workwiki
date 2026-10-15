@@ -92,12 +92,47 @@ class EntityIndex:
             and any(_contains_phrase(text, alias) for alias in entity.aliases)
         )
 
+    def name_mentions(
+        self, text: str, kind: EntityKind
+    ) -> tuple[tuple[Entity, ...], tuple[str, ...]]:
+        """Entities of `kind` whose title or an alias is in `text` as whole words.
+
+        Longer names are matched first and taken out of the text, so "Alex Chen" is
+        not also read as a shared "Alex". A name shared by two or more entities of
+        `kind` links none of them; it is returned as ambiguous instead. Links and
+        inline code are ignored.
+
+        Returns:
+            (entities in index order, ambiguous names)
+        """
+        text = plain_text(text)
+        found: set[str] = set()
+        ambiguous: list[str] = []
+        names = sorted(self.by_name.items(), key=lambda item: -len(item[0]))
+        for name, slugs in names:
+            ours = [s for s in slugs if self.entities[s].kind is kind]
+            if not ours:
+                continue
+            text, hits = _phrase_re(name).subn(" ", text)
+            if not hits:
+                continue
+            if len(ours) == 1:
+                found.add(ours[0])
+            else:
+                ambiguous.append(name)
+        entities = tuple(e for s, e in self.entities.items() if s in found)
+        return entities, tuple(ambiguous)
+
+
+def _phrase_re(phrase: str) -> re.Pattern[str]:
+    """Match `phrase` as whole words, any case, any spacing."""
+    words = (re.escape(w) for w in phrase.split())
+    return re.compile(r"(?<!\w)" + r"\s+".join(words) + r"(?!\w)", re.IGNORECASE)
+
 
 def _contains_phrase(text: str, phrase: str) -> bool:
     """Return whether `phrase` is in `text` as whole words (any case, any spacing)."""
-    words = (re.escape(w) for w in phrase.split())
-    pattern = r"(?<!\w)" + r"\s+".join(words) + r"(?!\w)"
-    return re.search(pattern, text, re.IGNORECASE) is not None
+    return _phrase_re(phrase).search(text) is not None
 
 
 def _aliases(raw: Any, path: str, warnings: list[str]) -> tuple[str, ...]:

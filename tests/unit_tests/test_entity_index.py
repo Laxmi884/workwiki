@@ -152,6 +152,29 @@ def test_alias_mentions_any_kind():
     assert [e.slug for e in found] == ["project-atlas", "person-alex-chen"]
 
 
+ALEX_KIM = (
+    "20_people/person-alex-kim.md",
+    "---\ntitle: Alex Kim\naliases: [Alex]\n---\n",
+)
+
+
+@pytest.mark.parametrize(
+    ("text", "expected", "ambiguous"),
+    [
+        ("Send notes to Alex Chen", ["person-alex-chen"], []),  # title
+        ("ask AC and alex kim", ["person-alex-chen", "person-alex-kim"], []),
+        ("Ping Alex", [], ["alex"]),  # shared alias: nobody
+        ("Ship the Atlas beta", [], []),  # projects are filtered out
+        ("Read [[person-alex-chen]] notes", [], []),  # links are not names
+    ],
+)
+def test_name_mentions_for_people(text, expected, ambiguous):
+    index = build_index([ALEX, ALEX_KIM, ATLAS])
+    found, unclear = index.name_mentions(text, EntityKind.PERSON)
+    assert [e.slug for e in found] == expected
+    assert list(unclear) == ambiguous
+
+
 # --- loading from disk ---------------------------------------------------------
 
 

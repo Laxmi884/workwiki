@@ -2,6 +2,16 @@
 
 Newest first. One entry per session, 2–5 bullets: what was done, what was learned, what's next.
 
+## 2026-10-14
+
+- Deployment researched and tested ([[decisions/0005-surfaces-and-deployment|0005]]): LangSmith hosted deployment needs Plus; the self-hosted Agent Server (images already local) runs free in "lite mode" with just a LangSmith key. First test failed only because the `.env` value is single-quoted and the shell kept the quotes. Decision: own runner + SQLite by default, servers optional.
+- **3b written (awaiting review):** `domain/review.py`, `review.py`, `review_changes` node (asks again on an invalid answer), `runner.py` (`IngestRunner.start/resume/status`, `in_memory()`, serializer allow-listing all domain types). 333 unit tests pass. Learned: [[learnings/interrupt-and-the-runner|interrupt() and our own runner]].
+- Real runs on `~/WorkDev` (Nemotron): terminal via the runner (10 files, bad answer asked again, approve-all-but-inbox → 9 approved) and `langgraph dev` (thread `interrupted`, resume "reject" works). Nothing written.
+- First real daily note (user's own, on a scratch copy of `~/WorkDev`): IDs and statuses right for all 11 tasks, but no project or person links (plain-text names, no pages), done work not offered as wins, a blocker in a sub-bullet lost, and empty `- ` sections still sent to the model.
+- Fixed before 3b commit: empty bullets are not prose, so unfilled sections skip the model (4 calls → 1); task people now come from names (title/alias, longest match first) in the task, its parent bullet and the `###` heading ("1:1 with Joanna"); a name two people share links neither and is warned. 341 unit tests pass.
+- Memory for user suggestions: none yet beyond aliases. Proposed vault files (`90_meta/rules.md` + aliases), saved via approved diffs from a "remember this" review option in 3c; compared with LangSmith Context Hub (cloud, team-oriented) and kept vault-first with Context Hub as a later option.
+- Next: user review of 3b + these fixes, then 3c (revise loop, edit, "make page", people/new-project questions, win candidates, remember).
+
 ## 2026-10-13
 
 - 2c approved. Agreed a people-clarification step for unlinked names (added to [[decisions/0004-ingest-graph-design|0004]]): asked in the review, confirmed names become aliases automatically, alias matches are shown so they can be changed, same-name people are asked each time.

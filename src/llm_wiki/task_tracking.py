@@ -93,6 +93,29 @@ def map_project(
     return None, None
 
 
+# --- people ----------------------------------------------------------------------
+
+
+def task_people(task: Task, entities: EntityIndex) -> tuple[tuple[str, ...], list[str]]:
+    """Return (person slugs, ambiguous names) for a task.
+
+    People come from, in order: `[[person-…]]` links on the task line, person names
+    (title or alias) in the task text, then the same in the parent bullet and the `###`
+    heading ("### 1:1 with Joanna" gives every task under it Joanna). A name shared by
+    two people links neither.
+    """
+    slugs = [s for s in task.links if kind_of(s) is EntityKind.PERSON]
+    ambiguous: list[str] = []
+    for text in (task.text, task.parent, task.subheading):
+        if not text:
+            continue
+        slugs += [s for s in find_links(text) if kind_of(s) is EntityKind.PERSON]
+        found, unclear = entities.name_mentions(text, EntityKind.PERSON)
+        slugs += [e.slug for e in found]
+        ambiguous += unclear
+    return tuple(dict.fromkeys(slugs)), list(dict.fromkeys(ambiguous))
+
+
 # --- the index -------------------------------------------------------------------
 
 
@@ -134,6 +157,7 @@ def _merge(
     note: DailyNote,
     project: str | None,
     mapped_by: MappedBy | None,
+    people: tuple[str, ...],
 ) -> TaskRecord:
     assert note.date is not None
     seen = TaskRecord(
@@ -141,7 +165,7 @@ def _merge(
         status=task.status,
         project=project,
         mapped_by=mapped_by,
-        people=tuple(s for s in task.links if kind_of(s) is EntityKind.PERSON),
+        people=people,
         tags=task.tags,
         first_seen=note.date,
         last_seen=note.date,
@@ -180,6 +204,7 @@ def update_task_index(
         return index, [f"{note.path}: no date, so its tasks are not tracked"]
 
     tasks = dict(index.tasks)
+    warnings: list[str] = []
     project_of: dict[tuple[SectionKind | None, str], str] = {}  # this note's tasks
     for task in note.tasks:
         task_id = task.id or new_ids.get(task.line_no)
@@ -189,5 +214,12 @@ def update_task_index(
         project, mapped_by = map_project(task, entities, inherited)
         if project is not None:
             project_of[(task.section, task.text)] = project
-        tasks[task_id] = _merge(tasks.get(task_id), task, note, project, mapped_by)
-    return index.model_copy(update={"tasks": tasks}), []
+        people, ambiguous = task_people(task, entities)
+        warnings += [
+            f"{note.path}:{task.line_no}: {name!r} names more than one person; not linked"
+            for name in ambiguous
+        ]
+        tasks[task_id] = _merge(
+            tasks.get(task_id), task, note, project, mapped_by, people
+        )
+    return index.model_copy(update={"tasks": tasks}), warnings

@@ -177,6 +177,51 @@ def test_people_and_tags_are_recorded_for_unmapped_tasks():
     assert (record.people, record.tags) == (("person-sam-ortiz",), ("blocked",))
 
 
+PEOPLE = build_index(
+    [
+        ATLAS_PAGE,
+        (
+            "20_people/person-joanna-reed.md",
+            "---\ntitle: Joanna Reed\naliases: [Joanna]\n---\n",
+        ),
+        ("20_people/person-eugene-park.md", "---\naliases: [Eugene]\n---\n"),
+        ("20_people/person-sam-ortiz.md", "---\naliases: [Sam]\n---\n"),
+        ("20_people/person-sam-lee.md", "---\naliases: [Sam]\n---\n"),
+    ]
+)
+
+
+def test_people_from_names_parent_and_meeting_heading():
+    note = _note(
+        "2026-10-14",
+        "## Tasks\n"
+        "- [ ] Report changes for Eugene\n"
+        "## Meetings\n"
+        "### 1:1 with Joanna\n"
+        "- AI use cases with [[person-sam-ortiz]]\n"
+        "    - [ ] Write the use-case doc\n"
+        "- [ ] Give heat maps to Eugene\n",
+    )
+    ids = assign_ids(note, set())[0]
+    index, warnings = update_task_index(load_task_index(None)[0], note, ids, PEOPLE)
+    people = {r.text: r.people for r in index.tasks.values()}
+    assert people == {
+        "Report changes for Eugene": ("person-eugene-park",),
+        "Write the use-case doc": ("person-sam-ortiz", "person-joanna-reed"),
+        "Give heat maps to Eugene": ("person-eugene-park", "person-joanna-reed"),
+    }
+    assert warnings == []
+
+
+def test_link_comes_first_and_a_shared_name_is_warned_not_linked():
+    note = _note("2026-10-14", "## Tasks\n- [ ] Ask Sam and [[person-joanna-reed]]\n")
+    ids = assign_ids(note, set())[0]
+    index, warnings = update_task_index(load_task_index(None)[0], note, ids, PEOPLE)
+    (record,) = index.tasks.values()
+    assert record.people == ("person-joanna-reed",)
+    assert warnings == [f"{note.path}:5: 'sam' names more than one person; not linked"]
+
+
 def test_people_and_tags_follow_the_note_that_sets_the_status():
     blocked = _one("2026-10-12", " ", "Ping [[person-sam-ortiz]] #blocked")
     unblocked = _one("2026-10-13", " ", "Ping [[person-sam-ortiz]]")

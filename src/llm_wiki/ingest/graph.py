@@ -4,8 +4,11 @@
         ↓
     assign_ids → track_tasks ─┬─ Send → extract (one per section with new prose) ─┐
                               └─ (no new prose) ─────────────────────────────────┴→ route → render
+    render → review (interrupt: the user approves, approves some, or rejects) → END
 
-Nothing is written to the vault yet; phase 3 adds review (`interrupt`) and apply.
+Nothing is written to the vault yet; 3d adds `apply` after review. The graph is compiled
+without a checkpointer: `langgraph dev`/Studio and the Agent Server bring their own, and
+`runner.py` compiles `builder` with ours (decision 0005).
 """
 
 from __future__ import annotations
@@ -26,6 +29,7 @@ builder.add_node("track_tasks", nodes.track_tasks)
 builder.add_node("extract", nodes.extract, retry_policy=RetryPolicy(max_attempts=3))
 builder.add_node("route", nodes.route)
 builder.add_node("render", nodes.render)
+builder.add_node("review", nodes.review_changes)
 
 builder.add_edge(START, "load_note")
 builder.add_conditional_edges("load_note", nodes.after_load, ["assign_ids", END])
@@ -33,6 +37,7 @@ builder.add_edge("assign_ids", "track_tasks")
 builder.add_conditional_edges("track_tasks", nodes.fan_out, ["extract", "route"])
 builder.add_edge("extract", "route")
 builder.add_edge("route", "render")
-builder.add_edge("render", END)
+builder.add_edge("render", "review")
+builder.add_edge("review", END)
 
 graph = builder.compile(name="ingest")

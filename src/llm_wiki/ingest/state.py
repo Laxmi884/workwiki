@@ -46,6 +46,8 @@ class IngestState(TypedDict, total=False):
         feedback: The user's revise messages (phase 3 review).
         fact_edits: Edits from all facts, rebuilt each round (route).
         diffs: One proposed diff per changed file (render).
+        review_action: The user's answer, "approve" or "reject" (review).
+        approved: Digests of the approved diffs; only these may be written (3d).
         warnings: Problems found anywhere; nodes append.
     """
 
@@ -60,6 +62,8 @@ class IngestState(TypedDict, total=False):
     feedback: list[str]
     fact_edits: list[Edit]
     diffs: list[FileDiff]
+    review_action: str
+    approved: list[str]
     warnings: Annotated[list[str], operator.add]
 
 
