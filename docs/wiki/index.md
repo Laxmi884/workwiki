@@ -32,4 +32,4 @@ Numbered, one per decision. Template: `decisions/_template.md`.
 - [[decisions/0003-model-selection|0003]]: any provider via one `provider:model` string; `WIKI_MODEL` default, Studio assistant / run context overrides
 - [[decisions/0004-ingest-graph-design|0004]]: ingest graph: code around a narrow extract step, edits → diffs with digests, review loop with feedback
 - [[decisions/0005-surfaces-and-deployment|0005]]: own runner + SQLite by default; Telegram/Slack/CLI as adapters; self-hosted Agent Server (free lite mode) and LangSmith Deployment optional
-- [[decisions/0006-agent-ingest-spike|0006: Ingest by a deep agent with code guardrails (spike, proposed)]]
+- [[decisions/0006-agent-ingest-spike|0006]]: (proposed) ingest by a deep agent that stages edits checked by code; spike compares it with the 0004 pipeline
