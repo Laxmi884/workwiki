@@ -60,6 +60,9 @@ class IngestState(TypedDict, total=False):
         review_action: The user's last answer: "approve" or "reject" (the run ends),
             or "revise", "make_page", "edit", "answer" (it loops back).
         approved: Digests of the approved diffs; only these may be written (3d).
+        written: Paths `apply` wrote (or found already up to date).
+        apply_conflicts: Approved paths that changed since the review; nothing was
+            written and the run re-renders for a fresh review.
         chosen_wins: Lines of done tasks the user picked as wins (review "answer").
         new_entities: Pages the user asked for ("new"); proposed, not yet written.
         new_aliases: Slug → names the user said are that entity.
@@ -86,6 +89,8 @@ class IngestState(TypedDict, total=False):
     diffs: list[FileDiff]
     review_action: str
     approved: list[str]
+    written: list[str]
+    apply_conflicts: list[str]
     chosen_wins: list[int]
     new_entities: list[Entity]
     new_aliases: dict[str, list[str]]

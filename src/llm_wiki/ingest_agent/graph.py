@@ -3,7 +3,8 @@
     load_note ──(unchanged / broken ledger)──→ END
         ↓
     assign_ids → track_tasks → stage (ingest deep agent) → render → review
-    review ──approve / reject──→ END
+    review ──reject──→ END
+           ├─ approve ─→ apply (approved files only) → END, or render if they changed
            ├─ revise ─→ stage (feedback + the previous filing)
            └─ edit / make_page / answer ─→ render  (spike: no new edits, fresh review)
 
@@ -135,8 +136,10 @@ def stage(state: AgentIngestState, runtime: Runtime[IngestContext]) -> dict[str,
 
 
 def after_review(state: AgentIngestState) -> str:
-    """approve/reject end; revise asks the agent again; anything else re-renders."""
+    """Apply on approve, end on reject, ask the agent again on revise, else re-render."""
     action = state.get("review_action")
+    if action == "approve" and state.get("approved"):
+        return "apply"
     if action in ("approve", "reject"):
         return END
     return "stage" if action == "revise" else "render"
@@ -151,6 +154,7 @@ builder.add_node("track_tasks", nodes.track_tasks)
 builder.add_node("stage", stage, retry_policy=RetryPolicy(max_attempts=2))
 builder.add_node("render", nodes.render)
 builder.add_node("review", nodes.review_changes)
+builder.add_node("apply", nodes.apply)
 
 builder.add_edge(START, "load_note")
 builder.add_conditional_edges("load_note", nodes.after_load, ["assign_ids", END])
@@ -158,6 +162,7 @@ builder.add_edge("assign_ids", "track_tasks")
 builder.add_edge("track_tasks", "stage")
 builder.add_edge("stage", "render")
 builder.add_edge("render", "review")
-builder.add_conditional_edges("review", after_review, ["stage", "render", END])
+builder.add_conditional_edges("review", after_review, ["stage", "render", "apply", END])
+builder.add_conditional_edges("apply", nodes.after_apply, ["render", END])
 
 graph = builder.compile(name="ingest_agent")

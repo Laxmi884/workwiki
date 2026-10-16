@@ -62,6 +62,7 @@ class RunResult(BaseModel):
         review: What to show the user while status is "review".
         action: The accepted answer once done: "approve" or "reject".
         approved: Digests of approved diffs once done.
+        written: Vault paths written by apply once done.
         warnings: Everything the run reported.
     """
 
@@ -72,6 +73,7 @@ class RunResult(BaseModel):
     review: ReviewRequest | None = None
     action: str | None = None
     approved: tuple[str, ...] = ()
+    written: tuple[str, ...] = ()
     warnings: tuple[str, ...] = ()
 
 
@@ -152,5 +154,6 @@ class IngestRunner:
             status="done",
             action=values.get("review_action"),
             approved=tuple(values.get("approved", [])),
+            written=tuple(values.get("written", [])),
             warnings=warnings,
         )

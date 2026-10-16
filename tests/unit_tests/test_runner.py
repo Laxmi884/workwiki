@@ -37,8 +37,8 @@ def model(monkeypatch):
 
 
 @pytest.fixture
-def runner(fixture_vault, model):
-    return IngestRunner.in_memory(context={"vault_path": str(fixture_vault)})
+def runner(vault_copy, model):
+    return IngestRunner.in_memory(context={"vault_path": str(vault_copy)})
 
 
 def test_start_pauses_at_the_review(runner):

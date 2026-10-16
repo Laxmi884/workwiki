@@ -17,6 +17,7 @@ from langgraph.runtime import Runtime
 from langgraph.types import Send, interrupt
 
 from llm_wiki import answers, extraction, ledger, names, review, routing, task_tracking
+from llm_wiki.apply import ApplyConflict, apply_diffs
 from llm_wiki.config import get_settings
 from llm_wiki.daily_syntax import parse_daily_note
 from llm_wiki.diffs import VaultReader, render_diffs, vault_reader
@@ -413,8 +414,44 @@ def _answered(
     return update
 
 
+def apply(state: IngestState, runtime: Runtime[IngestContext]) -> dict[str, Any]:
+    """Write the approved diffs (3d).
+
+    If approved files changed since the review, nothing is written. Changed wiki pages:
+    `after_apply` re-renders from the current files for a fresh review. A changed note:
+    the run ends, since its line numbers (task IDs, cited facts) may no longer fit; run
+    ingest again to read it fresh.
+    """
+    try:
+        written = apply_diffs(
+            vault_path(runtime), state.get("diffs", []), state.get("approved", [])
+        )
+    except ApplyConflict as exc:
+        changed = ", ".join(exc.paths)
+        if state["note"].path in exc.paths:
+            warning = f"nothing written: {changed} changed since the review; run again"
+        else:
+            warning = f"nothing written: {changed} changed since the review"
+        return {
+            "written": [],
+            "apply_conflicts": list(exc.paths),
+            "warnings": [warning],
+        }
+    return {"written": written, "apply_conflicts": []}
+
+
+def after_apply(state: IngestState) -> str:
+    """Re-render after changed pages; end after success or a changed note."""
+    conflicts = state.get("apply_conflicts", [])
+    if not conflicts or state["note"].path in conflicts:
+        return END
+    return "render"
+
+
 def after_review(state: IngestState) -> list[Send] | str:
-    """Approve/reject end the run; the other answers go back as far as they need.
+    """Approve applies, reject ends; the other answers go back as far as they need.
+
+    approve → apply (when at least one file is approved; else the run ends),
 
     revise → extract (the model reads the note again with the feedback),
     answer → track_tasks (answered names re-map tasks; facts stand),
@@ -429,4 +466,6 @@ def after_review(state: IngestState) -> list[Send] | str:
         return "route"
     if action == "edit":
         return "render"
+    if action == "approve" and state.get("approved"):
+        return "apply"
     return END

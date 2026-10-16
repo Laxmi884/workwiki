@@ -151,7 +151,7 @@ def test_facts_can_go_on_a_proposed_page(ctx):
     assert edits[0].path == "15_concepts/concept-cookie-domain.md"
 
 
-def test_scripted_agent_run_reaches_the_review(fixture_vault, monkeypatch):
+def test_scripted_agent_run_reaches_the_review(vault_copy, monkeypatch):
     script = ToolScript(
         messages=iter(
             [
@@ -173,7 +173,7 @@ def test_scripted_agent_run_reaches_the_review(fixture_vault, monkeypatch):
     )
     monkeypatch.setattr(nodes, "chat_model", lambda runtime: script)
     runner = IngestRunner.in_memory(
-        context={"vault_path": str(fixture_vault)}, graph_builder=agent_builder
+        context={"vault_path": str(vault_copy)}, graph_builder=agent_builder
     )
     result = runner.start(NOTE)
     assert result.status == "review"
@@ -194,9 +194,12 @@ def test_scripted_agent_run_reaches_the_review(fixture_vault, monkeypatch):
             "text": "Wants to own the search feature.",
         }
     ]
-    assert not (fixture_vault / "x.md").exists()
+    assert not (vault_copy / "x.md").exists()
     done = runner.resume(result.thread_id, {"action": "approve"})
     assert done.status == "done"
+    assert "20_people/person-sam-ortiz.md" in done.written
+    sam = (vault_copy / "20_people/person-sam-ortiz.md").read_text()
+    assert "Wants to own the search feature." in sam
 
 
 def test_finalize_fixes_repeats_from_parallel_calls(ctx):
@@ -265,7 +268,7 @@ def test_withdrawn_fact_and_its_line_are_dropped(ctx):
 
 
 def test_revise_keeps_the_filing_and_a_withdrawn_fact_can_be_filed_again(
-    fixture_vault, monkeypatch
+    vault_copy, monkeypatch
 ):
     sam = {"target": "person-sam-ortiz", "line": 29}
     script = ToolScript(
@@ -286,7 +289,7 @@ def test_revise_keeps_the_filing_and_a_withdrawn_fact_can_be_filed_again(
     )
     monkeypatch.setattr(nodes, "chat_model", lambda runtime: script)
     runner = IngestRunner.in_memory(
-        context={"vault_path": str(fixture_vault)}, graph_builder=agent_builder
+        context={"vault_path": str(vault_copy)}, graph_builder=agent_builder
     )
     result = runner.start(NOTE)
     result = runner.resume(
