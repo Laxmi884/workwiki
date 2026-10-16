@@ -4,7 +4,9 @@ Single source of truth for project status. Updated at the end of every session.
 
 ## Current focus
 
-Option B of [[decisions/0006-agent-ingest-spike|0006]] adopted (2026-10-15): ingest by the `ingest_agent` deep agent with code-checked staging. Spike code (written by Claude, not committed) is being taught to the user lesson by lesson; then the 0006 to-dos, then phase 3 (3d apply, 3e SQLite + git) on top of the agent graph.
+Working mode (CLAUDE.md, since 2026-10-15): Claude builds in reviewed steps, each with a git-ignored notebook in `notebooks/` (00–10 exist; `notebooks/_src/nbNN.py` builds them, `_src/run.sh` executes; an answer key lives outside the repo). Ingest = the `ingest_agent` graph ([[decisions/0006-agent-ingest-spike|0006]] option B); phase 3 is built (3d apply, 3e SQLite runner + vault git commit) and the 0006 agent-quality fixes are in; all three await the user's review (notebooks 08–10).
+
+**Next (user asked, 2026-10-15): task → project mapping by approved model proposal** (decision 0002 rule 4, the last open 0006 item). Today `track_tasks` maps tasks by explicit link, inherited context and alias; everything else stays `project: null` in `90_meta/tasks.json` (all 11 tasks of the user's 2026-10-14 note). Idea to design with the user first: the agent proposes task line → project (a staging tool checked by code like `file_fact`), the review shows the proposals, approval updates the task index (`mapped_by: "model"`), and the user can correct them. Then its notebook. Real-run check: scratch copy of `~/WorkDev`, `uv run --env-file .env`, `nodes.fallback_models = lambda r: []` (no paid backup).
 
 ## Open decisions
 
