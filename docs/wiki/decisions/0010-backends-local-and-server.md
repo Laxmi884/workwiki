@@ -67,6 +67,8 @@ imports; S4 pass the node `config` into inner agents; S5 new `langgraph.json` (b
 `langgraph-api`, `langgraph up` smoke test (volumes, serde); notebook 13 runs the same review flow on
 both backends side by side (one notebook, not two copies of every notebook).
 
+S4 finding (2026-10-16): V4 was about the wrong thing. Config already reaches inner agents invoked in a node (Python 3.11+ context propagation; their steps stream under the node). What they lacked was a persistence choice: they wrote per-invocation checkpoints into the thread store. The ingest agent is now compiled with `checkpointer=False`.
+
 Target `langgraph.json` (S5):
 
 ```json

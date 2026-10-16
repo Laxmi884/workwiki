@@ -373,6 +373,11 @@ def build_ingest_agent(
         state_schema=IngestAgentState,
         context_schema=AgentContext,
         name="ingest-agent",
+        # Stateless inside the `stage` node (0010 S4): by default a graph invoked in a
+        # node writes its own checkpoints (every message, `Filed` objects) into the
+        # parent's thread store, yet a retry of `stage` restarts the agent anyway. Its
+        # steps still stream under `stage`: config reaches it without being passed.
+        checkpointer=False,
     )
 
 

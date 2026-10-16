@@ -68,6 +68,7 @@ checkpointer=InMemorySaver())`, and Managed Deep Agents compiles them in product
     over HTTP the values are JSON (`date` came back as `[2026, 10, 12]`).
   - A run without a thread (`runs.wait(None, ...)`) leaves no thread behind: right for `ask`.
 - Found in S3 (2026-10-16): the SDK's sync client builds its transport with `retries=5`, so a stopped server makes each call hang ~7.5 s before `httpx.ConnectError` (tests pass their own `SyncLangGraphClient(httpx.Client(...))`). Every SDK error (`NotFoundError`, …) subclasses `httpx.HTTPError`; `ServerBackend` turns whatever escapes into `BackendError` (`_reachable`), so surfaces catch one error type.
+- Found in S4 (2026-10-16): a compiled graph invoked inside a node is a subgraph. Its `checkpointer` decides what it stores: `None` (default) writes per-invocation checkpoints into the parent's store, `True` keeps per-thread memory, `False` stores nothing (no interrupts inside). Config (callbacks, streaming) reaches it either way without being passed. Our ingest agent is `False`.
 
 ## In my words
 

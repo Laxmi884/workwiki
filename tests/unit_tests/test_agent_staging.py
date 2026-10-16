@@ -667,3 +667,35 @@ def test_tasks_link_a_person_page_proposed_in_the_run(vault_copy, monkeypatch):
     assert "link to; keep it, or revise" in refused.review.error
     done = runner.resume(first.thread_id, "approve")
     assert page.path in done.written
+
+
+def test_the_inner_agent_streams_its_steps_but_stores_no_checkpoints(
+    vault_copy, monkeypatch
+):
+    """0010 S4: the agent runs stateless inside `stage` (a retry restarts it anyway).
+
+    Its steps still stream under the `stage` node, but only the ingest graph's own
+    checkpoints are stored: no agent messages or `Filed` objects in the thread store.
+    """
+    from langgraph.checkpoint.memory import InMemorySaver
+
+    from .scripted_model import AgentRounds, bi_tool_decision
+
+    monkeypatch.setattr(nodes, "chat_model", AgentRounds([bi_tool_decision()]))
+    saver = InMemorySaver()
+    graph = agent_builder.compile(checkpointer=saver)
+    config = {"configurable": {"thread_id": "s4"}}
+    streamed_from = set()
+    for chunk in graph.stream(
+        {"note_path": NOTE},
+        config,
+        context={"vault_path": str(vault_copy)},
+        subgraphs=True,
+        stream_mode="updates",
+        version="v2",
+    ):
+        streamed_from.add(chunk["ns"][0].split(":")[0] if chunk["ns"] else "")
+    assert "stage" in streamed_from, "the agent's steps stream under the stage node"
+    assert graph.get_state(config).next == ("review",)
+    stored = {i.config["configurable"]["checkpoint_ns"] for i in saver.list(None)}
+    assert stored == {""}, f"only the ingest graph's checkpoints, got {stored}"
