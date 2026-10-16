@@ -22,6 +22,9 @@ One note per concept. Template: `learnings/_template.md`.
 - [[learnings/send-fan-out-and-reducers|Send fan-out and reducers]]: one `extract` per section in parallel, merge by key, retry one branch
 - [[learnings/interrupt-and-the-runner|interrupt() and our own runner]]: pause/resume with any checkpointer, nodes re-run on resume, allow-listing our types
 - [[learnings/review-loop|The review loop]]: conditional edges back from `review`, one round per resume, recursion limit per invoke
+- [[learnings/hidden-retries-and-timeouts|Hidden retries and timeouts]]: SDK retries hid a 20-minute hang; one visible retry layer + request timeout
+- [[learnings/deep-agent-permissions-and-subagents|Deep agent permissions and subagents]]: first-match-wins rules, vault as a route, subagents inherit no skills/middleware, response_format
+- [[learnings/agent-server-and-deployment|The Agent Server: dev, up, build]]: who owns persistence, graph factories, http.app, langgraph.json keys, licences
 
 ## Decisions
 
@@ -36,3 +39,4 @@ Numbered, one per decision. Template: `decisions/_template.md`.
 - [[decisions/0007-task-project-proposals|0007]]: task → project by model proposal: `map_task` checked by code, in by default, correctable in review, sticky user "none"
 - [[decisions/0008-assistant-agent|0008]]: assistant deep agent: read-only vault, `find_tasks`, skills, review-writer subagent with a sourced draft, Studio + `ask`
 - [[decisions/0009-review-page-and-remember|0009]]: HTML review page over the same runner (one review, many windows); remember proposed in the review; reviews tied to their vault
+- [[decisions/0010-backends-local-and-server|0010]]: one `Backend` interface, two backends (local runner, Agent Server); surfaces route `/…` themselves; amends 0005

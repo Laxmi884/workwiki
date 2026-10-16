@@ -4,9 +4,21 @@ Single source of truth for project status. Updated at the end of every session.
 
 ## Current focus
 
-Working mode (CLAUDE.md, since 2026-10-15): Claude builds in reviewed steps, each with a git-ignored notebook in `notebooks/` (00–11 exist; `notebooks/_src/nbNN.py` builds them, `_src/run.sh` executes; an answer key lives outside the repo). Ingest = the `ingest_agent` graph ([[decisions/0006-agent-ingest-spike|0006]] option B); phase 3 is built (3d apply, 3e SQLite runner + vault git commit) and the 0006 agent-quality fixes are in; all three await the user's review (notebooks 08–10).
+Working mode (CLAUDE.md, since 2026-10-15): Claude builds in reviewed steps, each with a git-ignored notebook in `notebooks/` (00–11 exist; `notebooks/_src/nbNN.py` builds them, `_src/run.sh` executes; answer keys live outside the repo, e.g. the session scratchpad). Commit only after the user approves.
 
-**Phase 4: 4a–4c committed (`63ad4dc`); 4d (`wiki` chat front door) built, awaiting review. Phase 4 overall (Claude, 2026-10-16):** assistant deep agent per [[decisions/0008-assistant-agent|0008]] (read-only vault, `find_tasks`, 3 skills, `review-writer` subagent, `assistant` graph factory, `ask` script). 0006 cut-over committed (`b30f52b`). Next: commit on approval, notebook 12, then the user does notebooks 11–12. Real brag-sheet test needs a vault with applied ingests (`~/WorkDev` has none applied yet). Model `deepseek/deepseek-v4.1-flash`; spend ≈ $2.47 of $2.50.
+**Where we are (2026-10-16, end of a long session):** phases 0–3 done; 0006 cut-over done (agent graph is the only ingest graph); 0007 task → project proposals done; phase 4 assistant (4a–4c) and the `wiki` chat front door (4d) committed; review page R1 committed (`9c0fee9`). All committed; 450 tests pass.
+
+**Next: build decision [[decisions/0010-backends-local-and-server|0010]] in reviewed steps** (start in a fresh session):
+1. S1 `Backend` interface (`start_ingest`, `pending`, `review`, `answer`, `ask`) + `LocalBackend` (wraps `IngestRunner` + assistant) + a contract test suite.
+2. S2 `ServerBackend` on `langgraph-sdk` (threads with `vault_path` in metadata, runs, `command={"resume": ...}`, `threads.search(status="interrupted")`, streamed `assistant` runs) + opt-in test against `langgraph dev`.
+3. S3 review page + a chat box on `Backend` ("/…" → ingest, else → assistant); delete `chat/graph.py` (`wiki` graph) and direct runner imports in `review_web/`.
+4. S4 pass the node `config` into inner agents (`ingest_agent/graph.py:148`, assistant calls) for nested streaming/cancel.
+5. S5 target `langgraph.json` from 0010 (uv lockfile, Python 3.12, no `wiki`), upgrade `langgraph-api` (0.13.8 is EOL), `langgraph up` smoke test (vault volume, serde of our types).
+6. Then review page R2 (edit, task choices, wins, revise) and R3 (remember) on top of `Backend`.
+
+**Notebooks to do:** 12 (assistant + review-writer subagent); 13 (the same review flow on `LocalBackend` and `ServerBackend` side by side; one notebook, not two copies of every notebook: 00–11 are backend-agnostic); add a short "where this lives now" note to 02, 03 and 05 (they point at code the cut-over deleted or moved). The user still has to work through 08–11.
+
+Model: `openrouter:deepseek/deepseek-v4.1-flash` (~$0.001 per ingest, ~$0.002 per question); OpenRouter spend ≈ $2.47 of the $2.50 cap. Real-run check: scratch copy of `~/WorkDev`, `uv run --env-file .env`, `nodes.fallback_models = lambda r: []`.
 
 ## Open decisions
 

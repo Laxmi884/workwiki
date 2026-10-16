@@ -1,7 +1,7 @@
 ---
 id: 0005
 date: 2026-10-14
-status: accepted
+status: accepted; amended by 0010 (two backends behind one interface)
 ---
 
 # 0005: Surfaces and deployment: our own runner by default, servers optional
