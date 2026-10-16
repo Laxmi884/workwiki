@@ -14,6 +14,8 @@ Newest first. One entry per session, 2–5 bullets: what was done, what was lear
 - **Person pages named by tasks kept (user chose "keep + link"):** `staging.task_people_pages` keeps them in `finalize`; `entity_index.with_created` makes proposed pages known to `map_tasks`, so 1:1 tasks link to `person-joanna`; approve can't reject such a page. Real DeepSeek rerun: Joanna and Eugene pages in the review, 0 refusals, 50 s. 475 tests pass. Not committed.
 - Timeout + person pages committed (`aee8200`). Notebook 11 built (rules 1–3 and open tasks, the proposal check, sticky folding, approval constraint, hidden retry layers; 4 exercises, all verified against an answer key).
 - Next: user does notebook 11; then the 0006 cut-over.
+- **Cut-over planned (user chose):** drop `make_page` for now, keep the agent-only experiment harness; 3 steps. **Step 1 done:** runner default and `langgraph.json` `ingest` → agent graph; runner/apply/git tests run on it via `AgentRounds` (one script per round, records briefs); old runner tests pinned as `test_runner_0004.py` until step 3. 487 tests pass.
+- Review HTML goes in phase 7 with the other surfaces (user chose). LiveSync stays a user-run setup trial.
 
 ## 2026-10-15
 

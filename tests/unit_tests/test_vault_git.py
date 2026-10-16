@@ -4,12 +4,11 @@ import subprocess
 
 import pytest
 
-from llm_wiki.domain.facts import Decision, SectionFacts
 from llm_wiki.ingest import nodes
 from llm_wiki.runner import IngestRunner
 from llm_wiki.vault_git import commit_paths
 
-from .scripted_model import BySection
+from .scripted_model import AgentRounds, call
 
 NOTE = "00_raw/daily/2026-10-12.md"
 
@@ -90,11 +89,15 @@ def test_not_a_repo_or_inside_another_repo_only_warns(tmp_path):
 
 @pytest.fixture
 def model(monkeypatch):
-    scripted = BySection(
-        {"Meetings": SectionFacts(decisions=[Decision(line=23, title="Keep BI")])},
-        SectionFacts(),
+    decision = call(
+        "file_fact",
+        target="decision-log",
+        section="Decisions",
+        text="Not recorded in the note.",
+        line=23,
+        title="Keep BI",
     )
-    monkeypatch.setattr(nodes, "chat_model", lambda runtime: scripted)
+    monkeypatch.setattr(nodes, "chat_model", AgentRounds([decision]))
 
 
 def test_approve_commits_the_applied_files(vault_copy, model):

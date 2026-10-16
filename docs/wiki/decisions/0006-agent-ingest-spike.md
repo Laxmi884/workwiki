@@ -285,3 +285,7 @@ On the 20-day corpus the agent filed 89–97% of facts on the right page first t
 mid-size models (74% for the pipeline), learned the user's filing preferences from one
 correction (the pipeline can't), and handles real-looking notes without new code per
 note shape. Code still guarantees everything that must be exact.
+
+## Cut-over (2026-10-16)
+
+User chose: drop the review's `make_page` for now (decisions stay in the quarterly log; re-add as a code step if missed), and keep the agent-only parts of the experiment harness as a start for phase 6 evals. Three steps: (1) runner and `langgraph.json` default to the agent graph, tests ported; (2) review cleanup: drop `make_page`, people questions/answers and the inbox; (3) delete the 0004 model steps, `names.py`, `answers.py`, `domain/facts.py`, fact routing and their tests, keeping shared helpers.

@@ -11,11 +11,10 @@ from llm_wiki.domain.changes import (
     UserText,
     sha256_text,
 )
-from llm_wiki.domain.facts import Decision, SectionFacts
 from llm_wiki.ingest import nodes
 from llm_wiki.runner import IngestRunner
 
-from .scripted_model import BySection
+from .scripted_model import AgentRounds, call
 
 PAGE = "10_projects/project-x.md"
 NOTE = "00_raw/daily/2026-10-12.md"
@@ -130,17 +129,17 @@ def test_ledger_is_written_last(vault, monkeypatch):
     assert order == ["project-x.md", "ingest-ledger.json"]
 
 
-ANSWERS = {
-    "Meetings": SectionFacts(
-        decisions=[Decision(line=23, title="Keep the old BI tool until Q1")]
-    )
-}
-
-
 @pytest.fixture
 def runner(vault_copy, monkeypatch):
-    model = BySection(dict(ANSWERS), SectionFacts())
-    monkeypatch.setattr(nodes, "chat_model", lambda runtime: model)
+    decision = call(
+        "file_fact",
+        target="decision-log",
+        section="Decisions",
+        text="Not recorded in the note.",
+        line=23,
+        title="Keep the old BI tool until Q1",
+    )
+    monkeypatch.setattr(nodes, "chat_model", AgentRounds([decision]))
     return IngestRunner.in_memory(context={"vault_path": str(vault_copy)})
 
 

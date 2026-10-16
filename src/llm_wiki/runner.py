@@ -31,8 +31,8 @@ from pydantic import BaseModel, ConfigDict
 import llm_wiki.domain
 from llm_wiki.config import get_settings
 from llm_wiki.domain.review import ReviewAnswer, ReviewRequest
-from llm_wiki.ingest.graph import builder
 from llm_wiki.ingest.state import IngestContext
+from llm_wiki.ingest_agent.graph import builder
 
 
 def checkpoint_types() -> list[tuple[str, str]]:
@@ -94,12 +94,11 @@ class IngestRunner:
     ) -> None:
         """Compile the graph with `checkpointer`; `context` is passed to every run.
 
-        `graph_builder` defaults to the ingest graph; the 0006 spike passes its own.
+        `graph_builder` defaults to the ingest agent graph (decision 0006).
         """
-        if graph_builder is None:
-            self.graph = builder.compile(checkpointer=checkpointer, name="ingest")
-        else:
-            self.graph = graph_builder.compile(checkpointer=checkpointer)
+        self.graph = (graph_builder or builder).compile(
+            checkpointer=checkpointer, name="ingest"
+        )
         self.context: IngestContext = context or {}
 
     @classmethod

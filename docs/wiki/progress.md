@@ -60,7 +60,7 @@ Working mode (CLAUDE.md, since 2026-10-15): Claude builds in reviewed steps, eac
   - [x] 0007 task → project proposals built and committed (`00551c0`, 2026-10-16)
   - [x] Timeout + task-named person pages committed (`aee8200`, 2026-10-16)
   - [x] Notebook 11 for 0007 built, answer-key verified (2026-10-16); user exercises pending
-  - [ ] 0006 cut-over: agent graph handles answer / make_page / edit, runner defaults to `ingest_agent`, then delete the 0004 model steps (extract, find_names, route, `ingest/graph.py`, `names.py`, round-1 script) and their tests From the first real note (2026-10-14): unknown names → people questions,
+  - [ ] 0006 cut-over (user chose 2026-10-16: drop `make_page` for now; keep the agent-only experiment harness). Step 1 done 2026-10-16: runner + `langgraph.json` `ingest` → agent graph, tests ported (`AgentRounds`). Steps 2 (review cleanup) and 3 (delete 0004 code) open. Original note: agent graph handles answer / make_page / edit, runner defaults to `ingest_agent`, then delete the 0004 model steps (extract, find_names, route, `ingest/graph.py`, `names.py`, round-1 script) and their tests From the first real note (2026-10-14): unknown names → people questions,
     new-project proposals for unlinked tasks (mapping rule 4), done tasks offered as win
     candidates, task sub-bullets read by the model, "remember this" → approved edit to
     aliases / `90_meta/rules.md`
@@ -71,4 +71,5 @@ Working mode (CLAUDE.md, since 2026-10-15): Claude builds in reviewed steps, eac
 - [ ] **6. Tests and evals**: scripted model, sample notes with expected diffs. Read: `testing/scripted_model.py`, `tests/eval/`.
 - [ ] **7. Morning brief, schedule, CLI**. Read: `surfaces/runner.py`, `schedules/`.
   - [ ] Daily-note rollover job (create-if-absent, carried tasks from index, 14-day stale cutoff), per 0001
+  - [ ] Review HTML: local page built from `ReviewRequest` (diffs, tasks → projects, wins, warnings) whose buttons produce the answer (user chose phase 7, 2026-10-16; mockup from the 2026-10-15 run exists only in a scratchpad)
 - [ ] **8. Optional**: `langgraph up`, `langgraph deploy`.
