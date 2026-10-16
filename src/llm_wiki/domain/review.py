@@ -6,6 +6,7 @@ back a `ReviewAnswer`. The request is the `interrupt()` payload, so it must stay
 
 from __future__ import annotations
 
+import datetime
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -34,6 +35,26 @@ class ReviewFile(BaseModel):
     diff: str
     editable: bool = False
     after_text: str = ""
+
+
+class ReviewFact(BaseModel):
+    """A fact the agent filed on a proposed page, with the note line it cites.
+
+    Attributes:
+        path: The page it goes to (a `ReviewFile` path).
+        section: Its section heading, e.g. "## Decisions".
+        text: The filed text.
+        line: The note line it cites.
+        quote: That line as written, without bullet, checkbox or task ID.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    path: str
+    section: str
+    text: str
+    line: int
+    quote: str = ""
 
 
 class ReviewWin(BaseModel):
@@ -89,6 +110,9 @@ class ReviewRequest(BaseModel):
         wins: Tasks done in this note; picked ones become wins.
         tasks: Tasks with no project by rules 1–3, with the model's proposals; the
             proposals are in `tasks.json` unless answered (decision 0007).
+        facts: What the agent filed, per page, with the note lines cited.
+        note_date: The note's date, if it has one.
+        task_ids_added: How many task IDs this ingest appends to the note.
         error: Why the previous answer was not accepted, if it wasn't.
     """
 
@@ -102,6 +126,9 @@ class ReviewRequest(BaseModel):
     edited: tuple[str, ...] = ()
     wins: tuple[ReviewWin, ...] = ()
     tasks: tuple[ReviewTask, ...] = ()
+    facts: tuple[ReviewFact, ...] = ()
+    note_date: datetime.date | None = None
+    task_ids_added: int = 0
     error: str | None = None
 
 

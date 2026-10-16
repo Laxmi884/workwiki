@@ -255,7 +255,9 @@ builder.add_node("map_tasks", nodes.track_tasks)
 builder.add_node("stage", stage, retry_policy=RetryPolicy(max_attempts=2))
 builder.add_node("pick_wins", pick_wins)
 builder.add_node("render", nodes.render)
-builder.add_node("review", nodes.review_changes)
+# The review shows the agent's filed facts: without `input_schema` the node would get
+# only its annotated `IngestState` keys, and `agent_filed` would be dropped.
+builder.add_node("review", nodes.review_changes, input_schema=AgentIngestState)
 builder.add_node("apply", nodes.apply)
 
 builder.add_edge(START, "load_note")

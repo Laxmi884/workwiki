@@ -5,6 +5,7 @@ Pure, so the `review` node only pauses and loops; see `ingest/nodes.py`.
 
 from __future__ import annotations
 
+import datetime
 import re
 from collections.abc import Collection, Mapping, Sequence
 from typing import Any
@@ -15,6 +16,7 @@ from llm_wiki.domain.changes import FileDiff, is_wiki_page
 from llm_wiki.domain.daily import DailyNote
 from llm_wiki.domain.review import (
     ReviewAnswer,
+    ReviewFact,
     ReviewFile,
     ReviewRequest,
     ReviewTask,
@@ -30,6 +32,32 @@ MAX_REVISIONS = 3
 def _plain_line(quote: str) -> str:
     """Drop a task's checkbox and block ID: "[ ] Ping Eugene ^t-abc123" → "Ping Eugene"."""
     return re.sub(r"\s\^t-[0-9a-z]{6}$", "", re.sub(r"^\[.\]\s*", "", quote))
+
+
+def note_line(note: DailyNote, line: int) -> str:
+    """Return note line `line` as written, without bullet, checkbox or task ID."""
+    for section in note.sections:
+        i = line - section.start_line
+        if 0 <= i < len(section.lines):
+            text = re.sub(r"\s\^t-[0-9a-z]{6}\s*$", "", section.lines[i])
+            return re.sub(r"^\s*(?:[-*+]\s+)?(?:\[.\]\s*)?", "", text).strip()
+    return ""
+
+
+def filed_facts(
+    note: DailyNote, filed: Sequence[Mapping[str, Any]]
+) -> tuple[ReviewFact, ...]:
+    """Turn the agent's filed facts (dicts: path, section, text, line) into review facts."""
+    return tuple(
+        ReviewFact(
+            path=f["path"],
+            section=f["section"],
+            text=f["text"],
+            line=f["line"],
+            quote=note_line(note, f["line"]),
+        )
+        for f in filed
+    )
 
 
 def task_questions(
@@ -70,6 +98,9 @@ def build_request(
     done_tasks: Sequence[DoneTask] = (),
     chosen_wins: Collection[int] = (),
     tasks: Sequence[ReviewTask] = (),
+    facts: Sequence[ReviewFact] = (),
+    note_date: datetime.date | None = None,
+    task_ids_added: int = 0,
 ) -> ReviewRequest:
     """Turn the rendered diffs, tasks and wins into what the user sees.
 
@@ -108,6 +139,9 @@ def build_request(
             for i, t in enumerate(done_tasks, start=1)
         ),
         tasks=tuple(tasks),
+        facts=tuple(f for f in facts if f.path in {d.path for d in diffs}),
+        note_date=note_date,
+        task_ids_added=task_ids_added,
     )
 
 

@@ -19,7 +19,7 @@ import sqlite3
 import uuid
 from functools import cache
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.checkpoint.memory import InMemorySaver
@@ -27,9 +27,10 @@ from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.graph import StateGraph
 from langgraph.types import Command
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel
 
 import llm_wiki.domain
+from llm_wiki.backend.base import RunResult
 from llm_wiki.config import get_settings
 from llm_wiki.domain.review import ReviewAnswer, ReviewRequest
 from llm_wiki.ingest.state import IngestContext
@@ -56,32 +57,6 @@ def checkpoint_types() -> list[tuple[str, str]]:
 def checkpoint_serializer() -> JsonPlusSerializer:
     """Return a serializer that restores our domain types (and the safe built-ins)."""
     return JsonPlusSerializer(allowed_msgpack_modules=checkpoint_types())
-
-
-class RunResult(BaseModel):
-    """Where a run stands after `start` or `resume`.
-
-    Attributes:
-        thread_id: Pass it to `resume`.
-        status: "review" (waiting for an answer), "skipped" (nothing to do) or "done".
-        review: What to show the user while status is "review".
-        action: The accepted answer once done: "approve" or "reject".
-        approved: Digests of approved diffs once done.
-        written: Vault paths written by apply once done.
-        commit: The vault commit holding them (None: not a git repo, or nothing new).
-        warnings: Everything the run reported.
-    """
-
-    model_config = ConfigDict(frozen=True)
-
-    thread_id: str
-    status: Literal["review", "skipped", "done"]
-    review: ReviewRequest | None = None
-    action: str | None = None
-    approved: tuple[str, ...] = ()
-    written: tuple[str, ...] = ()
-    commit: str | None = None
-    warnings: tuple[str, ...] = ()
 
 
 class IngestRunner:

@@ -269,6 +269,9 @@ def review_changes(
             state.get("task_proposals", []),
             state.get("chosen_projects", {}),
         ),
+        facts=review.filed_facts(state["note"], state.get("agent_filed", [])),
+        note_date=state["note"].date,
+        task_ids_added=len(state.get("task_ids", {})),
     )
     while True:
         raw = interrupt(request.model_dump(mode="json"))

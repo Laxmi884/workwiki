@@ -9,7 +9,7 @@ Working mode (CLAUDE.md, since 2026-10-15): Claude builds in reviewed steps, eac
 **Where we are (2026-10-16, end of a long session):** phases 0–3 done; 0006 cut-over done (agent graph is the only ingest graph); 0007 task → project proposals done; phase 4 assistant (4a–4c) and the `wiki` chat front door (4d) committed; review page R1 committed (`9c0fee9`). All committed; 450 tests pass.
 
 **Next: build decision [[decisions/0010-backends-local-and-server|0010]] in reviewed steps** (start in a fresh session):
-1. S1 `Backend` interface (`start_ingest`, `pending`, `review`, `answer`, `ask`) + `LocalBackend` (wraps `IngestRunner` + assistant) + a contract test suite.
+1. ~~S1 `Backend` interface + `LocalBackend` + contract tests~~ built 2026-10-16, awaiting the user's review (not committed): `backend/base.py`, `backend/local.py`, `test_backend_contract.py`; the review now carries its facts, note date and task-ID count, so the page needs no thread state. Open for S2: how the server-side contract run gets a scripted model (no monkeypatching across processes).
 2. S2 `ServerBackend` on `langgraph-sdk` (threads with `vault_path` in metadata, runs, `command={"resume": ...}`, `threads.search(status="interrupted")`, streamed `assistant` runs) + opt-in test against `langgraph dev`.
 3. S3 review page + a chat box on `Backend` ("/…" → ingest, else → assistant); delete `chat/graph.py` (`wiki` graph) and direct runner imports in `review_web/`.
 4. S4 pass the node `config` into inner agents (`ingest_agent/graph.py:148`, assistant calls) for nested streaming/cancel.
@@ -22,7 +22,7 @@ Model: `openrouter:deepseek/deepseek-v4.1-flash` (~$0.001 per ingest, ~$0.002 pe
 
 ## Open decisions
 
-- Which cloud model to use alongside the local default (mechanism settled in [[decisions/0003-model-selection|0003]]). `WIKI_MODEL` is now `openrouter:nvidia/nemotron-3-ultra-550b-a55b:free`, which extracts the fixture note correctly; `gemma4:12b` misses person notes.
+- Which cloud model to use alongside the local default (mechanism settled in [[decisions/0003-model-selection|0003]]). `WIKI_MODEL` is now `openrouter:deepseek/deepseek-v4.1-flash` (since 2026-10-16; the free Nemotron hung and returned provider errors); `gemma4:12b` misses person notes.
 
 ## Setup
 

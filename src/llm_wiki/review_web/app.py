@@ -95,10 +95,7 @@ def review_page(request: Request) -> HTMLResponse:
     if vault is None:
         return _page("missing.html", thread=thread)
     result = runner.status(thread)
-    view = None
-    if result.review is not None:
-        values = runner.graph.get_state(runner._config(thread)).values
-        view = build_view(result.review, values)
+    view = build_view(result.review) if result.review is not None else None
     return _page(
         "review.html",
         thread=thread,

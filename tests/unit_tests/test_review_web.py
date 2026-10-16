@@ -86,11 +86,12 @@ def test_unknown_review(setup):
 
 
 def test_view_pairs_each_fact_with_its_note_line(setup):
-    from llm_wiki.review_web.view import build_view, note_line
+    from llm_wiki.review import note_line
+    from llm_wiki.review_web.view import build_view
 
     _, runner, thread, _ = setup
-    values = runner.graph.get_state(runner._config(thread)).values
-    view = build_view(runner.status(thread).review, values)
+    review = runner.status(thread).review
+    view = build_view(review)
     (log,) = [c for c in view.pages if c.file.path == LOG]
     ((section, (row,)),) = log.sections
     assert (section, row.line, row.text) == (
@@ -101,6 +102,6 @@ def test_view_pairs_each_fact_with_its_note_line(setup):
     assert row.quote == "Decided to keep the old BI tool until Q1 #decision"
     assert view.title == "Daily note, Monday 12 October 2026"
     assert {f.path for f in view.bookkeeping} >= {NOTE, "90_meta/tasks.json"}
-    assert (
-        note_line(values["note"], 8) == "Review Q3 budget draft for [[project-atlas]]"
-    )
+    assert view.task_ids == review.task_ids_added > 0
+    note = runner.graph.get_state(runner._config(thread)).values["note"]
+    assert note_line(note, 8) == "Review Q3 budget draft for [[project-atlas]]"

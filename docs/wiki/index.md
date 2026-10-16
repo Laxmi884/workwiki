@@ -25,6 +25,7 @@ One note per concept. Template: `learnings/_template.md`.
 - [[learnings/hidden-retries-and-timeouts|Hidden retries and timeouts]]: SDK retries hid a 20-minute hang; one visible retry layer + request timeout
 - [[learnings/deep-agent-permissions-and-subagents|Deep agent permissions and subagents]]: first-match-wins rules, vault as a route, subagents inherit no skills/middleware, response_format
 - [[learnings/agent-server-and-deployment|The Agent Server: dev, up, build]]: who owns persistence, graph factories, http.app, langgraph.json keys, licences
+- [[learnings/backend-interface-and-node-input|Backend interface and node input]]: ports and adapters with contract tests; a node only gets its annotated schema's keys
 
 ## Decisions
 
