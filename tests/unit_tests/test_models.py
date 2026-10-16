@@ -6,7 +6,13 @@ from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
 from langchain_core.messages import AIMessage
 
 from llm_wiki.config import Settings
-from llm_wiki.models import ModelSpec, choose_model_spec, make_chat_model
+from llm_wiki.models import (
+    ModelSpec,
+    choose_model_spec,
+    make_chat_model,
+    timeout_kwargs,
+    without_sdk_retries,
+)
 
 # The module, not the compiled `graph` that llm_wiki/__init__.py re-exports.
 graph_module = importlib.import_module("llm_wiki.graph")
@@ -120,3 +126,25 @@ async def test_graph_uses_context_model(fake_graph, context, expected):
     graph, built = fake_graph
     out = await graph.ainvoke({"user_query": "hi"}, context=context)
     assert (out["answer"], out["model_used"], built) == ("hello", expected, [expected])
+
+
+@pytest.mark.parametrize(
+    ("provider", "expected"),
+    [
+        ("openrouter", {"timeout": 180000}),  # milliseconds
+        ("anthropic", {"timeout": 180.0}),
+        ("ollama", {}),  # local: never cut off
+    ],
+)
+def test_timeout_kwargs(provider, expected):
+    assert timeout_kwargs(provider, 180.0) == expected
+    assert timeout_kwargs(provider, None) == {}
+
+
+def test_openrouter_model_gets_the_timeout_and_no_sdk_retries(monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test")
+    spec = ModelSpec.parse("openrouter:openai/gpt-5-mini")
+    chat = make_chat_model(spec, **timeout_kwargs(spec.provider, 2.5))
+    assert chat.request_timeout == 2500
+    assert without_sdk_retries(chat) is chat
+    assert chat.client.sdk_configuration.retry_config.strategy == "none"

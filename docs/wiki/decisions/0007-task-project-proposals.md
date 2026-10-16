@@ -46,6 +46,12 @@ user's 2026-10-14 note ended up unmapped.
   `finalize`; never over code's own mapping). Without it, lines 8, 12, 13 of the 2026-10-14 note were
   mapped to delq analysis but their facts were dropped. A user "none" later leaves such a fact on the
   page; the page diff shows it.
+- **Person pages named by tasks (2026-10-16, user chose):** a proposed person page with no fact is
+  kept when the note's tasks name that person (line, parent or `### 1:1 with …` heading), and
+  `tasks.json` links those tasks to it (proposed pages count as known entities in `map_tasks`).
+  Rejecting such a page in an approve is refused ("keep it, or revise"), as for mapped projects.
+  Before, the agent proposed Joanna and Eugene, filed nothing (their lines are all tasks), and code
+  dropped both as empty.
 - Out of scope: the generated "Open tasks" section on project pages (phase 7, with the brief).
 
 ## Why

@@ -48,6 +48,7 @@ from llm_wiki.ingest_agent.staging import (
     finalize_mappings,
     mapped_pages,
     proposed_paths,
+    task_people_pages,
     with_mappings,
 )
 from llm_wiki.routing import route_facts
@@ -161,7 +162,8 @@ def stage(state: AgentIngestState, runtime: Runtime[IngestContext]) -> dict[str,
         result.get("filed", []),
         result.get("withdrawn", []),
         ctx=with_mappings(context.staging, calls),
-        keep=mapped_pages(calls),
+        keep=mapped_pages(calls)
+        | task_people_pages(context.staging, result.get("staged", [])),
     )
     kept_proposals, mapping_problems = finalize_mappings(calls, staged, context.staging)
     refusals = [*result.get("refusals", []), *problems, *mapping_problems]

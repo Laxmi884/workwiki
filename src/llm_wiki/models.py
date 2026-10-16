@@ -75,6 +75,36 @@ def choose_model_spec(override: str | None, default: str | None) -> ModelSpec:
     )
 
 
+def timeout_kwargs(provider: str, seconds: float | None) -> dict[str, Any]:
+    """Return the provider's request-timeout argument for `seconds`, or {} for none.
+
+    OpenRouter's `timeout` is in milliseconds; the other cloud providers take seconds.
+    Local Ollama gets no timeout: a slow local model is still working, not hung.
+    """
+    if seconds is None or provider == "ollama":
+        return {}
+    if provider == "openrouter":
+        return {"timeout": int(seconds * 1000)}
+    return {"timeout": seconds}
+
+
+def without_sdk_retries(chat: BaseChatModel) -> BaseChatModel:
+    """Turn off the OpenRouter SDK's own retries; return `chat`.
+
+    The SDK quietly retries timeouts, connection errors and 5xx with backoff: for up
+    to `max_retries` × 150 s, or a full hour when `max_retries=0` (no config means its
+    default). One hung provider then stalls a run for many minutes with nothing in
+    the logs. With "none", each request is sent once and a failure reaches our retry
+    middleware (`ingest_agent.agent.model_middleware`), which logs and backs off.
+    """
+    from openrouter.utils.retries import BackoffStrategy, RetryConfig  # noqa: PLC0415
+
+    sdk = getattr(getattr(chat, "client", None), "sdk_configuration", None)
+    if sdk is not None:
+        sdk.retry_config = RetryConfig("none", BackoffStrategy(500, 500, 1.0, 0), False)
+    return chat
+
+
 def make_chat_model(spec: ModelSpec, **kwargs: Any) -> BaseChatModel:
     """Build the chat model; extra kwargs (temperature, ...) go to the provider class."""
     return init_chat_model(spec.model, model_provider=spec.provider, **kwargs)

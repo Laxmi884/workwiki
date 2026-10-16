@@ -233,6 +233,21 @@ def with_proposed(
     return _index(dict(sorted(entities.items(), key=lambda kv: kv[1].path)), [])
 
 
+def with_created(index: EntityIndex, edits: Iterable[Any]) -> EntityIndex:
+    """Return `index` plus the entity pages that staged `CreateFile` edits would create.
+
+    Lets code treat pages proposed in this run as known (e.g. "### 1:1 with Joanna"
+    links its tasks to a proposed person-joanna). Existing pages win; non-entity
+    paths are ignored.
+    """
+    from llm_wiki.domain.changes import CreateFile  # noqa: PLC0415
+
+    created = build_index(
+        (e.path, e.text) for e in edits if isinstance(e, CreateFile)
+    ).entities.values()
+    return with_proposed(index, created)
+
+
 def load_index(vault: Path) -> EntityIndex:
     """Read every `*.md` page in the entity folders of `vault` and index them."""
     pages: list[tuple[str, str]] = []

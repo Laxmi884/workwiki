@@ -71,6 +71,10 @@ change it, and it is stored in the task index, never in the note.
 - When a full name appears later for someone who has a page under a short name, keep
   using the existing page.
 - Never invent a full name or a role that the note doesn't give.
+- A new page with nothing filed on it is dropped, unless the note's tasks name that
+  person (on the line, its parent or a `### 1:1 with …` heading) or are mapped to that
+  project: code then links those tasks to it. So a person who only appears in tasks
+  still gets a page; file what the note says about them when it says something.
 
 ## Asking
 

@@ -28,6 +28,7 @@ from llm_wiki.domain.task_index import DoneTask, TaskProposal
 from llm_wiki.entity_index import EntityIndex, kind_of, name_key, path_for
 from llm_wiki.names import is_known_person
 from llm_wiki.routing import INBOX_PATH, origin_of
+from llm_wiki.task_tracking import TASK_INDEX_PATH
 
 MAX_REVISIONS = 3
 
@@ -216,7 +217,10 @@ def _check_tasks(
 def _check_rejected_projects(
     request: ReviewRequest, reject: Collection[str]
 ) -> str | None:
-    """Refuse leaving out a new project page that tasks are mapped to (0007)."""
+    """Refuse leaving out a new page the task index will point at (0007).
+
+    A project that tasks are mapped to, or a person the task index links tasks to.
+    """
     for f in request.files:
         if f.id not in reject or f.change != "new":
             continue
@@ -228,7 +232,23 @@ def _check_rejected_projects(
                 f"{f.id} is the new page {f.path}, which tasks {', '.join(users)} are "
                 'mapped to; answer those tasks first (another project or "none")'
             )
+        if _tasks_link(request, f.path):
+            return (
+                f"{f.id} is the new page {f.path}, which tasks in {TASK_INDEX_PATH} "
+                "link to; keep it, or revise (e.g. say it isn't a person page)"
+            )
     return None
+
+
+def _tasks_link(request: ReviewRequest, path: str) -> bool:
+    """Return whether the task index rewrite adds a link to the page at `path`."""
+    slug = f'"{path.rsplit("/", 1)[-1].removesuffix(".md")}"'
+    return any(
+        line.startswith("+") and slug in line
+        for f in request.files
+        if f.path == TASK_INDEX_PATH
+        for line in f.diff.splitlines()
+    )
 
 
 def check_answer(

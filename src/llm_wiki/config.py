@@ -7,7 +7,7 @@ from functools import cache
 from pathlib import Path
 from typing import Annotated, Literal
 
-from pydantic import field_validator, model_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 from llm_wiki.models import ModelSpec
@@ -29,6 +29,9 @@ class Settings(BaseSettings):
         fallback_models: `WIKI_FALLBACK_MODELS`. Comma-separated "provider:model"
             specs tried in order when the run's model keeps failing (outage,
             overload). Empty: no fallback.
+        model_timeout: `WIKI_MODEL_TIMEOUT`. Seconds one model request may take before
+            it fails (and is retried); a provider that never answers would otherwise
+            stall the run. Not applied to local Ollama models. Default 180.
     """
 
     model_config = SettingsConfigDict(
@@ -43,6 +46,7 @@ class Settings(BaseSettings):
     task_ids: Literal["inline"] = "inline"
     model: str | None = None
     fallback_models: Annotated[tuple[str, ...], NoDecode] = ()
+    model_timeout: float = Field(default=180.0, gt=0)
     state_dir: Path = Path("~/.llm-wiki")
 
     @field_validator("vault_path")

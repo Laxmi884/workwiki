@@ -9,8 +9,10 @@ Newest first. One entry per session, 2–5 bullets: what was done, what was lear
 - **0007 built (Claude; awaiting review, not committed):** `map_task` staging tool + checks, `open_tasks` from `task_tracking` (alias candidates), `map_tasks` node (= `track_tasks` with proposals and answers), `ReviewTask` list, `answer` `tasks`, approve refused when a rejected new project page has mapped tasks, skill section. 469 tests pass.
 - Real runs: free Nemotron hung 20 min, then every call was 400 "Provider returned error" (provider, not our code; a plain "hi" call hung too). User switched `WIKI_MODEL` to DeepSeek V4.1 Flash: 7 of 11 tasks mapped with sensible reasons, 4 left open; ~$0.001 per run (total $2.47).
 - Found in the first DeepSeek run: facts on lines the agent itself mapped were refused (line doesn't name the page). Fixed with the user's OK: agent-mapped tasks count as naming their project. Rerun: no dropped facts, no question, 50s. Person pages for Joanna/Eugene were proposed but left empty this time (dropped by code).
-- Learned: a hung provider call has no timeout in our model setup; worth adding.
-- Next: walkthrough with an example, commit on approval, notebook 11.
+- 0007 committed (`00551c0`) after the user's OK.
+- **Model timeout (user asked):** `WIKI_MODEL_TIMEOUT` (default 180 s) per request, per provider (`models.timeout_kwargs`; OpenRouter takes ms, Ollama none). Learned: the OpenRouter SDK retries timeouts/connection errors itself with backoff, ~5 min per call by default and 1 hour with `max_retries=0`, which explains the 20-minute hang; `without_sdk_retries` sets its strategy to "none" so failures reach our logged `ModelRetryMiddleware`. Real check: 0.5 s timeout → `httpx.ReadTimeout` in 1.2 s.
+- **Person pages named by tasks kept (user chose "keep + link"):** `staging.task_people_pages` keeps them in `finalize`; `entity_index.with_created` makes proposed pages known to `map_tasks`, so 1:1 tasks link to `person-joanna`; approve can't reject such a page. Real DeepSeek rerun: Joanna and Eugene pages in the review, 0 refusals, 50 s. 475 tests pass. Not committed.
+- Next: user review of timeout + person pages, commit on approval, notebook 11.
 
 ## 2026-10-15
 

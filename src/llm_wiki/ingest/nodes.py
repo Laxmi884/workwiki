@@ -42,14 +42,26 @@ from llm_wiki.domain.entities import EntityKind
 from llm_wiki.domain.review import ReviewAnswer, ReviewRequest
 from llm_wiki.domain.task_index import DoneTask, MappedBy
 from llm_wiki.domain.tasks import TaskStatus
-from llm_wiki.entity_index import EntityIndex, kind_of, load_index, with_proposed
+from llm_wiki.entity_index import (
+    EntityIndex,
+    kind_of,
+    load_index,
+    with_created,
+    with_proposed,
+)
 from llm_wiki.ingest.state import (
     ExtractInput,
     FindNamesInput,
     IngestContext,
     IngestState,
 )
-from llm_wiki.models import ModelSpec, choose_model_spec, make_chat_model
+from llm_wiki.models import (
+    ModelSpec,
+    choose_model_spec,
+    make_chat_model,
+    timeout_kwargs,
+    without_sdk_retries,
+)
 
 
 def vault_path(runtime: Runtime[IngestContext]) -> Path:
@@ -63,16 +75,23 @@ def vault_path(runtime: Runtime[IngestContext]) -> Path:
 def chat_model(runtime: Runtime[IngestContext]) -> BaseChatModel:
     """Return the run's model: context `model`, else `WIKI_MODEL` (decision 0003)."""
     context = runtime.context or {}
-    return _build_model(choose_model_spec(context.get("model"), get_settings().model))
+    settings = get_settings()
+    return _build_model(
+        choose_model_spec(context.get("model"), settings.model), settings.model_timeout
+    )
 
 
 def fallback_models(runtime: Runtime[IngestContext]) -> list[BaseChatModel]:
     """Return the backup models (`WIKI_FALLBACK_MODELS`), tried in order on failure."""
     del runtime  # same signature as chat_model; fallbacks are process-wide for now
-    return [_build_model(ModelSpec.parse(s)) for s in get_settings().fallback_models]
+    settings = get_settings()
+    return [
+        _build_model(ModelSpec.parse(s), settings.model_timeout)
+        for s in settings.fallback_models
+    ]
 
 
-def _build_model(spec: ModelSpec) -> BaseChatModel:
+def _build_model(spec: ModelSpec, timeout: float | None = None) -> BaseChatModel:
     if spec.provider == "ollama":
         # Local models: no hidden "thinking" (minutes per call). Ollama's default
         # 4096-token window is too small for prompt + detailed answer; the output cap
@@ -80,7 +99,10 @@ def _build_model(spec: ModelSpec) -> BaseChatModel:
         return make_chat_model(
             spec, temperature=0, reasoning=False, num_ctx=32768, num_predict=8192
         )
-    return make_chat_model(spec, temperature=0)
+    chat = make_chat_model(
+        spec, temperature=0, **timeout_kwargs(spec.provider, timeout)
+    )
+    return without_sdk_retries(chat) if spec.provider == "openrouter" else chat
 
 
 def _daily_notes(vault: Path, read: VaultReader) -> list[DailyNote]:
@@ -94,11 +116,18 @@ def _daily_notes(vault: Path, read: VaultReader) -> list[DailyNote]:
 
 
 def _entities(state: IngestState, runtime: Runtime[IngestContext]) -> EntityIndex:
-    """Return the vault's entity index plus the pages and aliases answered in review."""
-    return with_proposed(
-        load_index(vault_path(runtime)),
-        state.get("new_entities", []),
-        state.get("new_aliases", {}),
+    """Return the vault's entity index plus pages proposed in this run.
+
+    Proposed: pages and aliases answered in the review, and entity pages the run's
+    edits create (so tasks link to them, e.g. "### 1:1 with Joanna").
+    """
+    return with_created(
+        with_proposed(
+            load_index(vault_path(runtime)),
+            state.get("new_entities", []),
+            state.get("new_aliases", {}),
+        ),
+        state.get("fact_edits", []),
     )
 
 

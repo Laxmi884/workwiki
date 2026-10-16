@@ -617,3 +617,54 @@ def test_a_task_the_agent_mapped_may_file_facts_on_that_project(map_ctx):
         staging.with_mappings(map_ctx, [(8, "project-zed", "x")]).task_projects[8]
         == "project-atlas"
     )
+
+
+JOANNA_NOTE = "00_raw/daily/2026-10-14.md"
+JOANNA_TEXT = (
+    "---\ndate: 2026-10-14\n---\n## Meetings\n### 1:1 with Joanna\n"
+    "- [ ] Give heat maps to Joanna\n- [ ] Send UBM modernization\n"
+    "## Log\n- Coffee with Eugene\n"
+)
+
+
+def test_person_pages_named_by_tasks_are_kept(fixture_vault):
+    note = parse_daily_note(JOANNA_NOTE, JOANNA_TEXT)
+    read = vault_reader(fixture_vault)
+    ctx = StagingContext(
+        note, staging.citable_lines(note), load_index(fixture_vault), read
+    )
+    joanna = staging.stage_page(ctx, [], slug="person-joanna", title="Joanna", line=5)
+    eugene = staging.stage_page(ctx, [], slug="person-eugene", title="Eugene", line=9)
+    keep = staging.task_people_pages(ctx, [joanna, eugene])
+    assert keep == {"20_people/person-joanna.md"}  # Eugene is in no task
+    edits, _, problems = staging.finalize([joanna, eugene], [], keep=keep)
+    assert edits == [joanna]
+    assert problems == [
+        "finalize: dropped 20_people/person-eugene.md: a new page with nothing on it"
+    ]
+
+
+def test_tasks_link_a_person_page_proposed_in_the_run(vault_copy, monkeypatch):
+    (vault_copy / JOANNA_NOTE).write_text(JOANNA_TEXT)
+    script = ToolScript(
+        messages=iter(
+            [
+                call("propose_page", slug="person-joanna", title="Joanna", line=5),
+                AIMessage("Proposed Joanna."),
+            ]
+        )
+    )
+    monkeypatch.setattr(nodes, "chat_model", lambda runtime: script)
+    runner = IngestRunner.in_memory(
+        context={"vault_path": str(vault_copy)}, graph_builder=agent_builder
+    )
+    first = runner.start(JOANNA_NOTE)
+    page = next(f for f in first.review.files if f.path == "20_people/person-joanna.md")
+    index = next(f for f in first.review.files if f.path == "90_meta/tasks.json")
+    added = [line for line in index.diff.splitlines() if line.startswith("+")]
+    assert sum('"person-joanna"' in line for line in added) == 2  # both 1:1 tasks
+
+    refused = runner.resume(first.thread_id, {"action": "approve", "reject": [page.id]})
+    assert "link to; keep it, or revise" in refused.review.error
+    done = runner.resume(first.thread_id, "approve")
+    assert page.path in done.written

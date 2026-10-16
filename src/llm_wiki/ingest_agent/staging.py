@@ -45,7 +45,13 @@ from llm_wiki.domain.changes import AppendToSection, CreateFile, Edit, ReplaceSe
 from llm_wiki.domain.daily import DailyNote
 from llm_wiki.domain.entities import EntityKind
 from llm_wiki.domain.task_index import TaskProposal
-from llm_wiki.entity_index import EntityIndex, contains_phrase, kind_of, path_for
+from llm_wiki.entity_index import (
+    EntityIndex,
+    contains_phrase,
+    kind_of,
+    path_for,
+    with_created,
+)
 from llm_wiki.extraction import line_key
 from llm_wiki.inline_syntax import find_links
 from llm_wiki.routing import (
@@ -566,6 +572,29 @@ def with_mappings(
     return dataclasses.replace(ctx, task_projects=projects)
 
 
+def task_people_pages(ctx: StagingContext, staged: Sequence[Edit]) -> set[str]:
+    """Return the paths of person pages proposed in `staged` that the note's tasks name.
+
+    Names count as in `task_tracking.task_people`: on the task line, its parent bullet
+    or its `###` heading ("### 1:1 with Joanna"). Such a page is kept even with no
+    fact on it, since the task index links those tasks to it.
+    """
+    from llm_wiki.task_tracking import task_people  # noqa: PLC0415
+
+    proposed = {
+        p for p in proposed_paths(staged) if kind_of(_slug(p)) is EntityKind.PERSON
+    }
+    if not proposed:
+        return set()
+    entities = with_created(ctx.entities, staged)
+    named = {s for task in ctx.note.tasks for s in task_people(task, entities)[0]}
+    return {p for p in proposed if _slug(p) in named}
+
+
+def _slug(path: str) -> str:
+    return path.rsplit("/", 1)[-1].removesuffix(".md")
+
+
 def mapped_pages(calls: Sequence[tuple[int, str | None, str]]) -> set[str]:
     """Return the paths of the projects the last proposal per line names."""
     last = {line: project for line, project, _ in calls}
@@ -613,7 +642,7 @@ def finalize(
     `(line, path, n)` removes that line's facts on that page among the first `n`
     filings (those made before it), with their appended lines; a fact filed again
     after the withdrawal stays. A new page left with nothing on it is dropped, unless
-    it is in `keep` (a task is mapped to it, decision 0007). With
+    it is in `keep` (a task is mapped to it, or a task names that person). With
     `ctx`, facts filed in the same turn as their page's propose_page are checked now:
     dropped if no page came, or if their line doesn't name it.
 

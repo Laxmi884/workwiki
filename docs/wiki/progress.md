@@ -6,7 +6,7 @@ Single source of truth for project status. Updated at the end of every session.
 
 Working mode (CLAUDE.md, since 2026-10-15): Claude builds in reviewed steps, each with a git-ignored notebook in `notebooks/` (00–10 exist; `notebooks/_src/nbNN.py` builds them, `_src/run.sh` executes; an answer key lives outside the repo). Ingest = the `ingest_agent` graph ([[decisions/0006-agent-ingest-spike|0006]] option B); phase 3 is built (3d apply, 3e SQLite runner + vault git commit) and the 0006 agent-quality fixes are in; all three await the user's review (notebooks 08–10).
 
-**0007 built (Claude, 2026-10-16; awaiting the user's review + walkthrough, not committed):** `map_task` tool, `project ?` in the brief, `map_tasks` node, review task list + `answer` `tasks`, sticky user "none". 469 tests pass. Real run (DeepSeek V4.1 Flash, scratch `~/WorkDev`): 7 of 11 tasks mapped, 4 left open. Next: walkthrough with an example, commit on approval, then notebook 11.
+**0007 committed (`00551c0`, 2026-10-16).** Since then, built by Claude and awaiting review (not committed): model request timeout `WIKI_MODEL_TIMEOUT` + OpenRouter SDK retries off (they hid a 5 min–1 h hang), and person pages named by tasks kept with `tasks.json` links (0007 addendum). 475 tests pass. Next: commit on approval, then notebook 11 (task → project proposals). Model now `deepseek/deepseek-v4.1-flash` (~$0.001/run; spend $2.47 of $2.50).
 
 ## Open decisions
 
@@ -57,7 +57,8 @@ Working mode (CLAUDE.md, since 2026-10-15): Claude builds in reviewed steps, eac
   - [ ] Sync trial: LiveSync + CouchDB + Tailscale on `~/WorkDev` (`docs/setup/livesync.md`)
   - [x] 0006 agent-quality fixes (Claude, 2026-10-15; awaiting review; notebook 10): name-or-ask for person/project pages, wins = `#win` + review picks, help given on person pages, empty pages dropped, same-turn pages, headings citable for names, per-round warnings, no "first time" (details in 0006)
   - [x] Task → project proposals designed: [[decisions/0007-task-project-proposals|0007]] (2026-10-16)
-  - [ ] 0007 built by Claude 2026-10-16 (task → project proposals, 0002 rule 4); awaiting review, then notebook 11
+  - [x] 0007 task → project proposals built and committed (`00551c0`, 2026-10-16)
+  - [ ] Notebook 11 for 0007; timeout + task-named person pages awaiting review
   - [ ] 0006 cut-over: agent graph handles answer / make_page / edit, runner defaults to `ingest_agent`, then delete the 0004 model steps (extract, find_names, route, `ingest/graph.py`, `names.py`, round-1 script) and their tests From the first real note (2026-10-14): unknown names → people questions,
     new-project proposals for unlinked tasks (mapping rule 4), done tasks offered as win
     candidates, task sub-bullets read by the model, "remember this" → approved edit to
