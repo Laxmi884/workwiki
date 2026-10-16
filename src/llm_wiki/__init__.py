@@ -1,8 +1,1 @@
-"""New LangGraph Agent.
-
-This module defines a custom graph.
-"""
-
-from llm_wiki.graph import graph
-
-__all__ = ["graph"]
+"""llm-wiki: a personal work wiki kept by agents (ingest) and read by them (assistant)."""

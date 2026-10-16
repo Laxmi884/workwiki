@@ -36,13 +36,7 @@ from llm_wiki.domain.task_index import DoneTask, MappedBy
 from llm_wiki.domain.tasks import TaskStatus
 from llm_wiki.entity_index import EntityIndex, kind_of, load_index, with_created
 from llm_wiki.ingest.state import IngestContext, IngestState
-from llm_wiki.models import (
-    ModelSpec,
-    choose_model_spec,
-    make_chat_model,
-    timeout_kwargs,
-    without_sdk_retries,
-)
+from llm_wiki.model_setup import configured_fallbacks, configured_model
 
 
 def vault_path(runtime: Runtime[IngestContext]) -> Path:
@@ -55,35 +49,13 @@ def vault_path(runtime: Runtime[IngestContext]) -> Path:
 
 def chat_model(runtime: Runtime[IngestContext]) -> BaseChatModel:
     """Return the run's model: context `model`, else `WIKI_MODEL` (decision 0003)."""
-    context = runtime.context or {}
-    settings = get_settings()
-    return _build_model(
-        choose_model_spec(context.get("model"), settings.model), settings.model_timeout
-    )
+    return configured_model((runtime.context or {}).get("model"))
 
 
 def fallback_models(runtime: Runtime[IngestContext]) -> list[BaseChatModel]:
     """Return the backup models (`WIKI_FALLBACK_MODELS`), tried in order on failure."""
     del runtime  # same signature as chat_model; fallbacks are process-wide for now
-    settings = get_settings()
-    return [
-        _build_model(ModelSpec.parse(s), settings.model_timeout)
-        for s in settings.fallback_models
-    ]
-
-
-def _build_model(spec: ModelSpec, timeout: float | None = None) -> BaseChatModel:
-    if spec.provider == "ollama":
-        # Local models: no hidden "thinking" (minutes per call). Ollama's default
-        # 4096-token window is too small for prompt + detailed answer; the output cap
-        # is large and only stops a runaway answer.
-        return make_chat_model(
-            spec, temperature=0, reasoning=False, num_ctx=32768, num_predict=8192
-        )
-    chat = make_chat_model(
-        spec, temperature=0, **timeout_kwargs(spec.provider, timeout)
-    )
-    return without_sdk_retries(chat) if spec.provider == "openrouter" else chat
+    return configured_fallbacks()
 
 
 def _daily_notes(vault: Path, read: VaultReader) -> list[DailyNote]:

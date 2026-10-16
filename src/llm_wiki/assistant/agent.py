@@ -1,0 +1,142 @@
+"""The assistant deep agent (decision 0008): answers from the vault, read only.
+
+    /vault/   the vault (FilesystemBackend, virtual paths); read only
+    /skills/  this package's skills/ folder; read only
+    /subagent_skills/  the review-writer's own skills; read only
+    anything else: in-memory state (where deepagents puts oversized tool results, so
+              they never land in the vault: that write skips permission checks)
+
+Filesystem tools are limited to read_file, ls, glob and grep, and permission rules deny
+every write besides; `.git` and `.obsidian` can't be read either. Task questions go
+through `find_tasks` (code reads the task index). Review synthesis goes to the
+`review-writer` subagent, which returns a sourced `BragDraft`. No writes in phase 4: saving a brief
+comes in phase 7 through the reviewed, committed path ingest uses.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Sequence
+from pathlib import Path
+from typing import Any
+
+from deepagents import FilesystemPermission, create_deep_agent
+from deepagents.backends import CompositeBackend, FilesystemBackend, StateBackend
+from deepagents.middleware import FilesystemMiddleware
+from langchain_core.language_models import BaseChatModel
+from langgraph.checkpoint.base import BaseCheckpointSaver
+
+from llm_wiki.assistant.tools import make_find_tasks
+from llm_wiki.diffs import vault_reader
+from llm_wiki.domain.brag import BragDraft
+from llm_wiki.ingest_agent.agent import READ_TOOLS, RULES_PATH, model_middleware
+
+SKILLS_DIR = Path(__file__).parent / "skills"
+SUBAGENT_SKILLS_DIR = Path(__file__).parent / "subagent_skills"
+RULES_VIRTUAL = f"/vault/{RULES_PATH}"
+
+REVIEW_WRITER_PROMPT = """\
+You collect evidence for the user's performance review from their work vault at \
+/vault/ (read only). You get a period (and maybe a focus). Read \
+/subagent_skills/evidence/SKILL.md first, then the pages it lists, and return the \
+structured draft: every accomplishment in the period as one item with its date and \
+source link, numbers exactly as written, and the gaps. Use only what the vault says; \
+leave out anything you can't source. Do not use write_todos.
+"""
+
+SYSTEM_PROMPT = """\
+You are the user's work assistant. Their work wiki is an Obsidian vault at /vault/, \
+kept up to date from their daily notes: project, people and concept pages, quarterly \
+decision logs and impact pages (wins, help given), and the raw daily notes. You answer \
+from it; you cannot change it.
+
+Workflow:
+1. Read /skills/vault-map/SKILL.md first if you don't know where something lives, and \
+/skills/answering/SKILL.md before answering. For a review, brag sheet or "what did I \
+do" over a period, read /skills/brag-sheet/SKILL.md.
+2. Tasks (open, done, blocked, by project or person): call find_tasks; never read \
+90_meta/tasks.json yourself.
+3. Find pages with grep and glob, then read_file what you need.
+4. Answer briefly, with the date and the page each fact comes from as an Obsidian \
+link, e.g. ([[project-atlas]], 2026-10-12).
+
+Rules:
+- Use only what the vault says. Never invent dates, numbers, names or outcomes.
+- If the vault doesn't say, answer "The notes don't say." and what you did find.
+- The user's rules (90_meta/rules.md, in your context if present) beat the skills.
+- Do not use write_todos.
+"""
+
+
+def permissions() -> list[FilesystemPermission]:
+    """Read the vault and skills (not .git/.obsidian); write nothing anywhere."""
+    return [
+        FilesystemPermission(
+            operations=["read", "write"],
+            paths=["/vault/.git/**", "/vault/.obsidian/**"],
+            mode="deny",
+        ),
+        FilesystemPermission(operations=["write"], paths=["/**"], mode="deny"),
+    ]
+
+
+def review_writer(backend: Any, rules: list[FilesystemPermission]) -> dict[str, Any]:
+    """Return the review-writer subagent spec: read-only, its own skill, a BragDraft.
+
+    Custom subagents inherit neither skills nor middleware, so it gets its own skill
+    folder and the same read-only filesystem tools; permissions are set explicitly too.
+    """
+    return {
+        "name": "review-writer",
+        "description": (
+            "Collects sourced evidence for a performance review or brag sheet over a "
+            "period (e.g. '2026 Q4', 'since July'); returns a structured draft: items "
+            "per project with date, source and metric as written, plus gaps."
+        ),
+        "system_prompt": REVIEW_WRITER_PROMPT,
+        "skills": ["/subagent_skills/"],
+        "middleware": [
+            FilesystemMiddleware(backend=backend, tools=READ_TOOLS, _permissions=rules)
+        ],
+        "permissions": rules,
+        "response_format": BragDraft,
+    }
+
+
+def build_assistant(
+    vault: Path,
+    model: BaseChatModel,
+    *,
+    skills_dir: Path = SKILLS_DIR,
+    fallbacks: Sequence[BaseChatModel] = (),
+    checkpointer: BaseCheckpointSaver | None = None,
+    context_schema: type | None = None,
+) -> Any:
+    """Return the compiled assistant over `vault` (read only)."""
+    backend = CompositeBackend(
+        default=StateBackend(),
+        routes={
+            "/vault/": FilesystemBackend(root_dir=vault, virtual_mode=True),
+            "/skills/": FilesystemBackend(root_dir=skills_dir, virtual_mode=True),
+            "/subagent_skills/": FilesystemBackend(
+                root_dir=SUBAGENT_SKILLS_DIR, virtual_mode=True
+            ),
+        },
+    )
+    rules = permissions()
+    return create_deep_agent(
+        model=model,
+        tools=[make_find_tasks(vault_reader(vault))],
+        system_prompt=SYSTEM_PROMPT,
+        skills=["/skills/"],
+        memory=[RULES_VIRTUAL] if (vault / RULES_PATH).is_file() else None,
+        backend=backend,
+        permissions=rules,
+        middleware=[
+            *model_middleware(fallbacks),
+            FilesystemMiddleware(backend=backend, tools=READ_TOOLS, _permissions=rules),
+        ],
+        subagents=[review_writer(backend, rules)],
+        checkpointer=checkpointer,
+        context_schema=context_schema,
+        name="assistant",
+    )

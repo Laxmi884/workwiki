@@ -1,9 +1,5 @@
-import importlib
-
 import pydantic
 import pytest
-from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
-from langchain_core.messages import AIMessage
 
 from llm_wiki.config import Settings
 from llm_wiki.models import (
@@ -14,8 +10,6 @@ from llm_wiki.models import (
     without_sdk_retries,
 )
 
-# The module, not the compiled `graph` that llm_wiki/__init__.py re-exports.
-graph_module = importlib.import_module("llm_wiki.graph")
 
 # --- parsing -------------------------------------------------------------------
 
@@ -93,39 +87,6 @@ def test_settings_model_is_normalised(tmp_path):
 def test_settings_bad_model_fails_at_startup(tmp_path):
     with pytest.raises(pydantic.ValidationError, match="provider:model"):
         Settings(_env_file=None, vault_path=tmp_path, model="gpt-5")
-
-
-# --- graph: context overrides WIKI_MODEL ----------------------------------------
-
-
-@pytest.fixture
-def fake_graph(monkeypatch, tmp_path):
-    """Graph with WIKI_MODEL=ollama:default and a fake model that records the spec."""
-    built = []
-
-    def fake_make(spec):
-        built.append(spec.spec)
-        return GenericFakeChatModel(messages=iter([AIMessage("hello")]))
-
-    settings = Settings(_env_file=None, vault_path=tmp_path, model="ollama:default")
-    monkeypatch.setattr(graph_module, "get_settings", lambda: settings)
-    monkeypatch.setattr(graph_module, "make_chat_model", fake_make)
-    return graph_module.graph, built
-
-
-@pytest.mark.anyio
-@pytest.mark.parametrize(
-    ("context", "expected"),
-    [
-        (None, "ollama:default"),  # local default from WIKI_MODEL
-        ({"model": "claude:claude-haiku-5-5"}, "anthropic:claude-haiku-5-5"),
-        ({"model": "openrouter:openai/gpt-5-mini"}, "openrouter:openai/gpt-5-mini"),
-    ],
-)
-async def test_graph_uses_context_model(fake_graph, context, expected):
-    graph, built = fake_graph
-    out = await graph.ainvoke({"user_query": "hi"}, context=context)
-    assert (out["answer"], out["model_used"], built) == ("hello", expected, [expected])
 
 
 @pytest.mark.parametrize(
