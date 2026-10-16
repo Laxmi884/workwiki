@@ -4,10 +4,15 @@
 so a Studio assistant (or `context=`) can set `vault_path` and `model`; missing keys
 fall back to `WIKI_VAULT_PATH` and `WIKI_MODEL`. While the server only reads the
 graph's schema there is no run, and the settings are used.
+
+The server calls factories on its event loop, and building reads the disk (the vault
+path, the skills), so `make_graph` is async and builds in a worker thread; `langgraph
+dev` refuses blocking calls on the loop (`BlockingError`).
 """
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -41,13 +46,19 @@ def run_choice(context: AssistantContext | None) -> tuple[Path, str | None]:
     return path, context.get("model")
 
 
-def make_graph(runtime: ServerRuntime) -> Any:
-    """Build the assistant for this run (the server passes its runtime)."""
-    ert = runtime.execution_runtime
-    vault, model = run_choice(ert.context if ert is not None else None)  # type: ignore[arg-type]
+def graph_for(context: AssistantContext | None) -> Any:
+    """Build the assistant for a run's context (blocking: it reads the disk)."""
+    vault, model = run_choice(context)
     return build_assistant(
         vault,
         configured_model(model),
         fallbacks=configured_fallbacks(),
         context_schema=AssistantContext,
     )
+
+
+async def make_graph(runtime: ServerRuntime) -> Any:
+    """Build the assistant for this run (the server passes its runtime)."""
+    ert = runtime.execution_runtime
+    context = ert.context if ert is not None else None
+    return await asyncio.to_thread(graph_for, context)  # type: ignore[arg-type]

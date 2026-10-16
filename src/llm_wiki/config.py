@@ -34,6 +34,11 @@ class Settings(BaseSettings):
         model_timeout: `WIKI_MODEL_TIMEOUT`. Seconds one model request may take before
             it fails (and is retried); a provider that never answers would otherwise
             stall the run. Not applied to local Ollama models. Default 180.
+        backend: `WIKI_BACKEND`. How surfaces reach the agents (decision 0010):
+            "local" (this process, our SQLite) or "server" (an Agent Server at
+            `server_url`). Default "local".
+        server_url: `WIKI_SERVER_URL`. The Agent Server for the "server" backend.
+            Default "http://127.0.0.1:2024" (`langgraph dev`).
     """
 
     model_config = SettingsConfigDict(
@@ -51,6 +56,8 @@ class Settings(BaseSettings):
     model_timeout: float = Field(default=180.0, gt=0)
     review_url: str = "http://127.0.0.1:2024"
     state_dir: Path = Path("~/.llm-wiki")
+    backend: Literal["local", "server"] = "local"
+    server_url: str = "http://127.0.0.1:2024"
 
     @field_validator("vault_path")
     @classmethod

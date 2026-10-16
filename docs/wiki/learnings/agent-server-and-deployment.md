@@ -53,6 +53,20 @@ checkpointer=InMemorySaver())`, and Managed Deep Agents compiles them in product
 - Our state holds custom Pydantic types; our runner allow-lists them for msgpack. Under the server,
   check `checkpointer.serde` before relying on it. Over HTTP, int dict keys come back as strings.
 - `langgraph-api` 0.13.8 logs "End of Life"; upgrade before trying `up`.
+- Found building `ServerBackend` (S2, 2026-10-16), all against `langgraph dev`:
+  - The server calls graph **factories on its event loop**, so blocking work inside one fails
+    (`Path.resolve()` → "Blocking call to os.readlink"). The real `assistant` factory had this bug;
+    now `async def make_graph` builds in `asyncio.to_thread` (`assistant/graph.py`).
+  - A factory gets the runtime only if its parameter is **annotated `ServerRuntime`** (the server
+    reads the annotation, `langgraph_api/_factory_utils.py`); with `Any` it gets the config dict.
+  - `runs.wait` on a failed run **doesn't raise**: it returns `{"__error__": {"error": "<exception
+    class>", "message": "An internal error occurred"}}` and the thread's status is `error`.
+  - `threads.get("not-a-uuid")` is a 422, an unknown UUID a 404.
+  - Graph paths in `langgraph.json` resolve from the **working directory**, not the config file's
+    folder; the test server writes its config with absolute paths into a temp dir.
+  - Our Pydantic state survives the dev server's checkpointer (full review → approve → write ran);
+    over HTTP the values are JSON (`date` came back as `[2026, 10, 12]`).
+  - A run without a thread (`runs.wait(None, ...)`) leaves no thread behind: right for `ask`.
 
 ## In my words
 

@@ -9,8 +9,8 @@ Working mode (CLAUDE.md, since 2026-10-15): Claude builds in reviewed steps, eac
 **Where we are (2026-10-16, end of a long session):** phases 0–3 done; 0006 cut-over done (agent graph is the only ingest graph); 0007 task → project proposals done; phase 4 assistant (4a–4c) and the `wiki` chat front door (4d) committed; review page R1 committed (`9c0fee9`). All committed; 450 tests pass.
 
 **Next: build decision [[decisions/0010-backends-local-and-server|0010]] in reviewed steps** (start in a fresh session):
-1. ~~S1 `Backend` interface + `LocalBackend` + contract tests~~ built 2026-10-16, awaiting the user's review (not committed): `backend/base.py`, `backend/local.py`, `test_backend_contract.py`; the review now carries its facts, note date and task-ID count, so the page needs no thread state. Open for S2: how the server-side contract run gets a scripted model (no monkeypatching across processes).
-2. S2 `ServerBackend` on `langgraph-sdk` (threads with `vault_path` in metadata, runs, `command={"resume": ...}`, `threads.search(status="interrupted")`, streamed `assistant` runs) + opt-in test against `langgraph dev`.
+1. ~~S1 `Backend` interface + `LocalBackend` + contract tests~~ done 2026-10-16 (`564c4ba`).
+2. ~~S2 `ServerBackend` on `langgraph-sdk` + opt-in contract run against `langgraph dev`~~ built 2026-10-16, awaiting the user's review (not committed): `backend/server.py`, `get_backend()` (`WIKI_BACKEND`, `WIKI_SERVER_URL`), `tests/server/graphs.py` (real graphs, scripted models); `WIKI_SERVER_TESTS=1` runs all 10 contract tests on both backends (20 pass). Also fixed: the real `assistant` factory blocked the server's event loop.
 3. S3 review page + a chat box on `Backend` ("/…" → ingest, else → assistant); delete `chat/graph.py` (`wiki` graph) and direct runner imports in `review_web/`.
 4. S4 pass the node `config` into inner agents (`ingest_agent/graph.py:148`, assistant calls) for nested streaming/cancel.
 5. S5 target `langgraph.json` from 0010 (uv lockfile, Python 3.12, no `wiki`), upgrade `langgraph-api` (0.13.8 is EOL), `langgraph up` smoke test (vault volume, serde of our types).

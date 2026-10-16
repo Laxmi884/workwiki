@@ -52,3 +52,36 @@ class AgentRounds:
                 return super()._generate(messages, *args, **kwargs)
 
         return _Recording(messages=iter([*self.rounds[n], AIMessage("Done.")]))
+
+
+def bi_tool_decision() -> AIMessage:
+    """The fixture note's line 23, filed on the decision log (one scripted round)."""
+    return call(
+        "file_fact",
+        target="decision-log",
+        section="Decisions",
+        text="Not recorded in the note.",
+        line=23,
+        title="Keep the old BI tool until Q1",
+    )
+
+
+class EchoModel(GenericFakeChatModel):
+    """A chat model whose reply lists the user and assistant turns it was sent.
+
+    "What is Atlas? | A risk analytics project. | Is it on track?": tests (and a test
+    server, where nothing can be recorded from outside) can check the history arrived.
+    """
+
+    messages: Any = iter(())
+
+    def bind_tools(self, tools: Any, **kwargs: Any) -> EchoModel:
+        return self
+
+    def _generate(self, messages, *args, **kwargs):  # type: ignore[override]
+        from langchain_core.outputs import ChatGeneration, ChatResult
+
+        turns = [str(m.content) for m in messages if m.type in ("human", "ai")]
+        return ChatResult(
+            generations=[ChatGeneration(message=AIMessage(" | ".join(turns)))]
+        )

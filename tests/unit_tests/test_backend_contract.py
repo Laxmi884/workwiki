@@ -1,64 +1,114 @@
 """The `Backend` contract (decision 0010): every backend must pass these tests.
 
 `make(vault)` returns a backend on `vault`; backends made by one `make` share their
-thread store, as the review page and the chat do. Local runs always; the server
-backend joins in S2 (opt-in, against `langgraph dev`).
+thread store, as the review page and the chat do. Local always runs; the server
+backend runs against a `langgraph dev` this module starts, opt-in:
+
+    WIKI_SERVER_TESTS=1 uv run pytest tests/unit_tests/test_backend_contract.py
+
+The server loads `tests/server/graphs.py` (the real graphs, scripted models), so
+neither backend calls a model.
 """
 
+import json
+import os
 import shutil
+import socket
+import subprocess
+import sys
+import time
+from pathlib import Path
 
+import httpx
 import pytest
-from langchain_core.messages import AIMessage
 
 from llm_wiki.backend import NoOpenReview, NoteNotFound, UnknownThread
 from llm_wiki.backend import local as local_backend
 from llm_wiki.backend.local import LocalBackend
+from llm_wiki.backend.server import ServerBackend
 from llm_wiki.ingest import nodes
 
-from .scripted_model import AgentRounds, ToolScript, call
+from .scripted_model import AgentRounds, EchoModel, bi_tool_decision
 
 NOTE = "00_raw/daily/2026-10-12.md"
 LOG = "30_decisions/2026/decisions-2026-q4.md"
+ROOT = Path(__file__).resolve().parents[2]
+SERVER_GRAPHS = ROOT / "tests" / "server" / "graphs.py"
 
 
 @pytest.fixture
-def ingest_model(monkeypatch):
-    decision = call(
-        "file_fact",
-        target="decision-log",
-        section="Decisions",
-        text="Not recorded in the note.",
-        line=23,
-        title="Keep the old BI tool until Q1",
-    )
-    monkeypatch.setattr(nodes, "chat_model", AgentRounds([decision]))
-
-
-@pytest.fixture
-def assistant_inputs(monkeypatch):
-    """Answer every question with "Atlas is on track."; record what the model saw."""
-    seen: list[list] = []
-
-    class Recording(ToolScript):
-        def _generate(self, messages, *args, **kwargs):  # type: ignore[override]
-            seen.append(list(messages))
-            return super()._generate(messages, *args, **kwargs)
-
-    monkeypatch.setattr(
-        local_backend,
-        "configured_model",
-        lambda model: Recording(messages=iter([AIMessage("Atlas is on track.")])),
-    )
+def scripted_models(monkeypatch):
+    """The same scripted models `tests/server/graphs.py` gives the server."""
+    monkeypatch.setattr(nodes, "chat_model", AgentRounds([bi_tool_decision()]))
+    monkeypatch.setattr(local_backend, "configured_model", lambda model: EchoModel())
     monkeypatch.setattr(local_backend, "configured_fallbacks", lambda: [])
-    return seen
 
 
-@pytest.fixture(params=["local"])
-def make(request, tmp_path, ingest_model):
+def _free_port() -> int:
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
+@pytest.fixture(scope="session")
+def server_url(tmp_path_factory):
+    """Start `langgraph dev` on the scripted graphs; stop it after the session."""
+    if not os.environ.get("WIKI_SERVER_TESTS"):
+        pytest.skip("server contract tests are opt-in: set WIKI_SERVER_TESTS=1")
+    work = tmp_path_factory.mktemp(
+        "server"
+    )  # cwd: the server keeps .langgraph_api here
+    config = {
+        "dependencies": [str(ROOT)],  # paths are absolute: dev resolves them from cwd
+        "graphs": {
+            "ingest": f"{SERVER_GRAPHS}:ingest",
+            "assistant": f"{SERVER_GRAPHS}:assistant",
+        },
+    }
+    (work / "langgraph.json").write_text(json.dumps(config))
+    port = _free_port()
+    log_path = work / "server.log"
+    with log_path.open("w") as log:
+        server = subprocess.Popen(
+            [
+                Path(sys.executable).parent / "langgraph",
+                "dev",
+                "--config",
+                work / "langgraph.json",
+                "--port",
+                str(port),
+                "--no-browser",
+                "--no-reload",
+            ],
+            cwd=work,
+            stdout=log,
+            stderr=subprocess.STDOUT,
+            env={**os.environ, "LANGSMITH_TRACING": "false"},
+        )
+    url = f"http://127.0.0.1:{port}"
+    deadline = time.monotonic() + 90
+    while True:
+        try:
+            if httpx.get(f"{url}/ok", timeout=1).status_code == 200:
+                break
+        except httpx.HTTPError:
+            pass
+        if server.poll() is not None or time.monotonic() > deadline:
+            server.kill()
+            pytest.fail(f"langgraph dev did not start:\n{log_path.read_text()[-3000:]}")
+        time.sleep(0.5)
+    yield url
+    server.terminate()
+    server.wait(timeout=10)
+
+
+@pytest.fixture(params=["local", "server"])
+def make(request, tmp_path, scripted_models):
+    if request.param == "server":
+        url = request.getfixturevalue("server_url")
+        return lambda vault: ServerBackend(url, vault)
     store = tmp_path / "checkpoints.sqlite"
-    if request.param == "local":
-        return lambda vault: LocalBackend.sqlite(vault, path=store)
-    raise NotImplementedError(request.param)
+    return lambda vault: LocalBackend.sqlite(vault, path=store)
 
 
 @pytest.fixture
@@ -159,13 +209,8 @@ def test_another_vaults_threads_are_unknown(make, vault_copy, tmp_path):
     assert theirs.review(started.thread_id).status == "review"
 
 
-def test_ask_answers_with_the_earlier_chat(backend, assistant_inputs):
+def test_ask_answers_with_the_earlier_chat(backend):
     history = [("user", "What is Atlas?"), ("assistant", "A risk analytics project.")]
     answer = backend.ask("Is it on track?", history)
-    assert answer == "Atlas is on track."
-    texts = [m.content for m in assistant_inputs[0]]
-    assert texts[-3:] == [
-        "What is Atlas?",
-        "A risk analytics project.",
-        "Is it on track?",
-    ]
+    # EchoModel replies with the user and assistant turns it was sent
+    assert answer == "What is Atlas? | A risk analytics project. | Is it on track?"

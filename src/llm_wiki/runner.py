@@ -30,9 +30,9 @@ from langgraph.types import Command
 from pydantic import BaseModel
 
 import llm_wiki.domain
-from llm_wiki.backend.base import RunResult
+from llm_wiki.backend.base import RunResult, run_result
 from llm_wiki.config import get_settings
-from llm_wiki.domain.review import ReviewAnswer, ReviewRequest
+from llm_wiki.domain.review import ReviewAnswer
 from llm_wiki.ingest.state import IngestContext
 from llm_wiki.ingest_agent.graph import builder
 
@@ -159,24 +159,8 @@ class IngestRunner:
     def status(self, thread_id: str) -> RunResult:
         """Read where the thread stands from the checkpointer (no graph run)."""
         snapshot = self.graph.get_state(self._config(thread_id))
-        values = snapshot.values
-        warnings = tuple(values.get("warnings", []))
-        if snapshot.interrupts:
-            request = ReviewRequest.model_validate(snapshot.interrupts[0].value)
-            return RunResult(
-                thread_id=thread_id, status="review", review=request, warnings=warnings
-            )
-        if values.get("skip_reason"):
-            return RunResult(thread_id=thread_id, status="skipped", warnings=warnings)
-        return RunResult(
-            thread_id=thread_id,
-            status="done",
-            action=values.get("review_action"),
-            approved=tuple(values.get("approved", [])),
-            written=tuple(values.get("written", [])),
-            commit=values.get("commit"),
-            warnings=warnings,
-        )
+        interrupt = snapshot.interrupts[0].value if snapshot.interrupts else None
+        return run_result(thread_id, snapshot.values, interrupt)
 
 
 @cache

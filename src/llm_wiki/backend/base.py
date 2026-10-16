@@ -12,7 +12,7 @@ pauses or ends (no streaming yet; 0010 rule 4).
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any, Literal, Protocol
 
@@ -47,6 +47,33 @@ class RunResult(BaseModel):
     written: tuple[str, ...] = ()
     commit: str | None = None
     warnings: tuple[str, ...] = ()
+
+
+def run_result(
+    thread_id: str, values: Mapping[str, Any], interrupt: Any | None
+) -> RunResult:
+    """Read a RunResult from an ingest thread's state values and its open interrupt.
+
+    Both backends use it: the runner's checkpointer and the server's thread state
+    hold the same keys.
+    """
+    warnings = tuple(values.get("warnings", []))
+    if interrupt is not None:
+        request = ReviewRequest.model_validate(interrupt)
+        return RunResult(
+            thread_id=thread_id, status="review", review=request, warnings=warnings
+        )
+    if values.get("skip_reason"):
+        return RunResult(thread_id=thread_id, status="skipped", warnings=warnings)
+    return RunResult(
+        thread_id=thread_id,
+        status="done",
+        action=values.get("review_action"),
+        approved=tuple(values.get("approved", [])),
+        written=tuple(values.get("written", [])),
+        commit=values.get("commit"),
+        warnings=warnings,
+    )
 
 
 class BackendError(Exception):

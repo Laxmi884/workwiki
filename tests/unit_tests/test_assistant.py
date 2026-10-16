@@ -1,5 +1,6 @@
 """The assistant (0008): task lines from code, a read-only vault, a scripted run."""
 
+import asyncio
 import datetime
 
 import pytest
@@ -206,9 +207,28 @@ def test_graph_factory_takes_vault_and_model_from_the_run(monkeypatch, vault_cop
     monkeypatch.setattr(assistant_graph, "configured_fallbacks", lambda: [])
     context = {"vault_path": str(vault_copy), "model": "openrouter:x/y"}
     run = SimpleNamespace(execution_runtime=SimpleNamespace(context=context))
-    assert assistant_graph.make_graph(run) is not None
+    assert asyncio.run(assistant_graph.make_graph(run)) is not None
     assert asked == ["openrouter:x/y"]
     assert assistant_graph.run_choice(context) == (
         vault_copy.resolve(),
         "openrouter:x/y",
     )
+
+
+def test_graph_factory_does_not_block_the_servers_event_loop(monkeypatch, vault_copy):
+    """`langgraph dev` refuses blocking calls on its loop (blockbuster); resolving
+    the vault path is one, so the factory must build the graph off the loop."""
+    from types import SimpleNamespace
+
+    from blockbuster import blockbuster_ctx
+
+    from llm_wiki.assistant import graph as assistant_graph
+
+    monkeypatch.setattr(
+        assistant_graph, "configured_model", lambda _: ToolScript(messages=iter([]))
+    )
+    monkeypatch.setattr(assistant_graph, "configured_fallbacks", lambda: [])
+    context = {"vault_path": str(vault_copy)}
+    run = SimpleNamespace(execution_runtime=SimpleNamespace(context=context))
+    with blockbuster_ctx():
+        assert asyncio.run(assistant_graph.make_graph(run)) is not None
