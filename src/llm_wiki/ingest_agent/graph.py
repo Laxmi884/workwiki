@@ -2,15 +2,18 @@
 
     load_note ──(unchanged / broken ledger)──→ END
         ↓
-    assign_ids → track_tasks → stage (ingest deep agent) → render → review
+    assign_ids → track_tasks → stage (ingest deep agent) → map_tasks → render → review
     review ──reject──→ END
            ├─ approve ─→ apply (approved files only) → END, or render if they changed
            ├─ revise ─→ stage (feedback + the previous filing)
-           ├─ answer ─→ pick_wins (picked wins become impact edits; code only) → render
+           ├─ answer ─→ pick_wins (picked wins become impact edits; code only)
+           │              → map_tasks → render
            └─ edit / make_page ─→ render  (fresh review)
 
-Code nodes are the 0004 ones, unchanged. `stage` replaces extract, find_names and route:
-the agent reads the note and the vault and stages edits that `staging` checks.
+Code nodes are the 0004 ones. `stage` replaces extract, find_names and route: the
+agent reads the note and the vault and stages edits that `staging` checks.
+`map_tasks` is `track_tasks` again, now with the agent's task → project proposals and
+the user's answers (decision 0007).
 """
 
 from __future__ import annotations
@@ -42,7 +45,10 @@ from llm_wiki.ingest_agent.staging import (
     StagingContext,
     citable_lines,
     finalize,
+    finalize_mappings,
+    mapped_pages,
     proposed_paths,
+    with_mappings,
 )
 from llm_wiki.routing import route_facts
 
@@ -79,12 +85,23 @@ def stage(state: AgentIngestState, runtime: Runtime[IngestContext]) -> dict[str,
     citable = citable_lines(note, state.get("seen_lines", []))
     revising = state.get("review_action") == "revise"
     previous_edits = state.get("agent_edits", state.get("fact_edits", []))
+    chosen = state.get("chosen_projects", {})
+    task_projects = {
+        **state.get("task_projects", {}),
+        **{line: slug for line, slug in chosen.items() if slug},
+    }
+    open_tasks = {
+        line: options
+        for line, options in state.get("open_tasks", {}).items()
+        if line not in chosen
+    }
+    proposals = [p for p in state.get("task_proposals", []) if p.line in open_tasks]
     brief = build_brief(
         note,
         text,
         citable,
         state.get("task_ids", {}),
-        state.get("task_projects", {}),
+        task_projects,
         state.get("done_tasks", []),
         entities,
         read,
@@ -97,6 +114,8 @@ def stage(state: AgentIngestState, runtime: Runtime[IngestContext]) -> dict[str,
         ]
         if revising
         else (),
+        open_tasks=open_tasks,
+        proposals=proposals if revising else (),
     )
     skills = (runtime.context or {}).get("skills_dir")
     agent = build_ingest_agent(
@@ -111,8 +130,9 @@ def stage(state: AgentIngestState, runtime: Runtime[IngestContext]) -> dict[str,
             citable,
             entities,
             read,
-            task_projects=state.get("task_projects", {}),
+            task_projects=task_projects,
             feedback=tuple(state.get("feedback", [])) if revising else (),
+            open_tasks=open_tasks,
         )
     )
     started = time.monotonic()
@@ -122,30 +142,34 @@ def stage(state: AgentIngestState, runtime: Runtime[IngestContext]) -> dict[str,
             start |= {
                 "staged": list(previous_edits),
                 "filed": [Filed(**f) for f in state.get("agent_filed", [])],
+                "mappings": [(p.line, p.project, p.why) for p in proposals],
             }
         result = agent.invoke(
             start,
             context=context,
             config={"recursion_limit": RECURSION_LIMIT},
         )
-    calls = [
+    tool_names = [
         c["name"]
         for m in result["messages"]
         if isinstance(m, AIMessage)
         for c in m.tool_calls
     ]
+    calls = result.get("mappings", [])
     staged, filed, problems = finalize(
         result.get("staged", []),
         result.get("filed", []),
         result.get("withdrawn", []),
-        ctx=context.staging,
+        ctx=with_mappings(context.staging, calls),
+        keep=mapped_pages(calls),
     )
-    refusals = [*result.get("refusals", []), *problems]
+    kept_proposals, mapping_problems = finalize_mappings(calls, staged, context.staging)
+    refusals = [*result.get("refusals", []), *problems, *mapping_problems]
     stats = {
         "seconds": round(time.monotonic() - started, 1),
         "model_calls": sum(isinstance(m, AIMessage) for m in result["messages"]),
-        "tool_calls": len(calls),
-        "calls_by_tool": {n: calls.count(n) for n in sorted(set(calls))},
+        "tool_calls": len(tool_names),
+        "calls_by_tool": {n: tool_names.count(n) for n in sorted(set(tool_names))},
         "refusals": len(refusals),
         "refused": refusals,
         "tokens": {
@@ -158,6 +182,7 @@ def stage(state: AgentIngestState, runtime: Runtime[IngestContext]) -> dict[str,
         "agent_edits": staged,
         "fact_edits": staged + _win_edits(state, staged, read, entities),
         "agent_filed": [dataclasses.asdict(f) for f in filed],
+        "task_proposals": kept_proposals,
         "questions": questions,
         "agent_stats": stats,
         "round_warnings": _for_the_user(refusals, questions),
@@ -175,7 +200,7 @@ def _for_the_user(refusals: list[str], questions: list[str]) -> list[str]:
     dropped = [
         r.removeprefix("finalize: ")
         for r in refusals
-        if r.startswith("finalize: dropped line")
+        if r.startswith(("finalize: dropped line", "finalize: dropped task line"))
     ]
     other = len(refusals) - len(lost) - len(dropped)
     out = [f"question {q}" for q in questions]
@@ -211,7 +236,7 @@ def _win_edits(
 def pick_wins(
     state: AgentIngestState, runtime: Runtime[IngestContext]
 ) -> dict[str, Any]:
-    """After a review "answer": the agent's edits plus the picked wins, then re-render."""
+    """After a review "answer": the agent's edits plus the picked wins (then map_tasks)."""
     vault = nodes.vault_path(runtime)
     agent_edits = state.get("agent_edits", [])
     wins = _win_edits(state, agent_edits, vault_reader(vault), load_index(vault))
@@ -236,6 +261,7 @@ builder = StateGraph(
 builder.add_node("load_note", nodes.load_note)
 builder.add_node("assign_ids", nodes.assign_ids)
 builder.add_node("track_tasks", nodes.track_tasks)
+builder.add_node("map_tasks", nodes.track_tasks)
 builder.add_node("stage", stage, retry_policy=RetryPolicy(max_attempts=2))
 builder.add_node("pick_wins", pick_wins)
 builder.add_node("render", nodes.render)
@@ -246,12 +272,13 @@ builder.add_edge(START, "load_note")
 builder.add_conditional_edges("load_note", nodes.after_load, ["assign_ids", END])
 builder.add_edge("assign_ids", "track_tasks")
 builder.add_edge("track_tasks", "stage")
-builder.add_edge("stage", "render")
+builder.add_edge("stage", "map_tasks")
+builder.add_edge("map_tasks", "render")
 builder.add_edge("render", "review")
 builder.add_conditional_edges(
     "review", after_review, ["stage", "pick_wins", "render", "apply", END]
 )
-builder.add_edge("pick_wins", "render")
+builder.add_edge("pick_wins", "map_tasks")
 builder.add_conditional_edges("apply", nodes.after_apply, ["render", END])
 
 graph = builder.compile(name="ingest_agent")

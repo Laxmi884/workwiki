@@ -86,6 +86,28 @@ class ReviewWin(BaseModel):
     chosen: bool = False
 
 
+class ReviewTask(BaseModel):
+    """A task with no project by rules 1–3: the model's proposal or the user's answer.
+
+    Attributes:
+        line: The task's line in the note.
+        text: The task as written.
+        project: The project it will be stored with, or None.
+        by: "model" (a proposal; in `tasks.json` unless answered), "user" (an
+            earlier answer) or None (nothing proposed).
+        why: The model's reason, for a proposal.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    id: str
+    line: int
+    text: str
+    project: str | None = None
+    by: Literal["model", "user"] | None = None
+    why: str = ""
+
+
 class ReviewInboxItem(BaseModel):
     """A fact whose person, project or topic matched no page (3c adds answers)."""
 
@@ -109,6 +131,8 @@ class ReviewRequest(BaseModel):
         edited: Paths whose text is the user's own (from "edit" answers).
         people: Names with no page, to answer with "answer".
         wins: Tasks done in this note; picked ones become wins.
+        tasks: Tasks with no project by rules 1–3, with the model's proposals; the
+            proposals are in `tasks.json` unless answered (decision 0007).
         error: Why the previous answer was not accepted, if it wasn't.
     """
 
@@ -124,6 +148,7 @@ class ReviewRequest(BaseModel):
     edited: tuple[str, ...] = ()
     people: tuple[ReviewPerson, ...] = ()
     wins: tuple[ReviewWin, ...] = ()
+    tasks: tuple[ReviewTask, ...] = ()
     error: str | None = None
 
 
@@ -136,7 +161,7 @@ _FIELDS: dict[str, set[str]] = {
     "revise": {"feedback"},
     "make_page": {"decisions"},
     "edit": {"file", "text"},
-    "answer": {"people", "wins"},
+    "answer": {"people", "wins", "tasks"},
 }
 _REQUIRED: dict[str, set[str]] = {
     "revise": {"feedback"},
@@ -156,7 +181,8 @@ class ReviewAnswer(BaseModel):
         {"action": "make_page", "decisions": ["d1"]}           d1 gets its own page
         {"action": "edit", "file": "f4", "text": "..."}        f4's full new text
         {"action": "answer", "people": {"p1": "new", "p2": "person-sam-ortiz",
-         "p3": "ignore"}, "wins": ["w2"]}                      questions
+         "p3": "ignore"}, "wins": ["w2"],
+         "tasks": {"m1": "project-atlas", "m2": "none"}}       questions
 
     Attributes:
         action: What to do.
@@ -168,6 +194,8 @@ class ReviewAnswer(BaseModel):
         people: answer: person question ID → "new" (make a page), "ignore" (not a
             person) or an existing person slug (the name becomes its alias).
         wins: answer: win IDs to put on the impact page; replaces earlier picks.
+        tasks: answer: task ID → a project slug (existing or proposed in this
+            review) or "none" (no project; not proposed again).
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -180,12 +208,21 @@ class ReviewAnswer(BaseModel):
     text: str | None = None
     people: dict[str, str] | None = None
     wins: tuple[str, ...] | None = None
+    tasks: dict[str, str] | None = None
 
     @model_validator(mode="after")
     def _fields_match_action(self) -> ReviewAnswer:
         given = {
             name
-            for name in ("reject", "feedback", "decisions", "file", "text", "people")
+            for name in (
+                "reject",
+                "feedback",
+                "decisions",
+                "file",
+                "text",
+                "people",
+                "tasks",
+            )
             if getattr(self, name) not in (None, (), "", {})
         }
         if self.wins is not None:  # [] is an answer too: pick none
@@ -195,5 +232,5 @@ class ReviewAnswer(BaseModel):
         if missing := sorted(_REQUIRED.get(self.action, set()) - given):
             raise ValueError(f'"{self.action}" needs {", ".join(missing)}')
         if self.action == "answer" and not given:
-            raise ValueError('"answer" needs people or wins')
+            raise ValueError('"answer" needs people, wins or tasks')
         return self

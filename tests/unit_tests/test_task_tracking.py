@@ -11,6 +11,7 @@ from llm_wiki.task_tracking import (
     dump_task_index,
     load_task_index,
     map_project,
+    open_tasks,
     update_task_index,
 )
 
@@ -261,3 +262,63 @@ def test_broken_index_is_reported_not_replaced(text):
     index, problem = load_task_index(text)
     assert index is None
     assert TASK_INDEX_PATH in problem and "not tracked" in problem
+
+
+# --- rule 4: model proposals and user answers (decision 0007) -----------------------
+
+
+def _chosen_record(note, chosen, index=None):
+    index = index or load_task_index(None)[0]
+    index, _ = update_task_index(index, note, {}, ENTITIES, chosen)
+    return index, index.tasks["t-q7m2xa"]
+
+
+def test_chosen_maps_an_open_task():
+    _, record = _chosen_record(_one("2026-10-12", " "), {5: ("project-atlas", "model")})
+    assert (record.project, record.mapped_by) == ("project-atlas", "model")
+
+
+def test_chosen_never_beats_a_rule():
+    note = _one("2026-10-12", " ", "Fix the atlas beta export")
+    _, record = _chosen_record(note, {5: ("project-zed", "model")})
+    assert (record.project, record.mapped_by) == ("project-atlas", "alias")
+
+
+def test_model_mapping_is_sticky_in_later_notes():
+    index, _ = _chosen_record(_one("2026-10-12", " "), {5: ("project-atlas", "model")})
+    later = _one("2026-10-13", " ", "Review budget again")
+    index, _ = update_task_index(index, later, {}, ENTITIES)
+    record = index.tasks["t-q7m2xa"]
+    assert (record.project, record.mapped_by) == ("project-atlas", "model")
+
+
+def test_user_none_sticks_until_an_explicit_link():
+    index, record = _chosen_record(_one("2026-10-12", " "), {5: (None, "user")})
+    assert (record.project, record.mapped_by) == (None, "user")
+    alias = _one("2026-10-13", " ", "Fix the atlas beta export")
+    index, _ = update_task_index(index, alias, {}, ENTITIES)
+    assert index.tasks["t-q7m2xa"].mapped_by == "user"  # an alias doesn't override
+    link = _one("2026-10-14", " ", "Fix it for [[project-zed]]")
+    index, _ = update_task_index(index, link, {}, ENTITIES)
+    record = index.tasks["t-q7m2xa"]
+    assert (record.project, record.mapped_by) == ("project-zed", "link")
+
+
+def test_open_tasks_lists_unmapped_tasks_with_alias_candidates():
+    entities = build_index(
+        [ATLAS_PAGE, ("10_projects/project-orbit.md", "---\naliases: [beta]\n---\n")]
+    )
+    note = _note(
+        "2026-10-12",
+        "## Tasks\n- [ ] Ship [[project-atlas]] ^t-aaaaaa\n"
+        "- [ ] fix the atlas beta export ^t-bbbbbb\n"
+        "- [ ] Review budget ^t-cccccc\n"
+        "- [ ] Water plants ^t-dddddd\n",
+    )
+    index, _ = update_task_index(
+        load_task_index(None)[0], note, {}, entities, {8: (None, "user")}
+    )
+    assert open_tasks(index, note, {}, entities) == {
+        6: ("project-atlas", "project-orbit"),
+        7: (),
+    }

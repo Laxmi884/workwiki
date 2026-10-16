@@ -16,20 +16,26 @@ Checks:
   state", which only `stage_summary` rewrites;
 - a fact goes on a person or project page (existing or proposed in this run) only if
   the cited line, a parent bullet or its `###` heading names it (title, alias or link),
-  code mapped the task to that project, or the user's revise feedback names the page;
+  code or the agent's own proposal (`map_task`, shown in the review) mapped the task to
+  that project, or the user's revise feedback names the page;
 - a fact may name a page proposed in the same turn (parallel calls can't see each
   other); `finalize` checks it then, and drops it if no page came or it isn't named;
 - "## Wins" takes only lines tagged #win: other wins are the user's pick in the review;
 - the text is one line, not too long, and links only known or proposed slugs;
 - the same fact is not filed twice (already staged, or already on the page);
 - a new page's title is named in the cited line (a `###` heading counts here);
-- a summary ("## Current state") cites new note lines and stays short.
+- a summary ("## Current state") cites new note lines and stays short;
+- a task → project proposal (decision 0007) is for an open task line (rules 1–3 and
+  the index left it unmapped, the user hasn't answered it), names a project page that
+  exists or is proposed in this run, and stays within the rule-3 candidates when the
+  task's aliases matched several projects.
 """
 
 from __future__ import annotations
 
+import dataclasses
 import re
-from collections.abc import Callable, Collection, Sequence
+from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass, field
 
 import yaml
@@ -38,6 +44,7 @@ from llm_wiki.daily_syntax import is_fence
 from llm_wiki.domain.changes import AppendToSection, CreateFile, Edit, ReplaceSection
 from llm_wiki.domain.daily import DailyNote
 from llm_wiki.domain.entities import EntityKind
+from llm_wiki.domain.task_index import TaskProposal
 from llm_wiki.entity_index import EntityIndex, contains_phrase, kind_of, path_for
 from llm_wiki.extraction import line_key
 from llm_wiki.inline_syntax import find_links
@@ -54,6 +61,8 @@ from llm_wiki.routing import (
 
 IMPACT, DECISION_LOG = "impact", "decision-log"
 MAX_TEXT = 400
+MAX_WHY = 120
+NO_PROJECT = "none"
 
 CURRENT_STATE = "## Current state"
 MAX_SUMMARY_LINES = 6
@@ -107,6 +116,8 @@ class StagingContext:
         read: Vault-relative path → current text, or None if there is no such file.
         task_projects: Task line → the project code mapped it to (track_tasks).
         feedback: The user's revise messages; a page they name may take any line.
+        open_tasks: Task line → rule-3 candidates (or ()) for tasks the model may
+            map to a project; lines the user answered in the review are left out.
     """
 
     note: DailyNote
@@ -115,6 +126,7 @@ class StagingContext:
     read: Callable[[str], str | None]
     task_projects: dict[int, str | None] = field(default_factory=dict)
     feedback: tuple[str, ...] = ()
+    open_tasks: Mapping[int, Sequence[str]] = field(default_factory=dict)
 
 
 def citable_lines(note: DailyNote, seen: Collection[str] = ()) -> dict[int, str]:
@@ -466,6 +478,100 @@ def stage_page(
     )
 
 
+def stage_mapping(
+    ctx: StagingContext, *, line: int, project: str, why: str
+) -> tuple[int, str | None, str]:
+    """Check a task → project proposal; return (line, project or None, why).
+
+    `project` "none" takes back an earlier proposal for the line (None). A project
+    without a page is accepted here (it may be proposed in the same turn);
+    `finalize_mappings` drops the proposal if no page came.
+
+    Raises:
+        StagingError: Not an open task line, not a project slug, outside the
+            candidates, or a bad reason.
+    """
+    if line not in ctx.open_tasks:
+        mapped = ctx.task_projects.get(line)
+        why_not = (
+            f"code already mapped it to {mapped}"
+            if mapped
+            else "it is not a task line, or its project is already settled"
+        )
+        raise StagingError(f"line {line} can't be mapped: {why_not}")
+    _check_line(ctx, line)
+    if project.strip().lower() == NO_PROJECT:
+        return line, None, ""
+    project = project.strip()
+    if kind_of(project) is not EntityKind.PROJECT:
+        raise StagingError(
+            f"{project!r} is not a project slug (project-<name>); use {NO_PROJECT!r} "
+            "to take a proposal back"
+        )
+    candidates = ctx.open_tasks[line]
+    if candidates and project not in candidates:
+        raise StagingError(
+            f"line {line} names aliases of {', '.join(candidates)}; pick one of them "
+            "or skip it"
+        )
+    why = " ".join(why.split())
+    if not why or len(why) > MAX_WHY:
+        raise StagingError(f"why must be one short phrase (under {MAX_WHY} chars)")
+    return line, project, why
+
+
+def finalize_mappings(
+    calls: Sequence[tuple[int, str | None, str]],
+    edits: Sequence[Edit],
+    ctx: StagingContext,
+) -> tuple[list[TaskProposal], list[str]]:
+    """Return the proposals that stand once the agent is done, and what was dropped.
+
+    The last call per line wins ("none" removes it). A proposal for a project with no
+    page in the vault or among `edits` (finalized) is dropped.
+    """
+    last = {line: (project, why) for line, project, why in calls}
+    kept: list[TaskProposal] = []
+    problems: list[str] = []
+    created = proposed_paths(edits)
+    for line in sorted(last):
+        project, why = last[line]
+        if project is None:
+            continue
+        path = path_for(project)
+        if ctx.read(path) is None and path not in created:
+            problems.append(
+                f"finalize: dropped task line {line} → {project}: no page was proposed"
+            )
+            continue
+        kept.append(TaskProposal(line=line, project=project, why=why))
+    return kept, problems
+
+
+def with_mappings(
+    ctx: StagingContext, calls: Sequence[tuple[int, str | None, str]]
+) -> StagingContext:
+    """Return `ctx` with the agent's current proposals added to `task_projects`.
+
+    A task the agent mapped to a project then counts as naming it, so its facts may
+    go on that page. The last call per line wins; "none" removes the proposal.
+    """
+    last = {line: project for line, project, _ in calls}
+    if not last:
+        return ctx
+    projects = {**ctx.task_projects}
+    for line, project in last.items():
+        if line in ctx.open_tasks:  # never over code's own mapping
+            projects[line] = project
+    return dataclasses.replace(ctx, task_projects=projects)
+
+
+def mapped_pages(calls: Sequence[tuple[int, str | None, str]]) -> set[str]:
+    """Return the paths of the projects the last proposal per line names."""
+    last = {line: project for line, project, _ in calls}
+    return {path_for(p) for p in last.values() if p is not None}
+
+
 def check_question(ctx: StagingContext, question: str, line: int) -> str:
     """Check a question for the review and return it with its line."""
     _check_name_line(ctx, line)
@@ -496,6 +602,7 @@ def finalize(
     filed: Sequence[Filed],
     withdrawn: Collection[tuple[int, str, int]] = (),
     ctx: StagingContext | None = None,
+    keep: Collection[str] = (),
 ) -> tuple[list[Edit], list[Filed], list[str]]:
     """Re-check the whole staging once the agent is done.
 
@@ -505,7 +612,8 @@ def finalize(
     are dropped, and a line filed twice on one page keeps its first fact. A withdrawal
     `(line, path, n)` removes that line's facts on that page among the first `n`
     filings (those made before it), with their appended lines; a fact filed again
-    after the withdrawal stays. A new page left with nothing on it is dropped. With
+    after the withdrawal stays. A new page left with nothing on it is dropped, unless
+    it is in `keep` (a task is mapped to it, decision 0007). With
     `ctx`, facts filed in the same turn as their page's propose_page are checked now:
     dropped if no page came, or if their line doesn't name it.
 
@@ -562,7 +670,7 @@ def finalize(
         edits.append(edit)
     has_content = {e.path for e in edits if not isinstance(e, CreateFile)}
     empty = [e.path for e in edits if isinstance(e, CreateFile)]
-    empty = [p for p in empty if p not in has_content]
+    empty = [p for p in empty if p not in has_content and p not in keep]
     problems += [f"finalize: dropped {p}: a new page with nothing on it" for p in empty]
     edits = [e for e in edits if not (isinstance(e, CreateFile) and e.path in empty)]
     return edits, kept, problems

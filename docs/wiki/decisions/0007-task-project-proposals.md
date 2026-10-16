@@ -41,6 +41,11 @@ user's 2026-10-14 note ended up unmapped.
   it carries over. A later explicit `[[project-…]]` link still overrides any mapping.
 - **Rejecting a new project page that mappings use** (approve with `reject`) is refused with an
   `error` asking to answer those tasks first, so `tasks.json` never points at an unwritten page.
+- **Added after the first real run (2026-10-16, user agreed):** a task the agent mapped counts as
+  naming that project, so its facts may go on the page (`staging.with_mappings`, in `file_fact` and
+  `finalize`; never over code's own mapping). Without it, lines 8, 12, 13 of the 2026-10-14 note were
+  mapped to delq analysis but their facts were dropped. A user "none" later leaves such a fact on the
+  page; the page diff shows it.
 - Out of scope: the generated "Open tasks" section on project pages (phase 7, with the brief).
 
 ## Why

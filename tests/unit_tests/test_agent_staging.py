@@ -1,6 +1,7 @@
 """Spike 0006: the checks on what the ingest agent stages, and one scripted agent run."""
 
 import dataclasses
+import json
 
 import pytest
 from langchain_core.messages import AIMessage
@@ -456,3 +457,163 @@ def test_review_lists_dropped_facts_and_counts_other_refusals():
         "not filed: dropped line 8 on 10_projects/p.md: the line doesn't name that page",
         "code refused 1 of the agent's calls (details in the trace)",
     ]
+
+
+# --- task → project proposals (decision 0007) --------------------------------------
+
+
+@pytest.fixture
+def map_ctx(ctx):
+    return dataclasses.replace(
+        ctx,
+        task_projects={8: "project-atlas"},
+        open_tasks={9: (), 17: (), 26: ("project-atlas", "project-orbit")},
+    )
+
+
+def test_map_task_accepts_an_open_task(map_ctx):
+    call = staging.stage_mapping(
+        map_ctx, line=9, project="project-atlas", why=" onboarding  doc "
+    )
+    assert call == (9, "project-atlas", "onboarding doc")
+
+
+def test_map_task_none_takes_a_proposal_back(map_ctx):
+    assert staging.stage_mapping(map_ctx, line=9, project="None", why="") == (
+        9,
+        None,
+        "",
+    )
+
+
+@pytest.mark.parametrize(
+    ("line", "project", "why", "refusal"),
+    [
+        (8, "project-atlas", "x", "code already mapped it to project-atlas"),
+        (22, "project-atlas", "x", "not a task line"),
+        (9, "person-sam-ortiz", "x", "not a project slug"),
+        (26, "project-zed", "x", "pick one of them"),
+        (9, "project-atlas", " ", "why must be one short phrase"),
+    ],
+)
+def test_map_task_refusals(map_ctx, line, project, why, refusal):
+    with pytest.raises(StagingError, match=refusal):
+        staging.stage_mapping(map_ctx, line=line, project=project, why=why)
+
+
+def test_finalize_mappings_last_call_wins_and_needs_a_page(map_ctx):
+    calls = [
+        (9, "project-atlas", "first"),
+        (9, None, ""),  # taken back
+        (17, "project-atlas", "sam"),
+        (17, "project-growth", "changed my mind"),  # no page: dropped
+        (26, "project-atlas", "alias"),
+    ]
+    kept, problems = staging.finalize_mappings(calls, [], map_ctx)
+    assert [(m.line, m.project, m.why) for m in kept] == [
+        (26, "project-atlas", "alias")
+    ]
+    assert problems == [
+        "finalize: dropped task line 17 → project-growth: no page was proposed"
+    ]
+
+
+def test_a_new_project_with_only_mapped_tasks_is_kept(map_ctx):
+    page = staging.stage_page(
+        map_ctx, [], slug="project-growth", title="growth plan", line=30
+    )
+    calls = [(30, "project-growth", "named on the line")]
+    ctx = dataclasses.replace(map_ctx, open_tasks={30: ()})
+    edits, _, problems = staging.finalize([page], [], keep=staging.mapped_pages(calls))
+    assert edits == [page] and problems == []
+    kept, _ = staging.finalize_mappings(calls, edits, ctx)
+    assert [m.project for m in kept] == ["project-growth"]
+    dropped, _, problems = staging.finalize([page], [])  # nothing mapped: dropped
+    assert dropped == [] and "a new page with nothing on it" in problems[0]
+
+
+def test_task_proposals_reach_the_index_and_the_user_can_correct_them(
+    vault_copy, monkeypatch
+):
+    script = ToolScript(
+        messages=iter(
+            [
+                AIMessage(
+                    "",
+                    tool_calls=[
+                        call(
+                            "map_task", line=9, project="project-atlas", why="x"
+                        ).tool_calls[0],
+                        call(
+                            "propose_page",
+                            slug="project-growth-plan",
+                            title="growth plan",
+                            line=30,
+                        ).tool_calls[0],
+                        call(
+                            "map_task",
+                            line=30,
+                            project="project-growth-plan",
+                            why="named on the line",
+                        ).tool_calls[0],
+                    ],
+                ),
+                AIMessage("Mapped 2 tasks."),
+            ]
+        )
+    )
+    monkeypatch.setattr(nodes, "chat_model", lambda runtime: script)
+    runner = IngestRunner.in_memory(
+        context={"vault_path": str(vault_copy)}, graph_builder=agent_builder
+    )
+    first = runner.start(NOTE)
+    tasks = {t.line: t for t in first.review.tasks}
+    assert (tasks[9].project, tasks[9].by) == ("project-atlas", "model")
+    assert (tasks[30].project, tasks[30].why) == (
+        "project-growth-plan",
+        "named on the line",
+    )
+    assert 8 not in tasks  # linked on its line: rule 1
+    page = next(f for f in first.review.files if f.path.endswith("growth-plan.md"))
+    index = next(f for f in first.review.files if f.path == "90_meta/tasks.json")
+    assert '"mapped_by": "model"' in index.diff
+
+    refused = runner.resume(first.thread_id, {"action": "approve", "reject": [page.id]})
+    assert "answer those tasks first" in refused.review.error
+
+    answered = runner.resume(
+        first.thread_id, {"action": "answer", "tasks": {tasks[30].id: "none"}}
+    )
+    again = {t.line: t for t in answered.review.tasks}
+    assert (again[30].project, again[30].by) == (None, "user")
+    assert again[9].by == "model"
+
+    done = runner.resume(first.thread_id, {"action": "approve", "reject": [page.id]})
+    assert "90_meta/tasks.json" in done.written
+    written = (vault_copy / "90_meta/tasks.json").read_text()
+    records = json.loads(written)["tasks"]
+    by_line = {r["line"]: r for r in records.values() if r["source"] == NOTE}
+    assert (by_line[9]["project"], by_line[9]["mapped_by"]) == (
+        "project-atlas",
+        "model",
+    )
+    assert (by_line[30]["project"], by_line[30]["mapped_by"]) == (None, "user")
+    assert not (vault_copy / "10_projects/project-growth-plan.md").exists()
+
+
+def test_a_task_the_agent_mapped_may_file_facts_on_that_project(map_ctx):
+    kw = dict(target="project-atlas", section="Updates", text="Replied.", line=9)
+    with pytest.raises(StagingError, match="doesn't name project-atlas"):
+        fact(map_ctx, **kw)
+    mapped = staging.with_mappings(map_ctx, [(9, "project-atlas", "x")])
+    fact(mapped, **kw)
+    taken_back = staging.with_mappings(
+        map_ctx, [(9, "project-atlas", "x"), (9, None, "")]
+    )
+    with pytest.raises(StagingError, match="doesn't name project-atlas"):
+        fact(taken_back, **kw)
+    # code's own mapping (line 8) is never replaced by a proposal
+    assert (
+        staging.with_mappings(map_ctx, [(8, "project-zed", "x")]).task_projects[8]
+        == "project-atlas"
+    )

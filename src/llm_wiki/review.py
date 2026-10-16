@@ -21,10 +21,11 @@ from llm_wiki.domain.review import (
     ReviewInboxItem,
     ReviewPerson,
     ReviewRequest,
+    ReviewTask,
     ReviewWin,
 )
-from llm_wiki.domain.task_index import DoneTask
-from llm_wiki.entity_index import EntityIndex, kind_of, name_key
+from llm_wiki.domain.task_index import DoneTask, TaskProposal
+from llm_wiki.entity_index import EntityIndex, kind_of, name_key, path_for
 from llm_wiki.names import is_known_person
 from llm_wiki.routing import INBOX_PATH, origin_of
 
@@ -74,6 +75,33 @@ def people_questions(
     )
 
 
+def task_questions(
+    note: DailyNote,
+    open_tasks: Collection[int],
+    proposals: Sequence[TaskProposal] = (),
+    chosen: Mapping[int, str | None] | None = None,
+) -> tuple[ReviewTask, ...]:
+    """Every task rules 1–3 left open, in note order, with what it will be stored as.
+
+    The user's answer beats the model's proposal; a task with neither has no project.
+    IDs follow the open tasks, so they stay the same across review rounds.
+    """
+    chosen = chosen or {}
+    proposed = {p.line: p for p in proposals}
+    text = {t.line_no: t.text for t in note.tasks}
+    out: list[ReviewTask] = []
+    for i, line in enumerate(sorted(open_tasks), start=1):
+        common = {"id": f"m{i}", "line": line, "text": _plain_line(text.get(line, ""))}
+        if line in chosen:
+            out.append(ReviewTask(**common, project=chosen[line], by="user"))
+        elif line in proposed:
+            p = proposed[line]
+            out.append(ReviewTask(**common, project=p.project, by="model", why=p.why))
+        else:
+            out.append(ReviewTask(**common))
+    return tuple(out)
+
+
 def build_request(
     note: str,
     diffs: Sequence[FileDiff],
@@ -88,6 +116,7 @@ def build_request(
     people: Sequence[ReviewPerson] = (),
     done_tasks: Sequence[DoneTask] = (),
     chosen_wins: Collection[int] = (),
+    tasks: Sequence[ReviewTask] = (),
 ) -> ReviewRequest:
     """Turn the rendered diffs and facts into what the user sees.
 
@@ -145,6 +174,7 @@ def build_request(
             )
             for i, t in enumerate(done_tasks, start=1)
         ),
+        tasks=tuple(tasks),
     )
 
 
@@ -169,13 +199,48 @@ def _check_people(
     return None
 
 
+def _check_tasks(
+    request: ReviewRequest, tasks: Mapping[str, str], known: Collection[str]
+) -> str | None:
+    if error := _unknown("task", list(tasks), [t.id for t in request.tasks]):
+        return error
+    for tid, value in tasks.items():
+        if value != "none" and value not in known:
+            return (
+                f'{tid}: {value!r} is not a project page; answer "none" or a project '
+                "slug (existing or proposed in this review)"
+            )
+    return None
+
+
+def _check_rejected_projects(
+    request: ReviewRequest, reject: Collection[str]
+) -> str | None:
+    """Refuse leaving out a new project page that tasks are mapped to (0007)."""
+    for f in request.files:
+        if f.id not in reject or f.change != "new":
+            continue
+        users = [
+            t.id for t in request.tasks if t.project and path_for(t.project) == f.path
+        ]
+        if users:
+            return (
+                f"{f.id} is the new page {f.path}, which tasks {', '.join(users)} are "
+                'mapped to; answer those tasks first (another project or "none")'
+            )
+    return None
+
+
 def check_answer(
-    request: ReviewRequest, raw: Any, known_people: Collection[str] = ()
+    request: ReviewRequest,
+    raw: Any,
+    known_people: Collection[str] = (),
+    known_projects: Collection[str] = (),
 ) -> tuple[ReviewAnswer | None, str | None]:
     """Validate the user's answer. Returns (answer, None) or (None, why not).
 
-    "approve" and "reject" may be sent as plain strings. `known_people` are the person
-    slugs an "answer" may name.
+    "approve" and "reject" may be sent as plain strings. `known_people` and
+    `known_projects` are the person and project slugs an "answer" may name.
     """
     if isinstance(raw, str):
         raw = {"action": raw.strip().lower()}
@@ -191,6 +256,8 @@ def check_answer(
     file_ids = [f.id for f in request.files]
     if answer.action == "approve":
         error = _unknown("file", answer.reject, file_ids)
+        if error is None:
+            error = _check_rejected_projects(request, answer.reject)
     elif answer.action == "revise":
         if not request.can_revise:
             error = "nothing to revise: the note has no prose for the model to read"
@@ -220,6 +287,8 @@ def check_answer(
             error = _unknown(
                 "win", list(answer.wins or ()), [w.id for w in request.wins]
             )
+        if error is None:
+            error = _check_tasks(request, answer.tasks or {}, known_projects)
     else:
         error = None
     return (None, error) if error else (answer, None)

@@ -6,7 +6,11 @@ Newest first. One entry per session, 2–5 bullets: what was done, what was lear
 
 - Designed task → project mapping by model proposal (0002 rule 4) with the user: [[decisions/0007-task-project-proposals|0007]]. `map_task` staging tool checked by code (never overrides rules 1–3 or an earlier mapping), code node `map_tasks` folds proposals into `tasks.json`, review list correctable via `answer`.
 - User chose: proposals in `tasks.json` by default (approving the file approves them); a user "none" sticks (`mapped_by: "user"`) so carried-over tasks aren't re-proposed.
-- Next: build 0007, then notebook 11, then a real run on the 2026-10-14 note (scratch copy of `~/WorkDev`).
+- **0007 built (Claude; awaiting review, not committed):** `map_task` staging tool + checks, `open_tasks` from `task_tracking` (alias candidates), `map_tasks` node (= `track_tasks` with proposals and answers), `ReviewTask` list, `answer` `tasks`, approve refused when a rejected new project page has mapped tasks, skill section. 469 tests pass.
+- Real runs: free Nemotron hung 20 min, then every call was 400 "Provider returned error" (provider, not our code; a plain "hi" call hung too). User switched `WIKI_MODEL` to DeepSeek V4.1 Flash: 7 of 11 tasks mapped with sensible reasons, 4 left open; ~$0.001 per run (total $2.47).
+- Found in the first DeepSeek run: facts on lines the agent itself mapped were refused (line doesn't name the page). Fixed with the user's OK: agent-mapped tasks count as naming their project. Rerun: no dropped facts, no question, 50s. Person pages for Joanna/Eugene were proposed but left empty this time (dropped by code).
+- Learned: a hung provider call has no timeout in our model setup; worth adding.
+- Next: walkthrough with an example, commit on approval, notebook 11.
 
 ## 2026-10-15
 

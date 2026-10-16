@@ -135,7 +135,7 @@ def test_reject_approves_nothing():
         ({"action": "edit", "file": "f3", "text": "x"}, "f3 is 90_meta/ingest-ledger"),
         ({"action": "edit", "file": "f7", "text": "x"}, "unknown file ids ['f7']"),
         ({"action": "revise", "feedback": "x"}, "nothing to revise"),
-        ({"action": "answer"}, '"answer" needs people or wins'),
+        ({"action": "answer"}, '"answer" needs people, wins or tasks'),
         ({"action": "answer", "people": {"p1": "new"}}, "unknown person ids ['p1']"),
         ({"action": "answer", "wins": ["w1"]}, "unknown win ids ['w1']"),
         ({"action": "approve", "note": "hi"}, "invalid answer (note:"),
@@ -151,3 +151,24 @@ def test_bad_answers_are_explained(raw, message):
 def test_answer_with_no_wins_is_valid():
     answer, error = check_answer(REQUEST, {"action": "answer", "wins": []})
     assert error is None and answer.wins == ()
+
+
+def test_task_answers_name_a_project_or_none():
+    from llm_wiki.domain.review import ReviewTask
+
+    request = REQUEST.model_copy(
+        update={"tasks": (ReviewTask(id="m1", line=9, text="Reply to Priya"),)}
+    )
+    projects = ["project-atlas"]
+    ok, error = check_answer(
+        request, {"action": "answer", "tasks": {"m1": "none"}}, [], projects
+    )
+    assert error is None and ok.tasks == {"m1": "none"}
+    _, error = check_answer(
+        request, {"action": "answer", "tasks": {"m1": "project-zed"}}, [], projects
+    )
+    assert "not a project page" in error
+    _, error = check_answer(
+        request, {"action": "answer", "tasks": {"m9": "none"}}, [], projects
+    )
+    assert error.startswith("unknown task ids")

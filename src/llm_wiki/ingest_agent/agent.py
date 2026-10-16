@@ -6,7 +6,7 @@
               they never land in the vault: that write skips permission checks)
 
 Write tools are hidden (read_file, ls, glob, grep only) and every write is also denied
-by permission rules. The agent's only way to change the wiki is the three staging tools;
+by permission rules. The agent's only way to change the wiki is the staging tools;
 each call is checked by `staging` and becomes an edit in the agent's state, or a refusal
 the agent reads and can fix.
 """
@@ -14,7 +14,7 @@ the agent reads and can fix.
 from __future__ import annotations
 
 import operator
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated, Any
@@ -30,8 +30,8 @@ from langgraph.types import Command
 
 from llm_wiki.domain.changes import Edit
 from llm_wiki.domain.daily import DailyNote
-from llm_wiki.domain.task_index import DoneTask
-from llm_wiki.entity_index import EntityIndex
+from llm_wiki.domain.task_index import DoneTask, TaskProposal
+from llm_wiki.entity_index import EntityIndex, path_for
 from llm_wiki.ingest_agent import staging
 from llm_wiki.ingest_agent.staging import (
     CURRENT_STATE,
@@ -62,7 +62,7 @@ own reviews and beat the skills when they differ.
 (/vault/<folder>/<slug>.md) only when you need its content, e.g. to avoid repeating a \
 fact or to rewrite its Current state.
 4. Stage everything with the tools: `file_fact`, `update_summary`, `propose_page`, \
-`ask_user`. Make several tool calls in one turn whenever you can (e.g. all facts of a \
+`map_task` (tasks marked `project ?`), `ask_user`. Make several tool calls in one turn whenever you can (e.g. all facts of a \
 meeting at once): every turn costs the user a request.
 5. Finish with one short line saying what you filed. Do not use write_todos or task.
 
@@ -92,6 +92,8 @@ class IngestAgentState(DeepAgentState):
         refusals: Every refused staging call, with the reason.
         withdrawn: (line, path, n) of facts the agent took back: n is how many facts
             were filed when it did, so only earlier ones are removed.
+        mappings: (line, project or None, why) per accepted `map_task` call; the
+            last per line wins (decision 0007).
     """
 
     staged: Annotated[list[Edit], operator.add]
@@ -99,6 +101,7 @@ class IngestAgentState(DeepAgentState):
     questions: Annotated[list[str], operator.add]
     refusals: Annotated[list[str], operator.add]
     withdrawn: Annotated[list[tuple[int, str, int]], operator.add]
+    mappings: Annotated[list[tuple[int, str | None, str]], operator.add]
 
 
 def _live(runtime: ToolRuntime) -> tuple[list[Edit], list[Filed]]:
@@ -143,7 +146,9 @@ def file_fact(
         line: The note line number the fact comes from.
         title: Only for decision-log: the decision as a short title.
     """
-    ctx = runtime.context.staging
+    ctx = staging.with_mappings(
+        runtime.context.staging, runtime.state.get("mappings", [])
+    )
     try:
         edits, record = staging.stage_fact(
             ctx,
@@ -254,6 +259,39 @@ def propose_page(
 
 
 @tool
+def map_task(
+    line: int, project: str, why: str, runtime: ToolRuntime[AgentContext]
+) -> Command:
+    """Propose which project a task belongs to (task lines marked `project ?`).
+
+    Map a task only when the line, its parent bullet, its heading or a project page
+    supports it; otherwise skip it (unmapped is fine). The user sees and can correct
+    every proposal. Calling it again for the same line replaces the proposal.
+
+    Args:
+        line: The task's note line.
+        project: A project slug with a page, or one you propose_page for; "none"
+            takes back your earlier proposal for this line.
+        why: A short reason the user reads, e.g. "under ### Delq model sync".
+    """
+    ctx = runtime.context.staging
+    try:
+        call = staging.stage_mapping(ctx, line=line, project=project, why=why)
+    except StagingError as exc:
+        return _reply(runtime, f"REFUSED: {exc}", refusals=[f"map_task: {exc}"])
+    _, slug, _ = call
+    if slug is None:
+        return _reply(runtime, f"proposal for line {line} taken back", mappings=[call])
+    note = f"proposed line {line} → {slug}"
+    path = path_for(slug)
+    if ctx.read(path) is None and path not in staging.proposed_paths(_live(runtime)[0]):
+        note += (
+            f"; {slug} has no page yet: call propose_page for it, or this is dropped"
+        )
+    return _reply(runtime, note, mappings=[call])
+
+
+@tool
 def ask_user(question: str, line: int, runtime: ToolRuntime[AgentContext]) -> Command:
     """Put a question in the review, e.g. who a name is or which project a line is about.
 
@@ -313,7 +351,14 @@ def build_ingest_agent(
     ]
     return create_deep_agent(
         model=model,
-        tools=[file_fact, update_summary, withdraw_fact, propose_page, ask_user],
+        tools=[
+            file_fact,
+            update_summary,
+            withdraw_fact,
+            propose_page,
+            map_task,
+            ask_user,
+        ],
         system_prompt=SYSTEM_PROMPT,
         skills=["/skills/"],
         memory=[RULES_VIRTUAL] if (vault / RULES_PATH).is_file() else None,
@@ -385,12 +430,16 @@ def build_brief(
     feedback: Sequence[str] = (),
     previous: Sequence[Filed] = (),
     dropped: Sequence[str] = (),
+    open_tasks: Mapping[int, Sequence[str]] | None = None,
+    proposals: Sequence[TaskProposal] = (),
 ) -> str:
     """Return the first message: the numbered note, task facts, known pages, feedback.
 
     Lines that may be cited are marked `|`, others `~`. Task lines carry what code
-    knows: ID, status, project. (`done_tasks` is unused since wins became the user's
-    pick in the review; kept for the signature.)
+    knows: ID, status, project. An open task (`open_tasks`) shows `project ?`, with
+    its rule-3 candidates if any; `proposals` are the agent's earlier ones (revise).
+    (`done_tasks` is unused since wins became the user's pick in the review; kept for
+    the signature.)
     """
     del done_tasks
     tasks = {t.line_no: t for t in note.tasks}
@@ -402,6 +451,13 @@ def build_brief(
             bits = [f"task {t.id or task_ids.get(n, '?')}", t.status.value]
             if task_projects.get(n):
                 bits.append(f"project {task_projects[n]}")
+            elif open_tasks is not None and n in open_tasks:
+                options = open_tasks[n]
+                bits.append(
+                    f"project ? (one of {', '.join(options)})"
+                    if options
+                    else "project ?"
+                )
             extra = f"   [{'; '.join(bits)}]"
         rows.append(f"{n:>4} {'|' if n in citable else '~'} {raw}{extra}")
     parts = [
@@ -419,6 +475,11 @@ def build_brief(
             f"- line {f.line} → {f.path} {f.section}: {f.text}" for f in previous
         )
         parts.append(f"Your filing so far (still staged):\n{filed}")
+    if proposals:
+        mapped = "\n".join(
+            f"- line {m.line} → {m.project} ({m.why})" for m in proposals
+        )
+        parts.append(f"Your task → project proposals so far (still staged):\n{mapped}")
     if dropped:
         lost = "\n".join(f"- {d}" for d in dropped)
         parts.append(

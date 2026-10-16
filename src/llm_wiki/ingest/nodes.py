@@ -32,6 +32,7 @@ from llm_wiki.daily_syntax import parse_daily_note
 from llm_wiki.diffs import VaultReader, render_diffs, vault_reader
 from llm_wiki.domain.changes import (
     RAW_DAILY_FOLDER,
+    CreateFile,
     ReplaceFile,
     UserText,
     sha256_text,
@@ -39,9 +40,9 @@ from llm_wiki.domain.changes import (
 from llm_wiki.domain.daily import DailyNote
 from llm_wiki.domain.entities import EntityKind
 from llm_wiki.domain.review import ReviewAnswer, ReviewRequest
-from llm_wiki.domain.task_index import DoneTask
+from llm_wiki.domain.task_index import DoneTask, MappedBy
 from llm_wiki.domain.tasks import TaskStatus
-from llm_wiki.entity_index import EntityIndex, load_index, with_proposed
+from llm_wiki.entity_index import EntityIndex, kind_of, load_index, with_proposed
 from llm_wiki.ingest.state import (
     ExtractInput,
     FindNamesInput,
@@ -153,7 +154,10 @@ def track_tasks(state: IngestState, runtime: Runtime[IngestContext]) -> dict[str
 
     Runs again after an "answer" in the review, with the answered pages known, so the
     index is rebuilt from the vault's copy each time (the old rewrite is replaced).
-    Also lists each task's project and the tasks done for the first time (wins).
+    The agent graph also runs it after its agent step (as `map_tasks`): the model's
+    task → project proposals and the user's answers then map the tasks rules 1–3 left
+    open (decision 0007). Also lists each task's rule-based project, the open tasks,
+    and the tasks done for the first time (wins).
     """
     read = vault_reader(vault_path(runtime))
     index, problem = task_tracking.load_task_index(read(task_tracking.TASK_INDEX_PATH))
@@ -161,9 +165,19 @@ def track_tasks(state: IngestState, runtime: Runtime[IngestContext]) -> dict[str
         return {"warnings": [problem]}
 
     note, new_ids = state["note"], state.get("task_ids", {})
-    updated, warnings = task_tracking.update_task_index(
-        index, note, new_ids, _entities(state, runtime)
-    )
+    entities = _entities(state, runtime)
+    by_rules, warnings = task_tracking.update_task_index(index, note, new_ids, entities)
+    chosen: dict[int, tuple[str | None, MappedBy]] = {
+        p.line: (p.project, "model") for p in state.get("task_proposals", [])
+    }
+    chosen |= {
+        line: (slug, "user") for line, slug in state.get("chosen_projects", {}).items()
+    }
+    updated = by_rules
+    if chosen:
+        updated, _ = task_tracking.update_task_index(
+            index, note, new_ids, entities, chosen
+        )
     edits = [
         e
         for e in state.get("task_edits", [])
@@ -179,8 +193,8 @@ def track_tasks(state: IngestState, runtime: Runtime[IngestContext]) -> dict[str
         task_id = task.id or new_ids.get(task.line_no)
         if task_id is None or task_id not in updated.tasks:
             continue
+        projects[task.line_no] = by_rules.tasks[task_id].project
         record = updated.tasks[task_id]
-        projects[task.line_no] = record.project
         old = index.tasks.get(task_id)
         if task.status is TaskStatus.DONE and (
             old is None or old.status is not TaskStatus.DONE
@@ -196,6 +210,12 @@ def track_tasks(state: IngestState, runtime: Runtime[IngestContext]) -> dict[str
     return {
         "task_edits": edits,
         "task_projects": projects,
+        "open_tasks": {
+            line: list(options)
+            for line, options in task_tracking.open_tasks(
+                by_rules, note, new_ids, entities
+            ).items()
+        },
         "done_tasks": done,
         "warnings": warnings,
     }
@@ -343,6 +363,16 @@ def review_changes(
     known_people = [
         e.slug for e in entities.entities.values() if e.kind is EntityKind.PERSON
     ]
+    known_projects = [
+        *(e.slug for e in entities.entities.values() if e.kind is EntityKind.PROJECT),
+        *(
+            slug
+            for e in state.get("fact_edits", [])
+            if isinstance(e, CreateFile)
+            and kind_of(slug := e.path.rsplit("/", 1)[-1].removesuffix(".md"))
+            is EntityKind.PROJECT
+        ),
+    ]
     request = review.build_request(
         state["note"].path,
         state.get("diffs", []),
@@ -356,10 +386,16 @@ def review_changes(
         people=people,
         done_tasks=state.get("done_tasks", []),
         chosen_wins=state.get("chosen_wins", []),
+        tasks=review.task_questions(
+            state["note"],
+            state.get("open_tasks", {}),
+            state.get("task_proposals", []),
+            state.get("chosen_projects", {}),
+        ),
     )
     while True:
         raw = interrupt(request.model_dump(mode="json"))
-        answer, error = review.check_answer(request, raw, known_people)
+        answer, error = review.check_answer(request, raw, known_people, known_projects)
         if answer is not None:
             break
         request = request.model_copy(update={"error": error})
@@ -420,6 +456,15 @@ def _answered(
     if answer.wins is not None:
         picked = set(answer.wins)
         update["chosen_wins"] = [w.line for w in request.wins if w.id in picked]
+    if answer.tasks:
+        line_of = {t.id: t.line for t in request.tasks}
+        update["chosen_projects"] = {
+            **state.get("chosen_projects", {}),
+            **{
+                line_of[tid]: None if value == "none" else value
+                for tid, value in answer.tasks.items()
+            },
+        }
     return update
 
 

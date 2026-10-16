@@ -11,7 +11,7 @@ from llm_wiki.domain.changes import Edit, FileDiff
 from llm_wiki.domain.daily import DailyNote
 from llm_wiki.domain.entities import Entity
 from llm_wiki.domain.facts import NameScan, SectionFacts
-from llm_wiki.domain.task_index import DoneTask
+from llm_wiki.domain.task_index import DoneTask, TaskProposal
 
 
 def merge_facts(
@@ -46,7 +46,13 @@ class IngestState(TypedDict, total=False):
         skip_reason: Set when there is nothing to do (unchanged note, broken ledger).
         task_ids: Line number → newly assigned task ID (assign_ids).
         task_edits: ID appends and the task index rewrite (assign_ids, track_tasks).
-        task_projects: Task line → its project slug or None (track_tasks).
+        task_projects: Task line → its project slug or None, by rules 1–3 and the
+            index only (track_tasks).
+        open_tasks: Task line → rule-3 candidates (or ()) for tasks nothing mapped
+            yet; the model may propose a project for these (decision 0007).
+        task_proposals: The model's checked task → project proposals (agent step).
+        chosen_projects: Task line → the user's review answer: a project slug, or
+            None for "no project" (sticky).
         done_tasks: Tasks this note marks done for the first time (track_tasks).
         name_scan: People and project groups in task lines and headings (find_names).
         facts: Section key (its start line, e.g. "20") → facts (extract).
@@ -81,6 +87,9 @@ class IngestState(TypedDict, total=False):
     task_ids: dict[int, str]
     task_edits: list[Edit]
     task_projects: dict[int, str | None]
+    open_tasks: dict[int, list[str]]
+    task_proposals: list[TaskProposal]
+    chosen_projects: dict[int, str | None]
     done_tasks: list[DoneTask]
     name_scan: NameScan
     facts: Annotated[dict[str, SectionFacts], merge_facts]

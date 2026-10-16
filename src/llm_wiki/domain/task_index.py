@@ -10,8 +10,9 @@ from pydantic import BaseModel, ConfigDict, Field
 from llm_wiki.domain.entities import SLUG_PATTERN
 from llm_wiki.domain.tasks import TaskStatus
 
-# How a task's project was chosen (decision 0002 rules 1–3); None if unmapped.
-MappedBy = Literal["link", "context", "alias"]
+# How a task's project was chosen: decision 0002 rules 1–3, the model's approved
+# proposal (rule 4, decision 0007), or the user's review answer. None if unmapped.
+MappedBy = Literal["link", "context", "alias", "model", "user"]
 
 
 class TaskRecord(BaseModel):
@@ -21,7 +22,9 @@ class TaskRecord(BaseModel):
         text: Task text from the note that set the status.
         status: From the newest note; on the same date, done/cancelled wins.
         project: Project slug, or None if no rule matched.
-        mapped_by: Which rule set `project` ("link", "context", "alias").
+        mapped_by: Which rule set `project` ("link", "context", "alias", "model",
+            "user"). "user" with `project` None: the user said no project, so the
+            task is not proposed again; only an explicit link overrides it.
         people: Person slugs linked on the task line, e.g. ("person-sam-ortiz",).
         tags: Tags on the task line, e.g. ("blocked",).
         first_seen: Date of the earliest note containing the task.
@@ -69,3 +72,20 @@ class DoneTask(BaseModel):
     task_id: str
     text: str
     project: str | None = None
+
+
+class TaskProposal(BaseModel):
+    """The model's checked proposal for an open task's project (decision 0007).
+
+    Attributes:
+        line: The task's line in the note.
+        project: Project slug: an existing page or one proposed in the same run.
+        why: A short reason for the review, e.g. "under the ### Delq model heading";
+            not stored in the index.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    line: int = Field(ge=1)
+    project: str = Field(pattern=SLUG_PATTERN)
+    why: str

@@ -1,4 +1,4 @@
-"""Task IDs, task → project mapping, and the task index (decisions 0001, 0002, 0004).
+"""Task IDs, task → project mapping, and the task index (decisions 0001, 0002, 0004, 0007).
 
 All pure: notes, the entity index and the index text come in; IDs, edits and a new
 index come out. The ingest nodes do the reading.
@@ -60,7 +60,10 @@ def assign_ids(
     return ids, edits
 
 
-# --- project mapping (decision 0002, rules 1–3) ----------------------------------
+# --- project mapping (decision 0002, rules 1–3; rule 4 in 0007) -----------------
+
+# Line → (project slug or None, "model" | "user"): rule-4 choices from the review.
+Chosen = Mapping[int, tuple[str | None, MappedBy]]
 
 
 def _project_links(text: str | None) -> list[str]:
@@ -91,6 +94,12 @@ def map_project(
     if len(found) == 1:
         return found[0].slug, "alias"
     return None, None
+
+
+def alias_candidates(task: Task, entities: EntityIndex) -> tuple[str, ...]:
+    """Return the projects whose aliases the task names, if two or more (rule 3 → 4)."""
+    found = entities.alias_mentions(task.text, EntityKind.PROJECT)
+    return tuple(e.slug for e in found) if len(found) > 1 else ()
 
 
 # --- people ----------------------------------------------------------------------
@@ -177,9 +186,10 @@ def _merge(
 
     current = seen if _status_from_this_note(old, task, note) else old
 
-    # Project: sticky once set; an explicit link in a note at least as new overrides.
+    # Project: sticky once set (a user's "none" too); an explicit link in a note at
+    # least as new overrides.
     if (mapped_by == "link" and note.date >= old.last_seen) or (
-        old.project is None and project is not None
+        old.mapped_by is None and mapped_by is not None
     ):
         mapping = {"project": project, "mapped_by": mapped_by}
     else:
@@ -195,8 +205,13 @@ def update_task_index(
     note: DailyNote,
     new_ids: Mapping[int, str],
     entities: EntityIndex,
+    chosen: Chosen | None = None,
 ) -> tuple[TaskIndex, list[str]]:
     """Fold one note's tasks into the index. `new_ids` maps line → ID from `assign_ids`.
+
+    `chosen` (line → (project or None, "model" | "user")) maps tasks rules 1–3 left
+    open: the model's proposals and the user's review answers (decision 0007). It
+    never overrides a rule or a mapping already in the index.
 
     Returns the new index and warnings. A note without a date changes nothing.
     """
@@ -214,6 +229,8 @@ def update_task_index(
         project, mapped_by = map_project(task, entities, inherited)
         if project is not None:
             project_of[(task.section, task.text)] = project
+        elif chosen and task.line_no in chosen:
+            project, mapped_by = chosen[task.line_no]
         people, ambiguous = task_people(task, entities)
         warnings += [
             f"{note.path}:{task.line_no}: {name!r} names more than one person; not linked"
@@ -223,3 +240,23 @@ def update_task_index(
             tasks.get(task_id), task, note, project, mapped_by, people
         )
     return index.model_copy(update={"tasks": tasks}), warnings
+
+
+def open_tasks(
+    index: TaskIndex,
+    note: DailyNote,
+    new_ids: Mapping[int, str],
+    entities: EntityIndex,
+) -> dict[int, tuple[str, ...]]:
+    """Return line → rule-3 candidates for the note's tasks with no mapping yet.
+
+    `index` already holds this note (rules 1–3 applied). A task is open when nothing
+    mapped it, not even a user's "none"; its candidates are the projects whose aliases
+    it names when there are two or more, else () (any project).
+    """
+    out: dict[int, tuple[str, ...]] = {}
+    for task in note.tasks:
+        record = index.tasks.get(task.id or new_ids.get(task.line_no, ""))
+        if record is not None and record.mapped_by is None:
+            out[task.line_no] = alias_candidates(task, entities)
+    return out

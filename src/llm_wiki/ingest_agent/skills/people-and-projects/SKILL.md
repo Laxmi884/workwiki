@@ -1,6 +1,6 @@
 ---
 name: people-and-projects
-description: How to tell which person or project a name in a daily note refers to, when to propose a new page, and when to ask the user instead. Read before filing facts about people or projects.
+description: How to tell which person or project a name in a daily note refers to, which project a task belongs to (map_task), when to propose a new page, and when to ask the user instead. Read before filing facts about people or projects, or when tasks show `project ?`.
 ---
 
 # People and projects
@@ -36,6 +36,28 @@ heading names it. So:
 - one project per piece of work; never a catch-all named after a team, area or tool
   ("Risk analytics", "GitLab"), and never a project just to hold unrelated lines;
 - lines about the work that don't name it: ask once which project they belong to.
+
+## Which project a task belongs to (`map_task`)
+
+Task lines show `project ?` when code couldn't map them (no link, heading or alias).
+`map_task(line, project, why)` proposes one; the user sees every proposal and can
+change it, and it is stored in the task index, never in the note.
+
+- Map when the line, its parent bullet, its `###` heading or a project page's content
+  says which work it is ("rerun loss history" → the project whose page is about the
+  loss history workflow). Read the page if unsure.
+- `project ? (one of a, b)`: the task names aliases of several projects; pick one of
+  those or skip.
+- A task about work with no page that other lines also mention: `propose_page` the
+  project (same naming rules as above), then `map_task` to it.
+- Skip one-off chores, errands and anything you'd be guessing about. Unmapped is fine;
+  a wrong project is worse than none.
+- `why` is a few words the user reads: "under ### Delq model sync", "same work as
+  line 12", "alias ELTV".
+- Changed your mind (or the user's feedback says so): call `map_task` again for the
+  line; `project="none"` takes the proposal back.
+- Once you map a task, its facts may go on that project page (e.g. an Update for a
+  done task). Map first, then file; don't ask about lines you mapped.
 
 ## New pages
 
