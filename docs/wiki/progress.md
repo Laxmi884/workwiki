@@ -6,7 +6,7 @@ Single source of truth for project status. Updated at the end of every session.
 
 Working mode (CLAUDE.md, since 2026-10-15): Claude builds in reviewed steps, each with a git-ignored notebook in `notebooks/` (00–10 exist; `notebooks/_src/nbNN.py` builds them, `_src/run.sh` executes; an answer key lives outside the repo). Ingest = the `ingest_agent` graph ([[decisions/0006-agent-ingest-spike|0006]] option B); phase 3 is built (3d apply, 3e SQLite runner + vault git commit) and the 0006 agent-quality fixes are in; all three await the user's review (notebooks 08–10).
 
-**Next (user asked, 2026-10-15): task → project mapping by approved model proposal** (decision 0002 rule 4, the last open 0006 item). Today `track_tasks` maps tasks by explicit link, inherited context and alias; everything else stays `project: null` in `90_meta/tasks.json` (all 11 tasks of the user's 2026-10-14 note). Idea to design with the user first: the agent proposes task line → project (a staging tool checked by code like `file_fact`), the review shows the proposals, approval updates the task index (`mapped_by: "model"`), and the user can correct them. Then its notebook. Real-run check: scratch copy of `~/WorkDev`, `uv run --env-file .env`, `nodes.fallback_models = lambda r: []` (no paid backup).
+**Next: build task → project proposals per [[decisions/0007-task-project-proposals|0007]]** (designed with the user 2026-10-16): `map_task` staging tool checked by code, `project ?` in the brief, code node `map_tasks` after `stage`/`pick_wins` (`mapped_by: "model"`), review list with `answer` `tasks` (`mapped_by: "user"`, sticky "none"), proposals in by default. Then its notebook. Real-run check: scratch copy of `~/WorkDev`, `uv run --env-file .env`, `nodes.fallback_models = lambda r: []` (no paid backup).
 
 ## Open decisions
 
@@ -56,7 +56,8 @@ Working mode (CLAUDE.md, since 2026-10-15): Claude builds in reviewed steps, eac
   - [x] Bugs from the real run: stale warnings; empty page left after withdrawals (2026-10-15)
   - [ ] Sync trial: LiveSync + CouchDB + Tailscale on `~/WorkDev` (`docs/setup/livesync.md`)
   - [x] 0006 agent-quality fixes (Claude, 2026-10-15; awaiting review; notebook 10): name-or-ask for person/project pages, wins = `#win` + review picks, help given on person pages, empty pages dropped, same-turn pages, headings citable for names, per-round warnings, no "first time" (details in 0006)
-  - [ ] 0006 still open: task → project mapping proposals (0002 rule 4)
+  - [x] Task → project proposals designed: [[decisions/0007-task-project-proposals|0007]] (2026-10-16)
+  - [ ] 0006 still open: build 0007 (task → project proposals, 0002 rule 4) + notebook 11
   - [ ] 0006 cut-over: agent graph handles answer / make_page / edit, runner defaults to `ingest_agent`, then delete the 0004 model steps (extract, find_names, route, `ingest/graph.py`, `names.py`, round-1 script) and their tests From the first real note (2026-10-14): unknown names → people questions,
     new-project proposals for unlinked tasks (mapping rule 4), done tasks offered as win
     candidates, task sub-bullets read by the model, "remember this" → approved edit to

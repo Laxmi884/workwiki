@@ -2,6 +2,12 @@
 
 Newest first. One entry per session, 2–5 bullets: what was done, what was learned, what's next.
 
+## 2026-10-16
+
+- Designed task → project mapping by model proposal (0002 rule 4) with the user: [[decisions/0007-task-project-proposals|0007]]. `map_task` staging tool checked by code (never overrides rules 1–3 or an earlier mapping), code node `map_tasks` folds proposals into `tasks.json`, review list correctable via `answer`.
+- User chose: proposals in `tasks.json` by default (approving the file approves them); a user "none" sticks (`mapped_by: "user"`) so carried-over tasks aren't re-proposed.
+- Next: build 0007, then notebook 11, then a real run on the 2026-10-14 note (scratch copy of `~/WorkDev`).
+
 ## 2026-10-15
 
 - Spike 0006 built and run end to end by Claude (user asked; teaching later if adopted): `src/llm_wiki/ingest_agent/` (code-checked staging tools, read-only `/vault/` route, two skills), `ingest_agent` graph in `langgraph.json`, `IngestRunner(graph_builder=…)`, `scripts/compare_ingest.py`, two invented notes in `tests/fixtures/spike/`. 402 unit tests pass. Not committed.

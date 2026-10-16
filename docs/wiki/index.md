@@ -33,3 +33,4 @@ Numbered, one per decision. Template: `decisions/_template.md`.
 - [[decisions/0004-ingest-graph-design|0004]]: ingest graph: code around a narrow extract step, edits → diffs with digests, review loop with feedback
 - [[decisions/0005-surfaces-and-deployment|0005]]: own runner + SQLite by default; Telegram/Slack/CLI as adapters; self-hosted Agent Server (free lite mode) and LangSmith Deployment optional
 - [[decisions/0006-agent-ingest-spike|0006]]: ingest by a deep agent that stages edits checked by code (accepted 2026-10-15; replaces the 0004 extraction)
+- [[decisions/0007-task-project-proposals|0007]]: task → project by model proposal: `map_task` checked by code, in by default, correctable in review, sticky user "none"
