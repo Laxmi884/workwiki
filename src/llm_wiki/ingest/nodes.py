@@ -38,7 +38,7 @@ from llm_wiki.ingest.state import (
     IngestContext,
     IngestState,
 )
-from llm_wiki.models import choose_model_spec, make_chat_model
+from llm_wiki.models import ModelSpec, choose_model_spec, make_chat_model
 
 
 def vault_path(runtime: Runtime[IngestContext]) -> Path:
@@ -52,7 +52,16 @@ def vault_path(runtime: Runtime[IngestContext]) -> Path:
 def chat_model(runtime: Runtime[IngestContext]) -> BaseChatModel:
     """Return the run's model: context `model`, else `WIKI_MODEL` (decision 0003)."""
     context = runtime.context or {}
-    spec = choose_model_spec(context.get("model"), get_settings().model)
+    return _build_model(choose_model_spec(context.get("model"), get_settings().model))
+
+
+def fallback_models(runtime: Runtime[IngestContext]) -> list[BaseChatModel]:
+    """Return the backup models (`WIKI_FALLBACK_MODELS`), tried in order on failure."""
+    del runtime  # same signature as chat_model; fallbacks are process-wide for now
+    return [_build_model(ModelSpec.parse(s)) for s in get_settings().fallback_models]
+
+
+def _build_model(spec: ModelSpec) -> BaseChatModel:
     if spec.provider == "ollama":
         # Local models: no hidden "thinking" (minutes per call). Ollama's default
         # 4096-token window is too small for prompt + detailed answer; the output cap

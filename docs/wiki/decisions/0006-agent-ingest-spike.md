@@ -252,6 +252,21 @@ Still to do: give the agent the page list up front (fewer globs), stop "first ti
 leaking into text, decide whether new people become pages directly or questions, a way
 to withdraw a proposed page, and check stability on free-style notes.
 
+From the user's first real run (2026-10-15, own 2026-10-14 note on `~/WorkDev`): the agent
+put all work on the only project page (invented "Atlas", probably via its "BI migration"
+alias), and filed every first-time done task as a win (also offered again as review win
+candidates). Agreed to-dos:
+- No project page fits → the agent proposes a new project or asks; never forces an
+  existing one. Ad-hoc tasks get no page (they stay in the note and `tasks.json`).
+- Task → project mapping by approved model proposal (0002 rule 4), so done tasks can be
+  grouped by project later.
+- The impact page holds only confirmed wins: `#win` lines and wins the user ticks in the
+  review. The agent stops filing wins itself; one win picker in the review, not two.
+- Help given lives on the person page (and the project page if it was project work), not
+  copied to the impact page. Help for someone without a page → propose a page or ask.
+- Brag sheet / review summary is built on request (phase 4) from confirmed wins, done
+  tasks, project pages and person pages, grouped however the user asks.
+
 ## Why
 
 On the 20-day corpus the agent filed 89–97% of facts on the right page first time with

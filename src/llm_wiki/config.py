@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from functools import cache
 from pathlib import Path
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 from llm_wiki.models import ModelSpec
 
@@ -22,6 +23,9 @@ class Settings(BaseSettings):
             (block IDs on the task line) is built; "sidecar" is rejected until it is.
         model: `WIKI_MODEL`. Default "provider:model", e.g. "ollama:llama3.1:8b" or
             "anthropic:claude-haiku-5-5". A run's context `model` overrides it.
+        fallback_models: `WIKI_FALLBACK_MODELS`. Comma-separated "provider:model"
+            specs tried in order when the run's model keeps failing (outage,
+            overload). Empty: no fallback.
     """
 
     model_config = SettingsConfigDict(
@@ -35,6 +39,7 @@ class Settings(BaseSettings):
     vault_path: Path
     task_ids: Literal["inline"] = "inline"
     model: str | None = None
+    fallback_models: Annotated[tuple[str, ...], NoDecode] = ()
 
     @field_validator("vault_path")
     @classmethod
@@ -50,6 +55,12 @@ class Settings(BaseSettings):
         if value is None or not value.strip():
             return None
         return ModelSpec.parse(value).spec  # fail at startup, not mid-run
+
+    @field_validator("fallback_models", mode="before")
+    @classmethod
+    def _fallback_specs(cls, value: str | Sequence[str]) -> tuple[str, ...]:
+        items = value.split(",") if isinstance(value, str) else value
+        return tuple(ModelSpec.parse(s).spec for s in items if s.strip())
 
 
 @cache

@@ -50,7 +50,8 @@ Option B of [[decisions/0006-agent-ingest-spike|0006]] adopted (2026-10-15): ing
   - [x] 3c-2 pair 1: wins + people questions (2026-10-14). Pair 2 dropped: 0006 adopted (2026-10-15).
   - [x] 0006 spike + round 2 built and run by Claude; option B adopted (2026-10-15)
   - [ ] 0006 teaching: user walks through the agent code (staging, agent, graph, skills)
-  - [ ] 0006 to-dos: page list up front, no "first time" in text, new people as pages or questions, withdraw a proposed page From the first real note (2026-10-14): unknown names → people questions,
+  - [ ] 0006 to-dos: page list up front, no "first time" in text, new people as pages or questions, withdraw a proposed page; from the first real run: propose/ask instead of forcing a project, ad-hoc tasks get no page, task → project proposals, impact page = confirmed wins only, help given only on person/project pages (details in 0006)
+  - [ ] 0006 cut-over: agent graph handles answer / make_page / edit, runner defaults to `ingest_agent`, then delete the 0004 model steps (extract, find_names, route, `ingest/graph.py`, `names.py`, round-1 script) and their tests From the first real note (2026-10-14): unknown names → people questions,
     new-project proposals for unlinked tasks (mapping rule 4), done tasks offered as win
     candidates, task sub-bullets read by the model, "remember this" → approved edit to
     aliases / `90_meta/rules.md`

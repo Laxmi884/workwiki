@@ -83,7 +83,10 @@ def stage(state: AgentIngestState, runtime: Runtime[IngestContext]) -> dict[str,
     )
     skills = (runtime.context or {}).get("skills_dir")
     agent = build_ingest_agent(
-        vault, nodes.chat_model(runtime), Path(skills) if skills else SKILLS_DIR
+        vault,
+        nodes.chat_model(runtime),
+        Path(skills) if skills else SKILLS_DIR,
+        fallbacks=nodes.fallback_models(runtime),
     )
     context = AgentContext(StagingContext(note, citable, entities, read))
     started = time.monotonic()

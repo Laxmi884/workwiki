@@ -22,6 +22,7 @@ from typing import Annotated, Any
 from deepagents import DeepAgentState, FilesystemPermission, create_deep_agent
 from deepagents.backends import CompositeBackend, FilesystemBackend, StateBackend
 from deepagents.middleware import FilesystemMiddleware
+from langchain.agents.middleware import ModelFallbackMiddleware, ModelRetryMiddleware
 from langchain.tools import ToolRuntime, tool
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import ToolMessage
@@ -264,10 +265,37 @@ def ask_user(question: str, line: int, runtime: ToolRuntime[AgentContext]) -> Co
     return _reply(runtime, "question added to the review", questions=[q])
 
 
+def model_middleware(
+    fallbacks: Sequence[BaseChatModel] = (), initial_delay: float = 5.0
+) -> list[Any]:
+    """Retry each failed model call, then try the fallback models in order.
+
+    Free providers often answer "overloaded" (OpenRouter raises it as a ValueError,
+    which the graph's RetryPolicy rightly won't retry). Retrying here repeats one call
+    and keeps the agent's progress. The fallback middleware comes first so it wraps
+    the retry: every model, fallbacks too, gets its retries. `on_failure="error"`
+    matters: the default ("continue") would hand the agent the error as if the model
+    had answered, ending the run quietly with half the work.
+    """
+    retry = ModelRetryMiddleware(
+        max_retries=3,
+        initial_delay=initial_delay,
+        backoff_factor=2.0,
+        on_failure="error",
+    )
+    return [ModelFallbackMiddleware(*fallbacks), retry] if fallbacks else [retry]
+
+
 def build_ingest_agent(
-    vault: Path, model: BaseChatModel, skills_dir: Path = SKILLS_DIR
+    vault: Path,
+    model: BaseChatModel,
+    skills_dir: Path = SKILLS_DIR,
+    fallbacks: Sequence[BaseChatModel] = (),
 ) -> Any:
-    """Return the compiled ingest agent over `vault` (read only)."""
+    """Return the compiled ingest agent over `vault` (read only).
+
+    `fallbacks` are tried in order when `model` still fails after its retries.
+    """
     backend = CompositeBackend(
         default=StateBackend(),
         routes={
@@ -289,9 +317,10 @@ def build_ingest_agent(
         backend=backend,
         permissions=permissions,
         middleware=[
+            *model_middleware(fallbacks),
             FilesystemMiddleware(
                 backend=backend, tools=READ_TOOLS, _permissions=permissions
-            )
+            ),
         ],
         state_schema=IngestAgentState,
         context_schema=AgentContext,

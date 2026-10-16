@@ -50,3 +50,22 @@ def test_frozen(tmp_path):
     settings = Settings(_env_file=None, vault_path=tmp_path)
     with pytest.raises(pydantic.ValidationError):
         settings.task_ids = "inline"
+
+
+def test_fallback_models_from_comma_list(monkeypatch, tmp_path):
+    monkeypatch.setenv(
+        "WIKI_FALLBACK_MODELS", " openrouter:a/b:free, ,claude:claude-haiku-5-5 "
+    )
+    settings = Settings(_env_file=None, vault_path=tmp_path)
+    assert settings.fallback_models == (
+        "openrouter:a/b:free",
+        "anthropic:claude-haiku-5-5",
+    )
+
+
+def test_fallback_models_default_empty_and_checked(monkeypatch, tmp_path):
+    monkeypatch.delenv("WIKI_FALLBACK_MODELS", raising=False)
+    assert Settings(_env_file=None, vault_path=tmp_path).fallback_models == ()
+    monkeypatch.setenv("WIKI_FALLBACK_MODELS", "no-provider")
+    with pytest.raises(pydantic.ValidationError, match="provider:model"):
+        Settings(_env_file=None, vault_path=tmp_path)
