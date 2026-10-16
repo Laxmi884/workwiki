@@ -4,7 +4,7 @@ Every surface (CLI, Telegram, Slack) talks to `IngestRunner`; none of them touch
 graph directly (decision 0005). The runner owns the checkpointer and the thread IDs:
 `start` runs until the review pauses, `resume` sends the answer and runs on.
 
-    runner = IngestRunner.in_memory(context={"vault_path": "~/WorkDev"})
+    runner = IngestRunner.sqlite(context={"vault_path": "~/WorkDev"})   # survives restarts
     result = runner.start("00_raw/daily/2026-10-12.md")   # status "review"
     result = runner.resume(result.thread_id, {"action": "approve"})
 """
@@ -15,17 +15,21 @@ import enum
 import importlib
 import inspect
 import pkgutil
+import sqlite3
 import uuid
+from pathlib import Path
 from typing import Any, Literal
 
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
+from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.graph import StateGraph
 from langgraph.types import Command
 from pydantic import BaseModel, ConfigDict
 
 import llm_wiki.domain
+from llm_wiki.config import get_settings
 from llm_wiki.domain.review import ReviewAnswer, ReviewRequest
 from llm_wiki.ingest.graph import builder
 from llm_wiki.ingest.state import IngestContext
@@ -63,6 +67,7 @@ class RunResult(BaseModel):
         action: The accepted answer once done: "approve" or "reject".
         approved: Digests of approved diffs once done.
         written: Vault paths written by apply once done.
+        commit: The vault commit holding them (None: not a git repo, or nothing new).
         warnings: Everything the run reported.
     """
 
@@ -74,6 +79,7 @@ class RunResult(BaseModel):
     action: str | None = None
     approved: tuple[str, ...] = ()
     written: tuple[str, ...] = ()
+    commit: str | None = None
     warnings: tuple[str, ...] = ()
 
 
@@ -104,6 +110,24 @@ class IngestRunner:
     ) -> IngestRunner:
         """Return a runner whose state lives only in this process (tests, quick tries)."""
         return cls(InMemorySaver(serde=checkpoint_serializer()), context, graph_builder)
+
+    @classmethod
+    def sqlite(
+        cls,
+        path: Path | None = None,
+        context: IngestContext | None = None,
+        graph_builder: StateGraph | None = None,
+    ) -> IngestRunner:
+        """Return a runner whose threads survive restarts (decision 0005).
+
+        `path` defaults to `WIKI_STATE_DIR/checkpoints.sqlite`, outside the vault.
+        """
+        if path is None:
+            path = get_settings().state_dir / "checkpoints.sqlite"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        conn = sqlite3.connect(path, check_same_thread=False)
+        saver = SqliteSaver(conn, serde=checkpoint_serializer())
+        return cls(saver, context, graph_builder)
 
     def _config(self, thread_id: str) -> dict[str, Any]:
         return {"configurable": {"thread_id": thread_id}}
@@ -155,5 +179,6 @@ class IngestRunner:
             action=values.get("review_action"),
             approved=tuple(values.get("approved", [])),
             written=tuple(values.get("written", [])),
+            commit=values.get("commit"),
             warnings=warnings,
         )

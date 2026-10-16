@@ -61,6 +61,7 @@ class IngestState(TypedDict, total=False):
             or "revise", "make_page", "edit", "answer" (it loops back).
         approved: Digests of the approved diffs; only these may be written (3d).
         written: Paths `apply` wrote (or found already up to date).
+        commit: The vault git commit of those paths, if any (3e).
         apply_conflicts: Approved paths that changed since the review; nothing was
             written and the run re-renders for a fresh review.
         chosen_wins: Lines of done tasks the user picked as wins (review "answer").
@@ -90,6 +91,7 @@ class IngestState(TypedDict, total=False):
     review_action: str
     approved: list[str]
     written: list[str]
+    commit: str | None
     apply_conflicts: list[str]
     chosen_wins: list[int]
     new_entities: list[Entity]

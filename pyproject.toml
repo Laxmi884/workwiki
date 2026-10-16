@@ -15,6 +15,7 @@ dependencies = [
     "langchain-ollama>=1.1.0",
     "langchain-openrouter>=0.2.9",
     "langgraph>=1.0.0",
+    "langgraph-checkpoint-sqlite>=3.1.2",
     "pydantic>=2.12.5",
     "pydantic-settings>=2.15.0",
     "python-dotenv>=1.0.1",

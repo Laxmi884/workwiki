@@ -69,3 +69,14 @@ def test_fallback_models_default_empty_and_checked(monkeypatch, tmp_path):
     monkeypatch.setenv("WIKI_FALLBACK_MODELS", "no-provider")
     with pytest.raises(pydantic.ValidationError, match="provider:model"):
         Settings(_env_file=None, vault_path=tmp_path)
+
+
+def test_state_dir_default_and_outside_the_vault(monkeypatch, tmp_path):
+    monkeypatch.delenv("WIKI_STATE_DIR", raising=False)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    settings = Settings(_env_file=None, vault_path=vault)
+    assert settings.state_dir == tmp_path / ".llm-wiki"
+    with pytest.raises(pydantic.ValidationError, match="outside the vault"):
+        Settings(_env_file=None, vault_path=vault, state_dir=vault / ".state")

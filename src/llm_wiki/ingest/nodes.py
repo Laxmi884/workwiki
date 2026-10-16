@@ -16,7 +16,16 @@ from langgraph.graph import END
 from langgraph.runtime import Runtime
 from langgraph.types import Send, interrupt
 
-from llm_wiki import answers, extraction, ledger, names, review, routing, task_tracking
+from llm_wiki import (
+    answers,
+    extraction,
+    ledger,
+    names,
+    review,
+    routing,
+    task_tracking,
+    vault_git,
+)
 from llm_wiki.apply import ApplyConflict, apply_diffs
 from llm_wiki.config import get_settings
 from llm_wiki.daily_syntax import parse_daily_note
@@ -415,7 +424,7 @@ def _answered(
 
 
 def apply(state: IngestState, runtime: Runtime[IngestContext]) -> dict[str, Any]:
-    """Write the approved diffs (3d).
+    """Write the approved diffs (3d) and commit them to the vault's git repo (3e).
 
     If approved files changed since the review, nothing is written. Changed wiki pages:
     `after_apply` re-renders from the current files for a fresh review. A changed note:
@@ -437,7 +446,23 @@ def apply(state: IngestState, runtime: Runtime[IngestContext]) -> dict[str, Any]
             "apply_conflicts": list(exc.paths),
             "warnings": [warning],
         }
-    return {"written": written, "apply_conflicts": []}
+    commit, warnings = vault_git.commit_paths(
+        vault_path(runtime), written, _commit_message(state, written)
+    )
+    return {
+        "written": written,
+        "apply_conflicts": [],
+        "commit": commit,
+        "warnings": warnings,
+    }
+
+
+def _commit_message(state: IngestState, written: list[str]) -> str:
+    """Return "ingest 2026-10-14: 6 files" plus one line per file with its digest."""
+    note = state["note"]
+    digests = {d.path: d.digest for d in state.get("diffs", [])}
+    body = "\n".join(f"- {p}  {digests.get(p, '')[:12]}" for p in written)
+    return f"ingest {note.date or note.path}: {len(written)} files\n\n{body}\n"
 
 
 def after_apply(state: IngestState) -> str:

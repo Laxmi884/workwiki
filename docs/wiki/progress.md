@@ -59,7 +59,7 @@ Option B of [[decisions/0006-agent-ingest-spike|0006]] adopted (2026-10-15): ing
     candidates, task sub-bullets read by the model, "remember this" → approved edit to
     aliases / `90_meta/rules.md`
   - [ ] 3d. `apply`: write approved files only if `before_sha256` still matches, read back. Built by Claude 2026-10-15 (`apply.py`, `apply` node in both graphs, notebook 08); awaiting the user's review
-  - [ ] 3e. SQLite checkpointer; git commit of the vault
+  - [ ] 3e. SQLite checkpointer; git commit of the vault. Built by Claude 2026-10-15 (`IngestRunner.sqlite`, `vault_git.py`, notebook 09); awaiting the user's review
 - [ ] **4. Assistant deep agent**: filesystem backend, permissions, skills, review subagent. Read: `runtime/local.py`, `workspace/skills/`.
 - [ ] **5. Middleware**: current date, write guard, redaction, offload. Read: `middleware/`.
 - [ ] **6. Tests and evals**: scripted model, sample notes with expected diffs. Read: `testing/scripted_model.py`, `tests/eval/`.
