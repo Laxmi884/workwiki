@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block head %}
+<style>
+.runs { list-style: none; padding: 0; margin: 0; background: var(--card);
+  border: 1px solid var(--rule); border-radius: 14px; }
+.runs li { display: flex; gap: 12px; align-items: baseline; padding: 14px 18px;
+  border-top: 1px solid var(--rule); }
+.runs li:first-child { border-top: 0; }
+.runs a { flex: 1; font: 600 18px/1.3 var(--serif); text-decoration: none; color: var(--ink); }
+.runs a:hover { color: var(--teal); }
+.state { font-size: 14px; color: var(--faint); }
+.state.open { color: var(--teal); font-weight: 600; }
+</style>
+{% endblock %}
+{% block body %}
+<h1>Reviews</h1>
+<p class="lede">Each ingest waits here until you approve or reject it.</p>
+{% if rows %}
+<ul class="runs">
+{% for row in rows|sort(attribute="status", reverse=true) %}
+<li><a href="/review/{{ row.thread }}">{{ row.note or row.thread }}</a>
+<span class="state {% if row.status == 'review' %}open{% endif %}">{{ "Waiting for you" if row.status == "review" else ("Skipped" if row.status == "skipped" else "Answered") }}</span></li>
+{% endfor %}
+</ul>
+{% else %}
+<p class="notice ok">Nothing to review. Send <strong>/ingest</strong> in the wiki chat to file today's note.</p>
+{% endif %}
+{% endblock %}

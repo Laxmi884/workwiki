@@ -31,6 +31,8 @@ class IngestState(TypedDict, total=False):
 
     Attributes:
         note_path: Input: vault-relative note path, e.g. "00_raw/daily/2026-10-12.md".
+        vault_path: The vault this run reads and writes (absolute), set by load_note;
+            the runner refuses to resume the thread for another vault (0009).
         note: The parsed note (load_note).
         note_sha256: Hash of the note text, for the ingest ledger.
         seen_lines: Keys of prose lines already ingested (ledger); only others give facts.
@@ -65,6 +67,7 @@ class IngestState(TypedDict, total=False):
     """
 
     note_path: str
+    vault_path: str
     note: DailyNote
     note_sha256: str
     seen_lines: list[str]

@@ -17,6 +17,7 @@ import inspect
 import pkgutil
 import sqlite3
 import uuid
+from functools import cache
 from pathlib import Path
 from typing import Any, Literal
 
@@ -149,16 +150,36 @@ class IngestRunner:
         An invalid answer comes back as a new review with `review.error` set.
 
         Raises:
-            ValueError: Nothing is waiting for an answer on this thread.
+            ValueError: Nothing is waiting for an answer on this thread, or the thread
+                belongs to another vault than this runner's.
         """
         if self.status(thread_id).status != "review":
             raise ValueError(f"no review is waiting on thread {thread_id!r}")
+        self._check_vault(thread_id)
         if isinstance(answer, ReviewAnswer):
             answer = answer.model_dump(mode="json")
         self.graph.invoke(
             Command(resume=answer), self._config(thread_id), context=self.context
         )
         return self.status(thread_id)
+
+    def vault_of(self, thread_id: str) -> Path | None:
+        """Return the vault a thread's run works on (None: not started here)."""
+        values = self.graph.get_state(self._config(thread_id)).values
+        return Path(values["vault_path"]) if values.get("vault_path") else None
+
+    def _check_vault(self, thread_id: str) -> None:
+        """Refuse to resume a review for another vault (threads share one SQLite file)."""
+        theirs = self.vault_of(thread_id)
+        mine = self.context.get("vault_path")
+        mine_path = (
+            Path(mine).expanduser().resolve() if mine else get_settings().vault_path
+        )
+        if theirs is not None and theirs != mine_path:
+            raise ValueError(
+                f"thread {thread_id!r} reviews {theirs}, not {mine_path}; answer it "
+                "with that vault"
+            )
 
     def status(self, thread_id: str) -> RunResult:
         """Read where the thread stands from the checkpointer (no graph run)."""
@@ -181,3 +202,15 @@ class IngestRunner:
             commit=values.get("commit"),
             warnings=warnings,
         )
+
+
+@cache
+def shared_runner(vault: Path, model: str | None = None) -> IngestRunner:
+    """Return the SQLite-backed runner for this vault and model (one per process).
+
+    The chat front door and the review page answer the same threads through it.
+    """
+    context: dict[str, Any] = {"vault_path": str(vault)}
+    if model:
+        context["model"] = model
+    return IngestRunner.sqlite(context=context)  # type: ignore[arg-type]

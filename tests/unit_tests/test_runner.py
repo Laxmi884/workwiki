@@ -188,3 +188,12 @@ def test_checkpoints_restore_our_types_without_warnings(runner, caplog):
     started = runner.start(NOTE)
     runner.resume(started.thread_id, "approve")
     assert not [r for r in caplog.records if "unregistered type" in r.getMessage()]
+
+
+def test_a_review_is_answered_only_for_its_own_vault(runner, vault_copy, tmp_path):
+    started = runner.start(NOTE)
+    assert runner.vault_of(started.thread_id) == vault_copy.resolve()
+    other = IngestRunner(runner.graph.checkpointer, {"vault_path": str(tmp_path)})
+    with pytest.raises(ValueError, match="reviews .* not "):
+        other.resume(started.thread_id, "approve")
+    assert runner.resume(started.thread_id, "reject").status == "done"

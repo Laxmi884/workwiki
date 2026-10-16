@@ -20,9 +20,14 @@ def _diff_block(diff: str) -> str:
     return "```diff\n" + "\n".join(lines) + "\n```"
 
 
-def render_review(review: ReviewRequest) -> str:
-    """Return the review as a message: files with diffs, tasks, wins, what to answer."""
+def render_review(review: ReviewRequest, link: str | None = None) -> str:
+    """Return the review as a message: files with diffs, tasks, wins, what to answer.
+
+    `link` is the review page for this review, shown at the top.
+    """
     out = [f"**Review: {review.note}**"]
+    if link:
+        out.append(f"[Open the review page]({link}) to see and answer it there.")
     if review.error:
         out.append(f"⚠️ Not accepted: {review.error}")
     out.append("**Files** (approval covers exactly these changes):")
@@ -62,10 +67,10 @@ def render_review(review: ReviewRequest) -> str:
     return "\n\n".join(out)
 
 
-def render_result(result: RunResult) -> str:
-    """Return a finished or skipped run as a message (a review uses `render_review`)."""
+def render_result(result: RunResult, link: str | None = None) -> str:
+    """Return a run as a message: its review (with `link`), or how it ended."""
     if result.status == "review" and result.review is not None:
-        return render_review(result.review)
+        return render_review(result.review, link)
     if result.status == "skipped":
         why = "; ".join(result.warnings) or "nothing to do"
         return f"Nothing to ingest: {why}"

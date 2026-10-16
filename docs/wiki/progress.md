@@ -76,5 +76,7 @@ Working mode (CLAUDE.md, since 2026-10-15): Claude builds in reviewed steps, eac
 - [ ] **6. Tests and evals**: scripted model, sample notes with expected diffs. Read: `testing/scripted_model.py`, `tests/eval/`.
 - [ ] **7. Morning brief, schedule, CLI**. Read: `surfaces/runner.py`, `schedules/`.
   - [ ] Daily-note rollover job (create-if-absent, carried tasks from index, 14-day stale cutoff), per 0001
-  - [ ] Review HTML: local page built from `ReviewRequest` (diffs, tasks → projects, wins, warnings) whose buttons produce the answer (user chose phase 7, 2026-10-16; mockup from the 2026-10-15 run exists only in a scratchpad)
-- [ ] **8. Optional**: `langgraph up`, `langgraph deploy`.
+  - [x] Review page R1 (Claude, 2026-10-16; awaiting review): fact-centric page on the 2026-10-15 mockup's design (each fact beside its note line, whole-file Include, exact diff on demand, bookkeeping folded, phone layout), served by `langgraph dev` via `http.app` or `python -m llm_wiki.review_web`; reviews tied to their vault ([[decisions/0009-review-page-and-remember|0009]])
+  - [ ] Review page R2: edit, task → project choices, win picks, revise box; R3: remember
+  - [ ] Telegram/Slack adapters: summary + Approve all / Reject + link to the review page
+- [ ] **8. Optional**: `langgraph up`, `langgraph deploy`. Hosting only (0005 addendum): vault + `WIKI_STATE_DIR` volumes, auth on the review page's custom routes, vault git clone synced with the Mac. The UI does not wait for this.

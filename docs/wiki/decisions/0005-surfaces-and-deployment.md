@@ -46,6 +46,14 @@ Checked 2026-10-13/14:
 - Any always-on host (VPS, Docker, Fly, Modal) needs the vault there too: a git clone synced
   with the Mac (pull before ingest, push after commit). Phase 8.
 
+- **Addendum 2026-10-16 (user asked whether the UI should wait for the Docker server): no.**
+  The wiki chat (4d) and the review page (0009) are adapters over the runner. The page is a
+  Starlette app mounted through `langgraph.json` `"http": {"app": ...}`, which the CLI applies to
+  every server built from that file (`dev`, `up`, deploy), and it can also run standalone. Phase 8
+  adds only hosting work: vault and `WIKI_STATE_DIR` as mounted volumes, auth on custom routes
+  (`enable_custom_route_auth`) before the page is reachable beyond localhost/Tailscale, and the
+  vault git clone synced with the Mac.
+
 ## Why
 
 Pause/resume only needs a checkpointer and a thread ID, which we can own for free; keeping the

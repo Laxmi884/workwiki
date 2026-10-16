@@ -168,3 +168,4 @@ cython_debug/
 Building a Local AI Wiki.pdf
 # Learning notebooks (user, 2026-10-15)
 notebooks/
+.playwright-mcp/

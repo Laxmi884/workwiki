@@ -13,8 +13,6 @@ command, never a model's guess.
 from __future__ import annotations
 
 import datetime
-from functools import cache
-from pathlib import Path
 from typing import Any
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
@@ -26,8 +24,9 @@ from llm_wiki.assistant.agent import build_assistant
 from llm_wiki.assistant.graph import run_choice
 from llm_wiki.chat.commands import HELP, is_command, parse_command
 from llm_wiki.chat.render import render_result
+from llm_wiki.config import get_settings
 from llm_wiki.model_setup import configured_fallbacks, configured_model
-from llm_wiki.runner import IngestRunner
+from llm_wiki.runner import shared_runner as ingest_runner
 
 COMMAND_REPLY = "ingest"  # name on command replies, so the assistant skips them
 
@@ -48,15 +47,6 @@ class WikiState(MessagesState, total=False):
     """The chat, plus the ingest thread whose review is open (None: none open)."""
 
     ingest_thread: str | None
-
-
-@cache
-def ingest_runner(vault: Path, model: str | None) -> IngestRunner:
-    """Return the SQLite-backed ingest runner for this vault and model (one each)."""
-    context: dict[str, Any] = {"vault_path": str(vault)}
-    if model:
-        context["model"] = model
-    return IngestRunner.sqlite(context=context)  # type: ignore[arg-type]
 
 
 def _text(message: BaseMessage) -> str:
@@ -105,9 +95,13 @@ def command(state: WikiState, runtime: Runtime[WikiContext]) -> dict[str, Any]:
         result = runner.status(open_thread)
     else:
         assert parsed.answer is not None
-        result = runner.resume(open_thread, parsed.answer)
+        try:
+            result = runner.resume(open_thread, parsed.answer)
+        except ValueError as exc:  # e.g. the review belongs to another vault
+            return _reply(f"Can't answer that review here: {exc}")
     still_open = result.thread_id if result.status == "review" else None
-    return _reply(render_result(result), ingest_thread=still_open)
+    link = f"{get_settings().review_url.rstrip('/')}/review/{result.thread_id}"
+    return _reply(render_result(result, link), ingest_thread=still_open)
 
 
 def ask(state: WikiState, runtime: Runtime[WikiContext]) -> dict[str, Any]:

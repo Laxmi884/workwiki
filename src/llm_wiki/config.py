@@ -29,6 +29,8 @@ class Settings(BaseSettings):
         fallback_models: `WIKI_FALLBACK_MODELS`. Comma-separated "provider:model"
             specs tried in order when the run's model keeps failing (outage,
             overload). Empty: no fallback.
+        review_url: `WIKI_REVIEW_URL`. Where the review page is served, for links in
+            chat messages. Default "http://127.0.0.1:2024" (`langgraph dev`).
         model_timeout: `WIKI_MODEL_TIMEOUT`. Seconds one model request may take before
             it fails (and is retried); a provider that never answers would otherwise
             stall the run. Not applied to local Ollama models. Default 180.
@@ -47,6 +49,7 @@ class Settings(BaseSettings):
     model: str | None = None
     fallback_models: Annotated[tuple[str, ...], NoDecode] = ()
     model_timeout: float = Field(default=180.0, gt=0)
+    review_url: str = "http://127.0.0.1:2024"
     state_dir: Path = Path("~/.llm-wiki")
 
     @field_validator("vault_path")

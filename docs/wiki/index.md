@@ -35,3 +35,4 @@ Numbered, one per decision. Template: `decisions/_template.md`.
 - [[decisions/0006-agent-ingest-spike|0006]]: ingest by a deep agent that stages edits checked by code (accepted 2026-10-15; replaces the 0004 extraction)
 - [[decisions/0007-task-project-proposals|0007]]: task → project by model proposal: `map_task` checked by code, in by default, correctable in review, sticky user "none"
 - [[decisions/0008-assistant-agent|0008]]: assistant deep agent: read-only vault, `find_tasks`, skills, review-writer subagent with a sourced draft, Studio + `ask`
+- [[decisions/0009-review-page-and-remember|0009]]: HTML review page over the same runner (one review, many windows); remember proposed in the review; reviews tied to their vault

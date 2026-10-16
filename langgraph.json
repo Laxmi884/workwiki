@@ -9,5 +9,8 @@
     "ingest": "./src/llm_wiki/ingest_agent/graph.py:graph"
   },
   "env": ".env",
-  "image_distro": "wolfi"
+  "image_distro": "wolfi",
+  "http": {
+    "app": "./src/llm_wiki/review_web/app.py:app"
+  }
 }

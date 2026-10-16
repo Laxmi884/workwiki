@@ -83,13 +83,15 @@ def load_note(state: IngestState, runtime: Runtime[IngestContext]) -> dict[str, 
     `seen_lines` (already-ingested prose lines) for an edited one.
     """
     path = state["note_path"]
-    read = vault_reader(vault_path(runtime))
+    vault = vault_path(runtime)
+    read = vault_reader(vault)
     text = read(path)
     if text is None:
         raise FileNotFoundError(f"note not found in vault: {path}")
     note = parse_daily_note(path, text)
     sha = sha256_text(text)
     update: dict[str, Any] = {
+        "vault_path": str(vault),
         "note": note,
         "note_sha256": sha,
         "warnings": [f"{path}: {w}" for w in note.warnings],
