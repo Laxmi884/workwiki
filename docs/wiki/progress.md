@@ -6,7 +6,7 @@ Single source of truth for project status. Updated at the end of every session.
 
 Working mode (CLAUDE.md, since 2026-10-15): Claude builds in reviewed steps, each with a git-ignored notebook in `notebooks/` (00–11 exist; `notebooks/_src/nbNN.py` builds them, `_src/run.sh` executes; an answer key lives outside the repo). Ingest = the `ingest_agent` graph ([[decisions/0006-agent-ingest-spike|0006]] option B); phase 3 is built (3d apply, 3e SQLite runner + vault git commit) and the 0006 agent-quality fixes are in; all three await the user's review (notebooks 08–10).
 
-**Phase 4 built (Claude, 2026-10-16; awaiting review, not committed):** assistant deep agent per [[decisions/0008-assistant-agent|0008]] (read-only vault, `find_tasks`, 3 skills, `review-writer` subagent, `assistant` graph factory, `ask` script). 0006 cut-over committed (`b30f52b`). Next: commit on approval, notebook 12, then the user does notebooks 11–12. Real brag-sheet test needs a vault with applied ingests (`~/WorkDev` has none applied yet). Model `deepseek/deepseek-v4.1-flash`; spend ≈ $2.47 of $2.50.
+**Phase 4: 4a–4c committed (`63ad4dc`); 4d (`wiki` chat front door) built, awaiting review. Phase 4 overall (Claude, 2026-10-16):** assistant deep agent per [[decisions/0008-assistant-agent|0008]] (read-only vault, `find_tasks`, 3 skills, `review-writer` subagent, `assistant` graph factory, `ask` script). 0006 cut-over committed (`b30f52b`). Next: commit on approval, notebook 12, then the user does notebooks 11–12. Real brag-sheet test needs a vault with applied ingests (`~/WorkDev` has none applied yet). Model `deepseek/deepseek-v4.1-flash`; spend ≈ $2.47 of $2.50.
 
 ## Open decisions
 
@@ -70,6 +70,7 @@ Working mode (CLAUDE.md, since 2026-10-15): Claude builds in reviewed steps, eac
   - [x] 4a. Read-only assistant over `/vault/`, `find_tasks`, skills (vault-map, answering, brag-sheet), `rules.md` memory (Claude, 2026-10-16; awaiting review)
   - [x] 4b. `review-writer` subagent → sourced `BragDraft` (Claude, 2026-10-16; awaiting review)
   - [x] 4c. `assistant` graph factory in `langgraph.json` (template graph removed), `python -m llm_wiki.ask` (Claude, 2026-10-16; awaiting review)
+  - [x] 4d. `wiki` chat front door: slash commands drive ingest via the SQLite runner, other messages go to the assistant; questions work while a review is open (Claude, 2026-10-16; awaiting review)
   - [ ] Notebook 12; real brag-sheet run once a vault has applied ingests
 - [ ] **5. Middleware**: current date, write guard, redaction, offload. Read: `middleware/`.
 - [ ] **6. Tests and evals**: scripted model, sample notes with expected diffs. Read: `testing/scripted_model.py`, `tests/eval/`.

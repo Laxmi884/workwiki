@@ -45,6 +45,15 @@ parent's; custom subagents don't inherit skills; `response_format` gives the par
 - Built in steps 4a (agent, tools, skills, tests), 4b (review-writer), 4c (`ask`, `langgraph.json`);
   notebook 12 after.
 
+- **Step 4d, one chat for both agents (user asked, 2026-10-16; chose runner-backed commands, built
+  now):** graph `wiki` (`chat/graph.py`) routes by code: a leading `/` is a command (`/ingest
+  [date]`, `/review`, `/approve [except f2]`, `/reject`, `/revise <text>`, `/edit f3` + text,
+  `/tasks m1=…`, `/wins …`, `/help`), anything else goes to the assistant. Ingest runs in its own
+  SQLite thread through `IngestRunner`; the chat stores only the open ingest thread id, so the review
+  keeps its digests and rules, survives restarts, and questions work while it waits. One open review
+  at a time. Reviews show as Markdown (files, diffs, tasks, wins, warnings); the review HTML stays in
+  phase 7.
+
 ## Why
 
 Same split as ingest: code owns deterministic data (tasks, paths, permissions), the model reads and
