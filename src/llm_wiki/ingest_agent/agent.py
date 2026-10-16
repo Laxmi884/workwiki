@@ -156,12 +156,15 @@ def file_fact(
         )
     except StagingError as exc:
         return _reply(runtime, f"REFUSED: {exc}", refusals=[f"file_fact: {exc}"])
-    return _reply(
-        runtime,
-        f"staged on {record.path} ({record.section})",
-        staged=edits,
-        filed=[record],
-    )
+    note = f"staged on {record.path} ({record.section})"
+    if ctx.entities.get(target) is None and record.path not in staging.proposed_paths(
+        [*_live(runtime)[0], *edits]
+    ):
+        note += (
+            f"; {target} has no page yet: call propose_page for it, or this fact is "
+            "dropped"
+        )
+    return _reply(runtime, note, staged=edits, filed=[record])
 
 
 @tool
@@ -381,13 +384,15 @@ def build_brief(
     *,
     feedback: Sequence[str] = (),
     previous: Sequence[Filed] = (),
+    dropped: Sequence[str] = (),
 ) -> str:
     """Return the first message: the numbered note, task facts, known pages, feedback.
 
     Lines that may be cited are marked `|`, others `~`. Task lines carry what code
-    knows: ID, status, project, whether it was done for the first time.
+    knows: ID, status, project. (`done_tasks` is unused since wins became the user's
+    pick in the review; kept for the signature.)
     """
-    done = {t.line for t in done_tasks}
+    del done_tasks
     tasks = {t.line_no: t for t in note.tasks}
     rows = []
     for n, raw in enumerate(text.splitlines(), start=1):
@@ -395,8 +400,6 @@ def build_brief(
         if n in tasks:
             t = tasks[n]
             bits = [f"task {t.id or task_ids.get(n, '?')}", t.status.value]
-            if n in done:
-                bits.append("done for the first time")
             if task_projects.get(n):
                 bits.append(f"project {task_projects[n]}")
             extra = f"   [{'; '.join(bits)}]"
@@ -416,6 +419,12 @@ def build_brief(
             f"- line {f.line} → {f.path} {f.section}: {f.text}" for f in previous
         )
         parts.append(f"Your filing so far (still staged):\n{filed}")
+    if dropped:
+        lost = "\n".join(f"- {d}" for d in dropped)
+        parts.append(
+            "Code dropped these last round (not filed). If the user's feedback says "
+            f"where they belong, file them there now:\n{lost}"
+        )
     if feedback:
         notes = "\n".join(f"- {f}" for f in feedback)
         parts.append(

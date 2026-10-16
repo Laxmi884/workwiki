@@ -16,6 +16,27 @@ description: How to tell which person or project a name in a daily note refers t
    belongs to its parent bullet's project; a task line shows its project in `[...]`.
 5. A first name shared by two pages is ambiguous: ask, don't guess.
 
+## Which project a line is about
+
+Put a fact on an existing project page only when the line, its parent bullet or its
+`###` heading names the project (title, alias or `[[slug]]`), or the task shows the
+project in `[...]`. Code refuses anything else. A page being the only project in the
+vault is not a reason: most work belongs to projects that have no page yet.
+
+When no existing project is named:
+- the note names a piece of work the user tracks, or several lines are about the same
+  work ("loss history workflow" in two tasks) → `propose_page` a project, then file;
+- you can't tell → `ask_user` ("Which project is line 9 about, or is it ad hoc?");
+- a one-off task (a quick fix, an errand) → no page at all.
+
+New project pages follow the same rule: a fact goes on one only if its line, parent or
+heading names it. So:
+- title a new project with the words the note uses ("delq analysis", not "Delinquency
+  analysis"), so the lines that mean it also name it;
+- one project per piece of work; never a catch-all named after a team, area or tool
+  ("Risk analytics", "GitLab"), and never a project just to hold unrelated lines;
+- lines about the work that don't name it: ask once which project they belong to.
+
 ## New pages
 
 - Propose a person page for a human the note names (a 1:1, someone who asked or

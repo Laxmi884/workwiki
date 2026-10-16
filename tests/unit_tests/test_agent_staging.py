@@ -1,5 +1,7 @@
 """Spike 0006: the checks on what the ingest agent stages, and one scripted agent run."""
 
+import dataclasses
+
 import pytest
 from langchain_core.messages import AIMessage
 
@@ -71,7 +73,7 @@ def test_person_note_gets_its_origin_from_code(ctx):
         ({"line": 37}, "can't be cited"),  # fenced code
         ({"line": 999}, "can't be cited"),
         ({"target": "../../00_raw/daily/x"}, "not a target"),
-        ({"target": "person-nobody"}, "has no page"),
+        ({"line": 22}, "doesn't name person-sam-ortiz"),  # Atlas sync, not Sam
         ({"target": "impact", "section": "Notes"}, "not allowed"),
         ({"section": "Current state"}, "update_summary"),
         ({"section": "## Notes <b>"}, "not a short"),
@@ -110,12 +112,19 @@ def test_decision_log_and_impact_are_created_once(ctx):
     assert edits[0].path == "30_decisions/2026/decisions-2026-q4.md"
     assert edits[1].lines[1] == "### Keep the old BI tool until Q1"
 
-    win1, f1 = fact(ctx, target="impact", section="Wins", text="Found it.", line=34)
-    win2, _ = fact(
-        ctx, win1, [f1], target="impact", section="Help given", text="Paired.", line=43
+    d2, _ = fact(
+        ctx,
+        edits,
+        [filed],
+        target="decision-log",
+        section="Decisions",
+        text="Not recorded in the note.",
+        line=18,
+        title="Drop the dashboard migration",
     )
-    assert [type(e) for e in win1] == [CreateFile, AppendToSection]
-    assert [type(e) for e in win2] == [AppendToSection]
+    assert [type(e) for e in d2] == [AppendToSection], "the log is created once"
+    win, _ = fact(ctx, target="impact", section="Wins", text="Found it.", line=34)
+    assert [type(e) for e in win] == [CreateFile, AppendToSection]
 
 
 def test_decision_log_needs_a_title(ctx):
@@ -180,8 +189,10 @@ def test_scripted_agent_run_reaches_the_review(vault_copy, monkeypatch):
     paths = [f.path for f in result.review.files]
     assert "20_people/person-sam-ortiz.md" in paths
     assert not any(p.endswith("x.md") for p in paths)
-    assert any("agent refused: file_fact: line 21" in w for w in result.warnings)
-    assert any("question line 23: Is BI a project?" in w for w in result.warnings)
+    assert result.review.warnings[-2:] == (
+        "question line 23: Is BI a project?",
+        "code refused 1 of the agent's calls (details in the trace)",
+    )
     values = runner.graph.get_state(runner._config(result.thread_id)).values
     assert values["agent_stats"]["refusals"] == 1
     assert [
@@ -205,7 +216,9 @@ def test_scripted_agent_run_reaches_the_review(vault_copy, monkeypatch):
 def test_finalize_fixes_repeats_from_parallel_calls(ctx):
     # Two calls in one model turn both see an empty staging.
     a, fa = fact(ctx, target="impact", section="Wins", text="Found it.", line=34)
-    b, fb = fact(ctx, target="impact", section="Help given", text="Paired.", line=43)
+    b, fb = fact(
+        ctx, target="person-priya-nair", section="Help given", text="Paired.", line=43
+    )
     c, fc = fact(ctx, target="impact", section="Wins", text="Root cause.", line=34)
     edits, filed, problems = staging.finalize([*a, *b, *c], [fa, fb, fc])
     assert sum(isinstance(e, CreateFile) for e in edits) == 1
@@ -304,3 +317,142 @@ def test_revise_keeps_the_filing_and_a_withdrawn_fact_can_be_filed_again(
     assert values["agent_stats"]["refusals"] == 0
     sam_diff = next(f for f in result.review.files if f.path.endswith("sam-ortiz.md"))
     assert "## 1:1 notes" in sam_diff.diff and "## Notes\n+" not in sam_diff.diff
+
+
+def test_existing_project_needs_its_name_in_the_line_parent_or_heading(ctx):
+    # Line 22 is under "### Atlas weekly sync"; line 13's parent links project-atlas.
+    fact(ctx, target="project-atlas", section="Updates", text="Beta Oct 20.", line=22)
+    fact(ctx, target="project-atlas", section="Updates", text="Fixed it.", line=13)
+    with pytest.raises(StagingError, match="doesn't name project-atlas"):
+        fact(ctx, target="project-atlas", section="Updates", text="x", line=29)
+
+
+def test_a_task_code_mapped_to_the_project_counts(fixture_vault):
+    read = vault_reader(fixture_vault)
+    note = parse_daily_note(NOTE, read(NOTE))
+    mapped = StagingContext(
+        note,
+        staging.citable_lines(note),
+        load_index(fixture_vault),
+        read,
+        task_projects={30: "project-atlas"},
+    )
+    fact(mapped, target="project-atlas", section="Updates", text="Plan.", line=30)
+
+
+def test_a_proposed_project_also_needs_its_name_unless_feedback_names_it(ctx):
+    page = staging.stage_page(ctx, [], slug="project-search", title="search", line=29)
+    fact(ctx, [page], target="project-search", section="Updates", text="x", line=29)
+    with pytest.raises(StagingError, match="doesn't name project-search"):
+        fact(ctx, [page], target="project-search", section="Updates", text="x", line=33)
+    told = dataclasses.replace(ctx, feedback=("line 33 is about Search too",))
+    fact(told, [page], target="project-search", section="Updates", text="x", line=33)
+
+
+def test_wins_need_a_win_tag(ctx):
+    fact(ctx, target="impact", section="Wins", text="Root cause found.", line=34)
+    with pytest.raises(StagingError, match="isn't tagged #win"):
+        fact(ctx, target="impact", section="Wins", text="x", line=13)
+    with pytest.raises(StagingError, match="isn't tagged #win"):
+        fact(ctx, target="project-atlas", section="Wins", text="x", line=22)
+
+
+def test_impact_takes_no_help_given(ctx):
+    with pytest.raises(StagingError, match="not allowed on impact"):
+        fact(ctx, target="impact", section="Help given", text="Paired.", line=43)
+
+
+def test_finalize_drops_a_new_page_left_empty(ctx):
+    edits, f = fact(ctx, target="impact", section="Wins", text="Found it.", line=34)
+    kept, filed, problems = staging.finalize(edits, [f], [(34, f.path, 1)])
+    assert kept == [] and filed == []
+    assert problems == [
+        "finalize: dropped 40_impact/2026/impact-2026-q4.md: a new page with nothing on it"
+    ]
+
+
+def test_picked_wins_reach_the_impact_page_without_the_model(vault_copy, monkeypatch):
+    script = ToolScript(
+        messages=iter(
+            [
+                call(
+                    "file_fact",
+                    target="person-sam-ortiz",
+                    section="Notes",
+                    text="Wants to own the search feature.",
+                    line=29,
+                ),
+                AIMessage("Filed 1 fact."),
+            ]
+        )
+    )
+    monkeypatch.setattr(nodes, "chat_model", lambda runtime: script)
+    runner = IngestRunner.in_memory(
+        context={"vault_path": str(vault_copy)}, graph_builder=agent_builder
+    )
+    first = runner.start(NOTE)
+    assert not any(f.path.startswith("40_impact") for f in first.review.files)
+    win = first.review.wins[0]
+
+    picked = runner.resume(first.thread_id, {"action": "answer", "wins": [win.id]})
+    impact = next(f for f in picked.review.files if f.path.startswith("40_impact"))
+    assert win.text in impact.diff
+    assert any(f.path.endswith("sam-ortiz.md") for f in picked.review.files)
+    assert next(w for w in picked.review.wins if w.id == win.id).chosen
+
+    done = runner.resume(first.thread_id, "approve")
+    assert impact.path in done.written
+
+
+def test_a_fact_may_name_a_page_proposed_in_the_same_turn(ctx):
+    # Parallel calls: file_fact runs before (or beside) the propose_page it needs.
+    sam = staging.stage_page(ctx, [], slug="person-sam", title="Sam", line=29)
+    edits, f = fact(ctx, target="person-sam", section="Notes", text="x", line=29)
+    assert staging.finalize([*edits, sam], [f], ctx=ctx)[1] == [f]
+
+    kept, filed, problems = staging.finalize(edits, [f], ctx=ctx)
+    assert kept == [] and filed == []
+    assert problems == [
+        "finalize: dropped line 29 on 20_people/person-sam.md: no page was proposed "
+        "for it"
+    ]
+    # Filed before its page existed, on a line that doesn't name Sam: dropped.
+    e2, f2 = fact(ctx, target="person-sam", section="Notes", text="x", line=22)
+    problems = staging.finalize([*e2, sam], [f2], ctx=ctx)[2]
+    assert problems == [
+        "finalize: dropped line 22 on 20_people/person-sam.md: the line doesn't name "
+        "that page",
+        "finalize: dropped 20_people/person-sam.md: a new page with nothing on it",
+    ]
+
+
+def test_a_heading_may_be_cited_for_a_new_page_or_a_question(ctx):
+    page = staging.stage_page(
+        ctx, [], slug="project-atlas-sync", title="Atlas", line=21
+    )
+    assert page.path == "10_projects/project-atlas-sync.md"
+    assert staging.check_question(ctx, "Who is on the sync?", 21).startswith("line 21")
+    with pytest.raises(StagingError, match="can't be cited"):
+        fact(ctx, target="project-atlas", section="Updates", text="x", line=21)
+
+
+def test_existing_person_needs_their_name_in_the_line_parent_or_heading(ctx):
+    fact(ctx, target="person-priya-nair", section="Help given", text="CI.", line=43)
+    with pytest.raises(StagingError, match="doesn't name person-priya-nair"):
+        fact(ctx, target="person-priya-nair", section="Notes", text="Owns CI.", line=47)
+
+
+def test_review_lists_dropped_facts_and_counts_other_refusals():
+    from llm_wiki.ingest_agent.graph import _for_the_user
+
+    refusals = [
+        "file_fact: line 8 doesn't name project-atlas",
+        "ask_user: line 17 can't be cited",
+        "finalize: dropped line 8 on 10_projects/p.md: the line doesn't name that page",
+    ]
+    assert _for_the_user(refusals, ["line 9: ad hoc?"]) == [
+        "question line 9: ad hoc?",
+        "the agent's question was refused: line 17 can't be cited",
+        "not filed: dropped line 8 on 10_projects/p.md: the line doesn't name that page",
+        "code refused 1 of the agent's calls (details in the trace)",
+    ]

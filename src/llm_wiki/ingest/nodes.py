@@ -348,7 +348,7 @@ def review_changes(
         state.get("diffs", []),
         state.get("facts", {}),
         state.get("fact_edits", []),
-        state.get("warnings", []),
+        [*state.get("warnings", []), *state.get("round_warnings", [])],
         decision_pages=state.get("decision_pages", []),
         revisions=state.get("revisions", 0),
         can_revise=_can_revise(state),

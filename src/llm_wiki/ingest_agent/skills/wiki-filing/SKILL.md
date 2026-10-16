@@ -12,15 +12,20 @@ Code adds the date, the meeting and a link to the note; don't write those.
 
 | Fact | target | section |
 |---|---|---|
-| Project news: dates, scope, blockers, risks, owners, results | `project-…` | Updates |
+| Project news: dates, scope, blockers, risks, owners, results, finished work | `project-…` | Updates |
 | A decision (see decisions-and-wins) | `decision-log` (with `title`) | Decisions |
 | …and on its project page too | `project-…` | Decisions |
-| A win (see decisions-and-wins) | `impact` | Wins |
+| A line tagged `#win` (only those) | `impact` | Wins |
 | …and on its project page too | `project-…` | Wins |
-| Help the author gave (pairing, reviews, walkthroughs; keep minutes) | `impact` | Help given |
-| …and on that person's page, if they have one | `person-…` | Help given |
+| Help the author gave (pairing, reviews, walkthroughs; keep minutes) | `person-…` | Help given |
+| …and on the project page, if it was project work | `project-…` | Updates |
 | About a person: goals, wishes, worries, strengths, what they own | `person-…` | Notes |
 | A learning about a concept | `concept-…` | Notes |
+| A one-off task that belongs to no project (ad hoc) | nothing | (it stays in the note and the task list) |
+
+Which project a line belongs to: see people-and-projects. Code refuses a fact on an
+existing project page when the line, its parent bullet and its heading don't name the
+project. Don't guess: propose the project the note names, ask, or skip an ad-hoc task.
 
 The user's rules can add sections (e.g. "## 1:1 notes", "## Customer asks"): use exactly
 the heading the rule names. A fact about two things (Marta's PgBouncer work on Atlas) can

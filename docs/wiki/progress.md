@@ -51,9 +51,10 @@ Option B of [[decisions/0006-agent-ingest-spike|0006]] adopted (2026-10-15): ing
   - [x] 0006 spike + round 2 built and run by Claude; option B adopted (2026-10-15)
   - [ ] 0006 teaching: user walks through the agent code (staging, agent, graph, skills). Lessons 1–2 given (2026-10-15)
   - [x] Learning notebooks 00–07 for all stages so far, git-ignored in `notebooks/` (2026-10-15)
-  - [ ] Bugs from the real run: stale warnings (old rounds' refusals repeated in a revise review); an empty page left behind when all its facts are withdrawn (impact page after revise 2)
+  - [x] Bugs from the real run: stale warnings; empty page left after withdrawals (2026-10-15)
   - [ ] Sync trial: LiveSync + CouchDB + Tailscale on `~/WorkDev` (`docs/setup/livesync.md`)
-  - [ ] 0006 to-dos: page list up front, no "first time" in text, new people as pages or questions, withdraw a proposed page; from the first real run: propose/ask instead of forcing a project, ad-hoc tasks get no page, task → project proposals, impact page = confirmed wins only, help given only on person/project pages (details in 0006)
+  - [x] 0006 agent-quality fixes (Claude, 2026-10-15; awaiting review; notebook 10): name-or-ask for person/project pages, wins = `#win` + review picks, help given on person pages, empty pages dropped, same-turn pages, headings citable for names, per-round warnings, no "first time" (details in 0006)
+  - [ ] 0006 still open: task → project mapping proposals (0002 rule 4)
   - [ ] 0006 cut-over: agent graph handles answer / make_page / edit, runner defaults to `ingest_agent`, then delete the 0004 model steps (extract, find_names, route, `ingest/graph.py`, `names.py`, round-1 script) and their tests From the first real note (2026-10-14): unknown names → people questions,
     new-project proposals for unlinked tasks (mapping rule 4), done tasks offered as win
     candidates, task sub-bullets read by the model, "remember this" → approved edit to

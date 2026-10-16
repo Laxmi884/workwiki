@@ -6,7 +6,8 @@
     review ──reject──→ END
            ├─ approve ─→ apply (approved files only) → END, or render if they changed
            ├─ revise ─→ stage (feedback + the previous filing)
-           └─ edit / make_page / answer ─→ render  (spike: no new edits, fresh review)
+           ├─ answer ─→ pick_wins (picked wins become impact edits; code only) → render
+           └─ edit / make_page ─→ render  (fresh review)
 
 Code nodes are the 0004 ones, unchanged. `stage` replaces extract, find_names and route:
 the agent reads the note and the vault and stages edits that `staging` checks.
@@ -25,8 +26,9 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.runtime import Runtime
 from langgraph.types import RetryPolicy
 
-from llm_wiki.diffs import vault_reader
-from llm_wiki.entity_index import load_index
+from llm_wiki.diffs import VaultReader, vault_reader
+from llm_wiki.domain.changes import Edit
+from llm_wiki.entity_index import EntityIndex, load_index
 from llm_wiki.ingest import nodes
 from llm_wiki.ingest.state import IngestContext, IngestInput, IngestState
 from llm_wiki.ingest_agent.agent import (
@@ -40,7 +42,9 @@ from llm_wiki.ingest_agent.staging import (
     StagingContext,
     citable_lines,
     finalize,
+    proposed_paths,
 )
+from llm_wiki.routing import route_facts
 
 RECURSION_LIMIT = 120  # agent steps: ~2 per tool call
 
@@ -52,9 +56,13 @@ class AgentIngestState(IngestState, total=False):
         agent_filed: Accepted facts as dicts (`Filed` fields: line, path, section,
             text), last round. Plain dicts so the checkpointer restores them.
         questions: The agent's questions for the review, last round.
-        agent_stats: Last round's numbers: seconds, tool calls, refusals, tokens.
+        agent_stats: Last round's numbers: seconds, tool calls, refusals (count and
+            texts), tokens.
+        agent_edits: The agent's checked edits, last round. `fact_edits` is these plus
+            the wins the user picked in the review (`pick_wins`, code only).
     """
 
+    agent_edits: list[Edit]
     agent_filed: list[dict[str, Any]]
     questions: list[str]
     agent_stats: dict[str, Any]
@@ -70,6 +78,7 @@ def stage(state: AgentIngestState, runtime: Runtime[IngestContext]) -> dict[str,
     entities = load_index(vault)
     citable = citable_lines(note, state.get("seen_lines", []))
     revising = state.get("review_action") == "revise"
+    previous_edits = state.get("agent_edits", state.get("fact_edits", []))
     brief = build_brief(
         note,
         text,
@@ -81,6 +90,13 @@ def stage(state: AgentIngestState, runtime: Runtime[IngestContext]) -> dict[str,
         read,
         feedback=state.get("feedback", []) if revising else (),
         previous=[Filed(**f) for f in state.get("agent_filed", [])] if revising else (),
+        dropped=[
+            r.removeprefix("finalize: ")
+            for r in state.get("agent_stats", {}).get("refused", [])
+            if r.startswith("finalize: dropped line")
+        ]
+        if revising
+        else (),
     )
     skills = (runtime.context or {}).get("skills_dir")
     agent = build_ingest_agent(
@@ -89,13 +105,22 @@ def stage(state: AgentIngestState, runtime: Runtime[IngestContext]) -> dict[str,
         Path(skills) if skills else SKILLS_DIR,
         fallbacks=nodes.fallback_models(runtime),
     )
-    context = AgentContext(StagingContext(note, citable, entities, read))
+    context = AgentContext(
+        StagingContext(
+            note,
+            citable,
+            entities,
+            read,
+            task_projects=state.get("task_projects", {}),
+            feedback=tuple(state.get("feedback", [])) if revising else (),
+        )
+    )
     started = time.monotonic()
     with get_usage_metadata_callback() as usage:
         start: dict[str, Any] = {"messages": [HumanMessage(brief)]}
         if revising:  # the previous round stays staged; the agent changes it
             start |= {
-                "staged": list(state.get("fact_edits", [])),
+                "staged": list(previous_edits),
                 "filed": [Filed(**f) for f in state.get("agent_filed", [])],
             }
         result = agent.invoke(
@@ -110,7 +135,10 @@ def stage(state: AgentIngestState, runtime: Runtime[IngestContext]) -> dict[str,
         for c in m.tool_calls
     ]
     staged, filed, problems = finalize(
-        result.get("staged", []), result.get("filed", []), result.get("withdrawn", [])
+        result.get("staged", []),
+        result.get("filed", []),
+        result.get("withdrawn", []),
+        ctx=context.staging,
     )
     refusals = [*result.get("refusals", []), *problems]
     stats = {
@@ -119,6 +147,7 @@ def stage(state: AgentIngestState, runtime: Runtime[IngestContext]) -> dict[str,
         "tool_calls": len(calls),
         "calls_by_tool": {n: calls.count(n) for n in sorted(set(calls))},
         "refusals": len(refusals),
+        "refused": refusals,
         "tokens": {
             m: {k: u.get(k, 0) for k in ("input_tokens", "output_tokens")}
             for m, u in usage.usage_metadata.items()
@@ -126,13 +155,67 @@ def stage(state: AgentIngestState, runtime: Runtime[IngestContext]) -> dict[str,
     }
     questions = result.get("questions", [])
     return {
-        "fact_edits": staged,
+        "agent_edits": staged,
+        "fact_edits": staged + _win_edits(state, staged, read, entities),
         "agent_filed": [dataclasses.asdict(f) for f in filed],
         "questions": questions,
         "agent_stats": stats,
-        "warnings": [f"agent refused: {r}" for r in refusals]
-        + [f"question {q}" for q in questions],
+        "round_warnings": _for_the_user(refusals, questions),
     }
+
+
+def _for_the_user(refusals: list[str], questions: list[str]) -> list[str]:
+    """Return what the review should say about this round: only what the user can use.
+
+    Facts code dropped at the end and refused questions are listed (the user may want
+    them, e.g. via revise); refused calls the agent could still fix are only counted
+    (details in `agent_stats` and the trace).
+    """
+    lost = [r.removeprefix("ask_user: ") for r in refusals if r.startswith("ask_user:")]
+    dropped = [
+        r.removeprefix("finalize: ")
+        for r in refusals
+        if r.startswith("finalize: dropped line")
+    ]
+    other = len(refusals) - len(lost) - len(dropped)
+    out = [f"question {q}" for q in questions]
+    out += [f"the agent's question was refused: {r}" for r in lost]
+    out += [f"not filed: {r}" for r in dropped]
+    if other:
+        out.append(f"code refused {other} of the agent's calls (details in the trace)")
+    return out
+
+
+def _win_edits(
+    state: AgentIngestState,
+    agent_edits: list[Edit],
+    read: VaultReader,
+    entities: EntityIndex,
+) -> list[Edit]:
+    """Return edits for the done tasks the user picked as wins (no model involved)."""
+    chosen = set(state.get("chosen_wins", []))
+    wins = [t for t in state.get("done_tasks", []) if t.line in chosen]
+    if not wins:
+        return []
+    created = proposed_paths(agent_edits)
+    edits, _ = route_facts(
+        state["note"],
+        {},
+        entities,
+        lambda p: read(p) is not None or p in created,
+        task_wins=wins,
+    )
+    return edits
+
+
+def pick_wins(
+    state: AgentIngestState, runtime: Runtime[IngestContext]
+) -> dict[str, Any]:
+    """After a review "answer": the agent's edits plus the picked wins, then re-render."""
+    vault = nodes.vault_path(runtime)
+    agent_edits = state.get("agent_edits", [])
+    wins = _win_edits(state, agent_edits, vault_reader(vault), load_index(vault))
+    return {"fact_edits": agent_edits + wins, "round_warnings": []}
 
 
 def after_review(state: AgentIngestState) -> str:
@@ -142,6 +225,8 @@ def after_review(state: AgentIngestState) -> str:
         return "apply"
     if action in ("approve", "reject"):
         return END
+    if action == "answer":
+        return "pick_wins"
     return "stage" if action == "revise" else "render"
 
 
@@ -152,6 +237,7 @@ builder.add_node("load_note", nodes.load_note)
 builder.add_node("assign_ids", nodes.assign_ids)
 builder.add_node("track_tasks", nodes.track_tasks)
 builder.add_node("stage", stage, retry_policy=RetryPolicy(max_attempts=2))
+builder.add_node("pick_wins", pick_wins)
 builder.add_node("render", nodes.render)
 builder.add_node("review", nodes.review_changes)
 builder.add_node("apply", nodes.apply)
@@ -162,7 +248,10 @@ builder.add_edge("assign_ids", "track_tasks")
 builder.add_edge("track_tasks", "stage")
 builder.add_edge("stage", "render")
 builder.add_edge("render", "review")
-builder.add_conditional_edges("review", after_review, ["stage", "render", "apply", END])
+builder.add_conditional_edges(
+    "review", after_review, ["stage", "pick_wins", "render", "apply", END]
+)
+builder.add_edge("pick_wins", "render")
 builder.add_conditional_edges("apply", nodes.after_apply, ["render", END])
 
 graph = builder.compile(name="ingest_agent")

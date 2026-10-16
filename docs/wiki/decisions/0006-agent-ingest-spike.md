@@ -267,6 +267,18 @@ candidates). Agreed to-dos:
 - Brag sheet / review summary is built on request (phase 4) from confirmed wins, done
   tasks, project pages and person pages, grouped however the user asks.
 
+Done 2026-10-15 (code checks in `staging.py`, skills updated): a person/project page
+(existing or proposed this run) takes a fact only if the line, a parent bullet or its
+`###` heading names it, code mapped the task to it, or the user's revise feedback names
+the page; `## Wins` only for `#win` lines, picked done tasks reach the impact page via a
+code-only `pick_wins` node; help given only on person/project pages; empty new pages
+dropped; facts may name a page proposed in the same turn (checked in `finalize`);
+`###` headings citable for propose_page/ask_user; the review lists dropped facts and
+questions, refusals only counted. Real note, free Nemotron: first pass three projects
+named as written, Joanna's items, line 9 asked as ad hoc, lines 8/12/13 listed as not
+filed; one revise with the user's answers filed them. Still open: task → project
+mapping proposals (0002 rule 4). The round-2 corpus numbers predate these rules.
+
 ## Why
 
 On the 20-day corpus the agent filed 89–97% of facts on the right page first time with

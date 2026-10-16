@@ -69,6 +69,8 @@ class IngestState(TypedDict, total=False):
         new_aliases: Slug → names the user said are that entity.
         ignored_names: Names the user said are not people (this run).
         warnings: Problems found anywhere; nodes append.
+        round_warnings: What the agent step says about its latest round (replaced each
+            round, so a revise doesn't repeat old notes); the review shows both.
     """
 
     note_path: str
@@ -98,6 +100,7 @@ class IngestState(TypedDict, total=False):
     new_aliases: dict[str, list[str]]
     ignored_names: list[str]
     warnings: Annotated[list[str], operator.add]
+    round_warnings: list[str]
 
 
 class IngestInput(TypedDict):

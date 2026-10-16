@@ -1,6 +1,6 @@
 ---
 name: decisions-and-wins
-description: What counts as a decision and what counts as a win or impact for the user's performance review, and how to file them. Read when the note has #decision or #win tags, or words like decided, agreed, shipped, fixed, passed.
+description: What counts as a decision, how wins are handled (only #win lines; the user picks the rest), and where help given goes. Read when the note has #decision or #win tags, or words like decided, agreed, shipped, fixed, passed, helped.
 ---
 
 # Decisions and wins
@@ -18,15 +18,17 @@ line under Decisions on its project page.
 
 ## Wins (impact)
 
-A win is something the user can show in a performance review: a problem found or fixed,
-something shipped, a measurable improvement, a hire closed, a test passed.
+The user decides what counts as a win, not you.
 
-- Keep the numbers: "cut p95 from 1.8s to 1.1s", "14 min to 6 min".
-- Never invent a metric. No number in the note, no number in the win.
-- Routine chores are not wins: updating a status page, booking rooms, sending reports.
-- A task done for the first time is a win only if it is a real achievement.
+- File a win only for a line tagged `#win`: on `impact` under Wins, and on its project
+  page under Wins. Code refuses Wins for untagged lines.
+- Finished tasks are offered to the user as win candidates in the review by code. Don't
+  file them as wins; file the finished work as an Update on its project page.
+- Keep the numbers: "cut p95 from 1.8s to 1.1s", "14 min to 6 min". Never invent a metric.
 
 ## Help given
 
-Help the author gave someone counts as impact too: file it on `impact` under Help given
-with the minutes if the note gives them ("(1h 30m)" → 90 min).
+Help the author gave someone goes on that person's page under Help given, with the
+minutes if the note gives them ("(1h 30m)" → 90 min); if it was project work, also as an
+Update on the project page. Not on `impact`. Someone without a page: propose a person
+page if the note names a human, or ask.

@@ -14,9 +14,15 @@ Checks:
 - the section fits the page: impact and decision-log have fixed sections; entity pages
   take any short `##` heading (the user's preferences name them) except "Current
   state", which only `stage_summary` rewrites;
+- a fact goes on a person or project page (existing or proposed in this run) only if
+  the cited line, a parent bullet or its `###` heading names it (title, alias or link),
+  code mapped the task to that project, or the user's revise feedback names the page;
+- a fact may name a page proposed in the same turn (parallel calls can't see each
+  other); `finalize` checks it then, and drops it if no page came or it isn't named;
+- "## Wins" takes only lines tagged #win: other wins are the user's pick in the review;
 - the text is one line, not too long, and links only known or proposed slugs;
 - the same fact is not filed twice (already staged, or already on the page);
-- a new page's title is named in the cited line;
+- a new page's title is named in the cited line (a `###` heading counts here);
 - a summary ("## Current state") cites new note lines and stays short.
 """
 
@@ -24,7 +30,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable, Collection, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import yaml
 
@@ -32,7 +38,7 @@ from llm_wiki.daily_syntax import is_fence
 from llm_wiki.domain.changes import AppendToSection, CreateFile, Edit, ReplaceSection
 from llm_wiki.domain.daily import DailyNote
 from llm_wiki.domain.entities import EntityKind
-from llm_wiki.entity_index import EntityIndex, kind_of, path_for
+from llm_wiki.entity_index import EntityIndex, contains_phrase, kind_of, path_for
 from llm_wiki.extraction import line_key
 from llm_wiki.inline_syntax import find_links
 from llm_wiki.routing import (
@@ -59,7 +65,7 @@ SECTIONS: dict[str, tuple[str, ...]] = {
     EntityKind.PROJECT: (UPDATES, DECISIONS, WINS),
     EntityKind.CONCEPT: (NOTES,),
     EntityKind.DECISION: (NOTES,),
-    IMPACT: (WINS, HELP_GIVEN),
+    IMPACT: (WINS,),
     DECISION_LOG: (DECISIONS,),
 }
 FIXED_SECTIONS = (IMPACT, DECISION_LOG)
@@ -67,6 +73,8 @@ _HEADING = re.compile(r"^## [A-Za-z0-9][\w ,:&/()'.-]{0,39}$")
 
 # Blank, or a bullet / checkbox with nothing after it.
 _EMPTY = re.compile(r"^\s*(?:(?:[-*+]|\d+[.)])\s*(?:\[.\]\s*)?)?$")
+
+_WIN_TAG = re.compile(r"(?<![\w#])#win\b", re.IGNORECASE)
 
 
 class StagingError(ValueError):
@@ -97,12 +105,16 @@ class StagingContext:
         citable: File line → text for every line a fact may cite.
         entities: The vault's entity index.
         read: Vault-relative path → current text, or None if there is no such file.
+        task_projects: Task line → the project code mapped it to (track_tasks).
+        feedback: The user's revise messages; a page they name may take any line.
     """
 
     note: DailyNote
     citable: dict[int, str]
     entities: EntityIndex
     read: Callable[[str], str | None]
+    task_projects: dict[int, str | None] = field(default_factory=dict)
+    feedback: tuple[str, ...] = ()
 
 
 def citable_lines(note: DailyNote, seen: Collection[str] = ()) -> dict[int, str]:
@@ -129,6 +141,86 @@ def citable_lines(note: DailyNote, seen: Collection[str] = ()) -> dict[int, str]
 def proposed_paths(staged: Sequence[Edit]) -> set[str]:
     """Return the paths of pages created by staged edits."""
     return {e.path for e in staged if isinstance(e, CreateFile)}
+
+
+def _context(note: DailyNote, line: int) -> list[str]:
+    """Return the line, its parent bullets (less indented, upwards) and its ### heading."""
+    for section in note.sections:
+        i = line - section.start_line
+        if not 0 <= i < len(section.lines):
+            continue
+        rows = section.lines
+        out = [rows[i]]
+        indent = len(rows[i]) - len(rows[i].lstrip())
+        for above in reversed(rows[:i]):
+            if above.startswith("### "):
+                out.append(above)
+                break
+            if above.strip() and len(above) - len(above.lstrip()) < indent:
+                out.append(above)
+                indent = len(above) - len(above.lstrip())
+        return out
+    return []
+
+
+def _names(ctx: StagingContext, staged: Sequence[Edit], slug: str) -> list[str]:
+    """Return the names of a page: its title and aliases, or a proposed page's title."""
+    entity = ctx.entities.get(slug)
+    if entity is not None:
+        return [entity.title, *entity.aliases]
+    for e in staged:
+        if isinstance(e, CreateFile) and e.path == path_for(slug):
+            m = re.search(r"^# (.+)$", e.text, re.MULTILINE)
+            return [m.group(1)] if m else []
+    return []
+
+
+def _names_entity(
+    ctx: StagingContext, staged: Sequence[Edit], slug: str, line: int
+) -> bool:
+    """Return True if the task maps to `slug`, or the line's context or feedback names it."""
+    if ctx.task_projects.get(line) == slug:
+        return True
+    phrases = _names(ctx, staged, slug)
+    texts = [*_context(ctx.note, line), *ctx.feedback]
+    return any(
+        f"[[{slug}]]" in t or slug in t or any(contains_phrase(t, p) for p in phrases)
+        for t in texts
+    )
+
+
+def _check_named(
+    ctx: StagingContext, staged: Sequence[Edit], slug: str, line: int
+) -> None:
+    if _names_entity(ctx, staged, slug, line):
+        return
+    names = ", ".join(_names(ctx, staged, slug))
+    advice = (
+        "If it's other work the user tracks, propose_page the project this line names; "
+        "if unsure, ask_user; a one-off task needs no page"
+        if kind_of(slug) is EntityKind.PROJECT
+        else "Use only what the note says about this person"
+    )
+    raise StagingError(
+        f"line {line} doesn't name {slug} ({names}), nor do its parent bullet or "
+        f"heading. {advice}"
+    )
+
+
+def _heading_line(note: DailyNote, line: int) -> str | None:
+    """Return the text of a `###` heading at `line`, else None."""
+    for section in note.sections:
+        i = line - section.start_line
+        if 0 <= i < len(section.lines) and section.lines[i].startswith("### "):
+            return section.lines[i]
+    return None
+
+
+def _check_name_line(ctx: StagingContext, line: int) -> str:
+    """Like `_check_line`, but a `###` heading counts: names often sit there."""
+    if line not in ctx.citable and (heading := _heading_line(ctx.note, line)):
+        return heading
+    return _check_line(ctx, line)
 
 
 def _check_line(ctx: StagingContext, line: int) -> str:
@@ -163,9 +255,13 @@ def _check_text(text: str, known: Collection[str]) -> str:
 
 
 def _target_path(
-    ctx: StagingContext, staged: Sequence[Edit], target: str
+    ctx: StagingContext, staged: Sequence[Edit], target: str, pending: bool = False
 ) -> tuple[str, str]:
-    """Return (path, kind) for a target, or refuse."""
+    """Return (path, kind) for a target, or refuse.
+
+    With `pending`, an entity slug without a page is accepted (it may be proposed in the
+    same turn); the caller says so and `finalize` drops it if it never gets a page.
+    """
     assert ctx.note.date is not None
     if target == IMPACT:
         return impact_path(ctx.note.date), IMPACT
@@ -178,7 +274,11 @@ def _target_path(
             f"or {IMPACT!r} or {DECISION_LOG!r}"
         )
     path = path_for(target)
-    if ctx.entities.get(target) is None and path not in proposed_paths(staged):
+    if (
+        not pending
+        and ctx.entities.get(target) is None
+        and path not in proposed_paths(staged)
+    ):
         raise StagingError(
             f"{target} has no page; call propose_page first if the note names it"
         )
@@ -230,7 +330,7 @@ def stage_fact(
         StagingError: The call breaks a rule; the message says which.
     """
     _check_line(ctx, line)
-    path, kind = _target_path(ctx, staged, target)
+    path, kind = _target_path(ctx, staged, target, pending=True)
     heading = (
         section.strip()
         if section.strip().startswith("## ")
@@ -247,6 +347,14 @@ def stage_fact(
         raise StagingError(
             f"section {heading!r} is not a short '## Heading' (letters, digits, spaces)"
         )
+    if heading.casefold() == WINS.casefold() and not _WIN_TAG.search(ctx.citable[line]):
+        raise StagingError(
+            f"line {line} isn't tagged #win: the user picks wins in the review. File "
+            "finished work as an Update on its project page"
+        )
+    named_kind = kind in (EntityKind.PROJECT, EntityKind.PERSON)
+    if named_kind and _names(ctx, staged, target):  # pending pages: checked in finalize
+        _check_named(ctx, staged, target, line)
     text = _check_text(text, _known_slugs(ctx, staged))
     if any(f.path == path and f.line == line for f in filed):
         raise StagingError(
@@ -254,7 +362,7 @@ def stage_fact(
         )
 
     origin = origin_of(ctx.note, line)
-    edits = _quarterly_page(ctx, staged, path)
+    edits = _quarterly_page(ctx, staged, path) if kind in FIXED_SECTIONS else []
     if kind == DECISION_LOG:
         if not title or "\n" in title or len(title) > 120:
             raise StagingError("a decision-log entry needs a short one-line title")
@@ -330,7 +438,7 @@ def stage_page(
     Raises:
         StagingError: Bad slug, the page exists, or the cited line doesn't name it.
     """
-    quote = _check_line(ctx, line)
+    quote = _check_name_line(ctx, line)
     kind = kind_of(slug)
     if kind not in (EntityKind.PERSON, EntityKind.PROJECT, EntityKind.CONCEPT):
         raise StagingError(
@@ -360,17 +468,34 @@ def stage_page(
 
 def check_question(ctx: StagingContext, question: str, line: int) -> str:
     """Check a question for the review and return it with its line."""
-    _check_line(ctx, line)
+    _check_name_line(ctx, line)
     question = " ".join(question.split())
     if not question or len(question) > 300:
         raise StagingError("a question must be one line under 300 characters")
     return f"line {line}: {question}"
 
 
+def _orphan(
+    ctx: StagingContext, staged: Sequence[Edit], pages: set[str], f: Filed
+) -> str | None:
+    """Return why a fact on a page proposed in its own turn can't stay, else None."""
+    if ctx.read(f.path) is not None:
+        return None  # an existing page: checked when filed
+    if f.path not in pages:
+        return "no page was proposed for it"
+    slug = f.path.rsplit("/", 1)[-1].removesuffix(".md")
+    if kind_of(slug) in (EntityKind.PROJECT, EntityKind.PERSON) and not _names_entity(
+        ctx, staged, slug, f.line
+    ):
+        return "the line doesn't name that page"
+    return None
+
+
 def finalize(
     staged: Sequence[Edit],
     filed: Sequence[Filed],
     withdrawn: Collection[tuple[int, str, int]] = (),
+    ctx: StagingContext | None = None,
 ) -> tuple[list[Edit], list[Filed], list[str]]:
     """Re-check the whole staging once the agent is done.
 
@@ -380,7 +505,9 @@ def finalize(
     are dropped, and a line filed twice on one page keeps its first fact. A withdrawal
     `(line, path, n)` removes that line's facts on that page among the first `n`
     filings (those made before it), with their appended lines; a fact filed again
-    after the withdrawal stays.
+    after the withdrawal stays. A new page left with nothing on it is dropped. With
+    `ctx`, facts filed in the same turn as their page's propose_page are checked now:
+    dropped if no page came, or if their line doesn't name it.
 
     Returns:
         (edits, filed, problems): problems count like refusals.
@@ -389,8 +516,13 @@ def finalize(
     problems: list[str] = []
     seen: set[tuple[int, str]] = set()
     drop: list[tuple[str, tuple[str, ...]]] = []  # (path, lines) of removed facts
+    pages = proposed_paths(staged)
     for i, f in enumerate(filed):
         key = (f.line, f.path)
+        if ctx is not None and (why := _orphan(ctx, staged, pages, f)):
+            problems.append(f"finalize: dropped line {f.line} on {f.path}: {why}")
+            drop.append((f.path, tuple(f.added)))
+            continue
         if any((w[0], w[1]) == key and i < w[2] for w in withdrawn):
             drop.append((f.path, tuple(f.added)))
             continue
@@ -428,4 +560,9 @@ def finalize(
                 continue
             appended.add(key3)
         edits.append(edit)
+    has_content = {e.path for e in edits if not isinstance(e, CreateFile)}
+    empty = [e.path for e in edits if isinstance(e, CreateFile)]
+    empty = [p for p in empty if p not in has_content]
+    problems += [f"finalize: dropped {p}: a new page with nothing on it" for p in empty]
+    edits = [e for e in edits if not (isinstance(e, CreateFile) and e.path in empty)]
     return edits, kept, problems
