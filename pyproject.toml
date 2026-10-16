@@ -65,8 +65,12 @@ convention = "google"
 [dependency-groups]
 dev = [
     "anyio>=4.14.2",
+    "ipykernel>=7.4.0",
+    "jupyterlab>=4.6.4",
     "langgraph-cli[inmem]>=0.4.14",
     "mypy>=1.13.0",
+    "nbconvert>=7.17.2",
+    "nbformat>=5.11.1",
     "pytest>=9.0.3",
     "ruff>=0.8.2",
 ]

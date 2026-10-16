@@ -18,8 +18,11 @@ The user is learning LangGraph, Deep Agents and the LangGraph CLI by building th
 https://claude.ai/artifact/U11JqpVsxN7kyem41JN6gc).
 
 How to help:
-- **The user writes the code.** Explain concepts, set the exercise for each phase, review their code, and
-  point to the paid-media file that solves the same problem. Write code only when asked.
+- **Mixed approach (agreed 2026-10-15).** Claude builds the project code in small, reviewed steps. Each step
+  comes with a Jupyter notebook in `notebooks/` (git-ignored) that rebuilds the core idea from scratch on
+  toy data: explanation, runnable examples, then exercises the user writes. Claude reviews the user's
+  exercise answers, then walks through how the real code does it and points to the paid-media file
+  that solves the same problem. Notebooks run without API keys (fake models) unless a cell says otherwise.
 - Build from scratch, not by copying paid-media files. Use `langgraph new` for boilerplate.
 - Check LangGraph and Deep Agents APIs against current docs (context7) before stating them as well as use appropriate langgraph skills.
 - Add complexity only after the simpler version fails.

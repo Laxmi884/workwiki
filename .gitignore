@@ -166,3 +166,5 @@ cython_debug/
 .code-review-graph/
 
 Building a Local AI Wiki.pdf
+# Learning notebooks (user, 2026-10-15)
+notebooks/
