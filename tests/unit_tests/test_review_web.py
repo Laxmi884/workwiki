@@ -1,11 +1,12 @@
-"""The review page (0009 R1): show a review, approve some files, see how it ended."""
+"""The review page (0009 R1) and chat box (0010 S3) on a `Backend`."""
 
 import pytest
 from starlette.testclient import TestClient
 
+from llm_wiki.backend import BackendError
+from llm_wiki.backend.local import LocalBackend
 from llm_wiki.ingest import nodes
 from llm_wiki.review_web import app as web
-from llm_wiki.runner import IngestRunner
 
 from .scripted_model import AgentRounds, call
 
@@ -24,17 +25,16 @@ def setup(vault_copy, monkeypatch):
         title="Keep the old BI tool until Q1",
     )
     monkeypatch.setattr(nodes, "chat_model", AgentRounds([decision]))
-    runner = IngestRunner.in_memory(context={"vault_path": str(vault_copy)})
-    monkeypatch.setattr(web, "reader", lambda: runner)
-    monkeypatch.setattr(web, "runner_for", lambda vault: runner)
-    thread = runner.start(NOTE).thread_id
-    return TestClient(web.app), runner, thread, vault_copy
+    backend = LocalBackend.in_memory(vault_copy)
+    monkeypatch.setattr(web, "backend", lambda: backend)
+    thread = backend.start_ingest(NOTE).thread_id
+    return TestClient(web.app), backend, thread, vault_copy
 
 
 def test_page_shows_files_diffs_and_checkboxes(setup):
-    client, runner, thread, _ = setup
+    client, backend, thread, _ = setup
     page = client.get(f"/review/{thread}").text
-    review = runner.status(thread).review
+    review = backend.review(thread).review
     for f in review.files:
         assert f'value="{f.id}" checked' in page and f.path in page
     # the decision log card: the filed text next to the note line it cites
@@ -46,8 +46,8 @@ def test_page_shows_files_diffs_and_checkboxes(setup):
 
 
 def test_approve_some_files_then_the_page_shows_the_result(setup):
-    client, runner, thread, vault = setup
-    log_id = next(f.id for f in runner.status(thread).review.files if f.path == LOG)
+    client, backend, thread, vault = setup
+    log_id = next(f.id for f in backend.review(thread).review.files if f.path == LOG)
     res = client.post(
         f"/review/{thread}/answer",
         json={"answer": {"action": "approve", "reject": [log_id]}},
@@ -89,8 +89,8 @@ def test_view_pairs_each_fact_with_its_note_line(setup):
     from llm_wiki.review import note_line
     from llm_wiki.review_web.view import build_view
 
-    _, runner, thread, _ = setup
-    review = runner.status(thread).review
+    _, backend, thread, _ = setup
+    review = backend.review(thread).review
     view = build_view(review)
     (log,) = [c for c in view.pages if c.file.path == LOG]
     ((section, (row,)),) = log.sections
@@ -103,5 +103,32 @@ def test_view_pairs_each_fact_with_its_note_line(setup):
     assert view.title == "Daily note, Monday 12 October 2026"
     assert {f.path for f in view.bookkeeping} >= {NOTE, "90_meta/tasks.json"}
     assert view.task_ids == review.task_ids_added > 0
-    note = runner.graph.get_state(runner._config(thread)).values["note"]
+    from llm_wiki.daily_syntax import parse_daily_note
+
+    note = parse_daily_note(NOTE, (backend.vault / NOTE).read_text())
     assert note_line(note, 8) == "Review Q3 budget draft for [[project-atlas]]"
+
+
+def test_the_index_lists_only_open_reviews(setup):
+    client, backend, thread, _ = setup
+    assert f"/review/{thread}" in client.get("/review").text
+    backend.answer(thread, "reject")
+    assert "Nothing to review" in client.get("/review").text
+
+
+def test_chat_box_answers_commands_and_reports_backend_failures(setup, monkeypatch):
+    client, backend, thread, _ = setup
+    assert 'id="text"' in client.get("/chat").text
+    res = client.post("/chat/send", json={"message": "/review", "history": []})
+    assert res.json()["reply"].startswith(f"**Review: {NOTE}**")
+    assert f"(/review/{thread})" in res.json()["reply"]
+    assert client.post("/chat/send", json={"message": "  "}).status_code == 400
+
+    def down(*args, **kwargs):
+        raise BackendError(
+            "the Agent Server at http://127.0.0.1:2024 failed: ConnectError"
+        )
+
+    monkeypatch.setattr(backend, "pending", down)
+    res = client.post("/chat/send", json={"message": "/review", "history": []})
+    assert res.status_code == 502 and "ConnectError" in res.json()["error"]

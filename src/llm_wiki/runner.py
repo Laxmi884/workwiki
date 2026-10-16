@@ -1,7 +1,7 @@
 """Run ingest without Studio or a server: start a note, get the review, answer it.
 
-Every surface (CLI, Telegram, Slack) talks to `IngestRunner`; none of them touches the
-graph directly (decision 0005). The runner owns the checkpointer and the thread IDs:
+Surfaces reach it only through `LocalBackend` (decision 0010); none of them touches
+the runner or the graph directly. The runner owns the checkpointer and the thread IDs:
 `start` runs until the review pauses, `resume` sends the answer and runs on.
 
     runner = IngestRunner.sqlite(context={"vault_path": "~/WorkDev"})   # survives restarts
@@ -17,7 +17,6 @@ import inspect
 import pkgutil
 import sqlite3
 import uuid
-from functools import cache
 from pathlib import Path
 from typing import Any
 
@@ -161,15 +160,3 @@ class IngestRunner:
         snapshot = self.graph.get_state(self._config(thread_id))
         interrupt = snapshot.interrupts[0].value if snapshot.interrupts else None
         return run_result(thread_id, snapshot.values, interrupt)
-
-
-@cache
-def shared_runner(vault: Path, model: str | None = None) -> IngestRunner:
-    """Return the SQLite-backed runner for this vault and model (one per process).
-
-    The chat front door and the review page answer the same threads through it.
-    """
-    context: dict[str, Any] = {"vault_path": str(vault)}
-    if model:
-        context["model"] = model
-    return IngestRunner.sqlite(context=context)  # type: ignore[arg-type]

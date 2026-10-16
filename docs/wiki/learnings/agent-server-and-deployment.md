@@ -67,6 +67,7 @@ checkpointer=InMemorySaver())`, and Managed Deep Agents compiles them in product
   - Our Pydantic state survives the dev server's checkpointer (full review → approve → write ran);
     over HTTP the values are JSON (`date` came back as `[2026, 10, 12]`).
   - A run without a thread (`runs.wait(None, ...)`) leaves no thread behind: right for `ask`.
+- Found in S3 (2026-10-16): the SDK's sync client builds its transport with `retries=5`, so a stopped server makes each call hang ~7.5 s before `httpx.ConnectError` (tests pass their own `SyncLangGraphClient(httpx.Client(...))`). Every SDK error (`NotFoundError`, …) subclasses `httpx.HTTPError`; `ServerBackend` turns whatever escapes into `BackendError` (`_reachable`), so surfaces catch one error type.
 
 ## In my words
 

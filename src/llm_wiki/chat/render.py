@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+from llm_wiki.backend import RunResult
 from llm_wiki.domain.review import ReviewRequest
-from llm_wiki.runner import RunResult
 
 MAX_DIFF_LINES = 80
 

@@ -1,1 +1,1 @@
-"""The chat front door (step 4d): slash commands drive ingest, everything else asks."""
+"""The chat (0010 S3): slash commands drive ingest, everything else asks; on any `Backend`."""

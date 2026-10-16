@@ -13,16 +13,17 @@
 </style>
 {% endblock %}
 {% block body %}
+<a class="back" href="/chat">Chat</a>
 <h1>Reviews</h1>
 <p class="lede">Each ingest waits here until you approve or reject it.</p>
 {% if rows %}
 <ul class="runs">
-{% for row in rows|sort(attribute="status", reverse=true) %}
+{% for row in rows %}
 <li><a href="/review/{{ row.thread }}">{{ row.note or row.thread }}</a>
-<span class="state {% if row.status == 'review' %}open{% endif %}">{{ "Waiting for you" if row.status == "review" else ("Skipped" if row.status == "skipped" else "Answered") }}</span></li>
+<span class="state open">Waiting for you</span></li>
 {% endfor %}
 </ul>
 {% else %}
-<p class="notice ok">Nothing to review. Send <strong>/ingest</strong> in the wiki chat to file today's note.</p>
+<p class="notice ok">Nothing to review. Send <strong>/ingest</strong> in the <a href="/chat">chat</a> to file today's note.</p>
 {% endif %}
 {% endblock %}

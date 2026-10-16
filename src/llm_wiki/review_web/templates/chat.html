@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+{% block title %}Wiki chat{% endblock %}
+{% block head %}
+<style>
+main { padding-bottom: 40px; }
+.top { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.vault { font-size: 13px; color: var(--faint); overflow-wrap: anywhere; }
+.log { display: flex; flex-direction: column; gap: 14px; margin: 8px 0 20px; }
+.msg { border-radius: 14px; padding: 12px 16px; max-width: 100%; overflow-wrap: anywhere; }
+.msg.user { align-self: flex-end; background: var(--teal-wash); color: var(--ink); max-width: 85%;
+  white-space: pre-wrap; }
+.msg.assistant { background: var(--card); border: 1px solid var(--rule); }
+.msg.assistant p { margin: 0 0 10px; }
+.msg.assistant p:last-child { margin-bottom: 0; }
+.msg.assistant ul { margin: 0 0 10px; padding-left: 20px; }
+.msg.assistant code { font: 14px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+  background: var(--paper); padding: 1px 5px; border-radius: 5px; }
+.msg.assistant pre { margin: 0 0 10px; overflow-x: auto; background: var(--paper);
+  border-radius: 10px; padding: 10px 12px; font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.msg.assistant pre span { display: block; min-height: 1.45em; }
+.msg.assistant pre .add { color: var(--add-ink); background: var(--add); }
+.msg.assistant pre .del { color: var(--del-ink); background: var(--del); }
+.msg.wait { color: var(--faint); background: transparent; border: 0; padding-left: 4px; }
+.msg.error { background: var(--amber-wash); color: var(--amber); }
+form { position: sticky; bottom: 0; background: var(--paper); padding: 12px 0 16px;
+  display: flex; gap: 10px; align-items: flex-end; }
+textarea { flex: 1; min-height: 48px; max-height: 40vh; resize: vertical; border-radius: 12px;
+  border: 1px solid var(--rule); background: var(--card); color: var(--ink);
+  font: 400 16px/1.45 var(--sans); padding: 12px 14px; }
+.hint { font-size: 13px; color: var(--faint); margin: 0; }
+</style>
+{% endblock %}
+{% block body %}
+<div class="top"><a class="back" href="/review">Reviews</a><span class="vault">{{ vault }}</span></div>
+<h1>Wiki chat</h1>
+<p class="lede">Ask about your work, or start with <code>/ingest</code> to file a daily note. <code>/help</code> lists the commands.</p>
+<div class="log" id="log" aria-live="polite"></div>
+<form id="form">
+  <textarea id="text" rows="2" placeholder="Ask a question, or /ingest 2026-10-12" aria-label="Message"></textarea>
+  <button class="go" id="send" type="submit">Send</button>
+</form>
+<p class="hint">Enter sends · Shift+Enter for a new line · <a href="#" id="clear">clear the chat</a></p>
+{% endblock %}
+{% block scripts %}
+<script>
+const KEY = "wiki-chat";
+const log = document.getElementById("log");
+const form = document.getElementById("form");
+const text = document.getElementById("text");
+const send = document.getElementById("send");
+let history = [];
+try { history = JSON.parse(sessionStorage.getItem(KEY) || "[]"); } catch (e) { history = []; }
+
+function save() { try { sessionStorage.setItem(KEY, JSON.stringify(history)); } catch (e) {} }
+
+function esc(s) {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+function inline(s) {  // s is already escaped
+  return s
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/^_(.+)_$/, "<em>$1</em>")  // a whole italic line (may hold paths with _)
+    .replace(/(^|\s)_([^_]+)_(?=\s|$|[.,;:)])/g, "$1<em>$2</em>")
+    .replace(/\[([^\]]+)\]\(((?:https?:\/\/|\/)[^)\s]+)\)/g, '<a href="$2">$1</a>');
+}
+
+function markdown(src) {  // the small subset our replies use; line by line, fences anywhere
+  const out = [];
+  let para = [], items = [], code = null, lang = "";
+  const flushPara = () => {
+    if (para.length) out.push(`<p>${para.map(l => inline(esc(l))).join("<br>")}</p>`);
+    para = [];
+  };
+  const flushList = () => {
+    if (items.length) out.push("<ul>" + items.map(l => `<li>${inline(esc(l))}</li>`).join("") + "</ul>");
+    items = [];
+  };
+  const flushCode = () => { out.push(`<pre>${code.join("")}</pre>`); code = null; };
+  for (const line of src.split("\n")) {
+    if (code !== null) {  // inside a fence: verbatim, no inline formatting
+      if (/^```\s*$/.test(line)) { flushCode(); continue; }
+      const cls = lang !== "diff" ? "ctx"
+                : /^\+(?!\+\+ )/.test(line) ? "add" : /^-(?!-- )/.test(line) ? "del" : "ctx";
+      code.push(`<span class="${cls}">${esc(line) || " "}</span>`);
+      continue;
+    }
+    const fence = line.match(/^```(\w*)\s*$/);
+    if (fence) { flushPara(); flushList(); code = []; lang = fence[1]; continue; }
+    if (/^- /.test(line)) { flushPara(); items.push(line.slice(2)); continue; }
+    if (!line.trim()) { flushPara(); flushList(); continue; }
+    flushList();
+    para.push(line);
+  }
+  if (code !== null) flushCode();
+  flushPara();
+  flushList();
+  return out.join("");
+}
+
+function show(role, content, extra) {
+  const div = document.createElement("div");
+  div.className = `msg ${role}${extra ? " " + extra : ""}`;
+  if (role === "assistant" && !extra) div.innerHTML = markdown(content);
+  else div.textContent = content;
+  log.appendChild(div);
+  div.scrollIntoView({ block: "end" });
+  return div;
+}
+
+for (const [role, content] of history) show(role, content);
+
+async function submit() {
+  const message = text.value.trim();
+  if (!message || send.disabled) return;
+  show("user", message);
+  text.value = "";
+  send.disabled = true;
+  const wait = show("assistant", message.startsWith("/") ? "Working…" : "Thinking…", "wait");
+  try {
+    const res = await fetch("/chat/send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message, history }),
+    });
+    const body = await res.json();
+    wait.remove();
+    if (!res.ok) throw new Error(body.error || res.statusText);
+    show("assistant", body.reply);
+    history.push(["user", message], ["assistant", body.reply]);
+    save();
+  } catch (err) {
+    wait.remove();
+    show("assistant", `Something went wrong: ${err.message}`, "error");
+  } finally {
+    send.disabled = false;
+    text.focus();
+  }
+}
+
+form.addEventListener("submit", e => { e.preventDefault(); submit(); });
+text.addEventListener("keydown", e => {
+  if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); submit(); }
+});
+document.getElementById("clear").addEventListener("click", e => {
+  e.preventDefault();
+  history = []; save(); log.replaceChildren(); text.focus();
+});
+text.focus();
+</script>
+{% endblock %}

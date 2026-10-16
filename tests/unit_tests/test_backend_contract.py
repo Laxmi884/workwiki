@@ -22,7 +22,7 @@ from pathlib import Path
 import httpx
 import pytest
 
-from llm_wiki.backend import NoOpenReview, NoteNotFound, UnknownThread
+from llm_wiki.backend import BackendError, NoOpenReview, NoteNotFound, UnknownThread
 from llm_wiki.backend import local as local_backend
 from llm_wiki.backend.local import LocalBackend
 from llm_wiki.backend.server import ServerBackend
@@ -214,3 +214,14 @@ def test_ask_answers_with_the_earlier_chat(backend):
     answer = backend.ask("Is it on track?", history)
     # EchoModel replies with the user and assistant turns it was sent
     assert answer == "What is Atlas? | A risk analytics project. | Is it on track?"
+
+
+def test_an_unreachable_server_is_a_backend_error(vault_copy):
+    from langgraph_sdk.client import SyncLangGraphClient
+
+    url = f"http://127.0.0.1:{_free_port()}"
+    # the SDK's own client retries a refused connection 5 times; this one fails at once
+    client = SyncLangGraphClient(httpx.Client(base_url=url))
+    backend = ServerBackend(url, vault_copy, client=client)
+    with pytest.raises(BackendError, match="failed: ConnectError"):
+        backend.pending()

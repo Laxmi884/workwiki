@@ -15,10 +15,12 @@ a failed run doesn't raise but returns `{"__error__": {"error": <exception class
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+import functools
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeVar
 
+import httpx
 from langgraph_sdk import get_sync_client
 from langgraph_sdk.client import SyncLangGraphClient
 from langgraph_sdk.errors import NotFoundError, UnprocessableEntityError
@@ -38,6 +40,27 @@ from llm_wiki.domain.review import ReviewAnswer
 INGEST = "ingest"  # graph ids in langgraph.json
 ASSISTANT = "assistant"
 MAX_PENDING = 50
+
+
+F = TypeVar("F", bound=Callable[..., Any])
+
+
+def _reachable(method: F) -> F:
+    """Turn HTTP failures that escape `method` (server down, a 5xx) into `BackendError`.
+
+    Surfaces catch `BackendError` only; they never import httpx or langgraph_sdk.
+    """
+
+    @functools.wraps(method)
+    def wrapper(self: ServerBackend, *args: Any, **kwargs: Any) -> Any:
+        try:
+            return method(self, *args, **kwargs)
+        except httpx.HTTPError as exc:
+            raise BackendError(
+                f"the Agent Server at {self.url} failed: {type(exc).__name__}"
+            ) from exc
+
+    return wrapper  # type: ignore[return-value]
 
 
 def _failure(output: Any) -> Mapping[str, Any] | None:
@@ -62,7 +85,8 @@ class ServerBackend:
         `vault` defaults to `WIKI_VAULT_PATH`; it must be the path the server sees
         (the same on this machine; a mounted volume under `langgraph up`).
         """
-        self._client = client or get_sync_client(url=url or get_settings().server_url)
+        self.url = url or get_settings().server_url
+        self._client = client or get_sync_client(url=self.url)
         self._vault = (
             Path(vault).expanduser().resolve() if vault else get_settings().vault_path
         )
@@ -80,6 +104,7 @@ class ServerBackend:
     def _metadata(self) -> dict[str, Any]:
         return {"vault_path": str(self._vault), "graph_id": INGEST}
 
+    @_reachable
     def start_ingest(self, note_path: str) -> RunResult:
         """Ingest `note_path` in a new server thread until its review pauses."""
         thread_id = self._client.threads.create(
@@ -95,6 +120,7 @@ class ServerBackend:
             raise BackendError(f"ingest failed on the server: {error.get('error')}")
         return self._status(thread_id)
 
+    @_reachable
     def pending(self) -> list[RunResult]:
         """Return this vault's open reviews, newest first."""
         threads = self._client.threads.search(
@@ -106,6 +132,7 @@ class ServerBackend:
         )
         return [self._status(t["thread_id"]) for t in threads]
 
+    @_reachable
     def review(self, thread_id: str) -> RunResult:
         """Return where `thread_id` stands (another vault's thread counts as unknown)."""
         try:
@@ -125,6 +152,7 @@ class ServerBackend:
             thread_id, values if isinstance(values, Mapping) else {}, interrupt
         )
 
+    @_reachable
     def answer(
         self, thread_id: str, answer: ReviewAnswer | dict[str, Any] | str
     ) -> RunResult:
@@ -143,6 +171,7 @@ class ServerBackend:
             raise BackendError(f"ingest failed on the server: {error.get('error')}")
         return self._status(thread_id)
 
+    @_reachable
     def ask(self, question: str, history: Sequence[ChatTurn] = ()) -> str:
         """Return the assistant's answer from a run without a thread (nothing kept)."""
         messages: list[Any] = [{"role": r, "content": text} for r, text in history]

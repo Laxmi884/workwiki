@@ -1,17 +1,17 @@
-"""The chat front door (4d): commands drive ingest, other messages ask the assistant."""
+"""The chat (0010 S3): commands drive ingest, other messages ask; on a `Backend`."""
 
 import datetime
 
 import pytest
 from langchain_core.messages import AIMessage
-from langgraph.checkpoint.memory import InMemorySaver
 
-from llm_wiki.chat import graph as chat_graph
+from llm_wiki.backend import local as local_backend
+from llm_wiki.backend.local import LocalBackend
 from llm_wiki.chat.commands import parse_command
+from llm_wiki.chat.session import questions_only, reply
 from llm_wiki.ingest import nodes
-from llm_wiki.runner import IngestRunner
 
-from .scripted_model import AgentRounds, ToolScript, call
+from .scripted_model import AgentRounds, EchoModel, ToolScript, call
 
 NOTE = "00_raw/daily/2026-10-12.md"
 TODAY = datetime.date(2026, 10, 16)
@@ -85,7 +85,7 @@ def _decision(title):
 
 @pytest.fixture
 def chat(vault_copy, monkeypatch):
-    """The wiki graph over a vault copy: scripted ingest rounds, scripted answers."""
+    """The chat over a local backend on a vault copy: scripted ingest, scripted answers."""
     ingest = AgentRounds(
         [_decision("Keep the old BI tool until Q1")],
         [
@@ -94,8 +94,6 @@ def chat(vault_copy, monkeypatch):
         ],
     )
     monkeypatch.setattr(nodes, "chat_model", ingest)
-    runner = IngestRunner.in_memory(context={"vault_path": str(vault_copy)})
-    monkeypatch.setattr(chat_graph, "ingest_runner", lambda vault, model: runner)
     answers = iter(
         [
             "Atlas beta moved to Oct 20 ([[project-atlas]], 2026-10-12).",
@@ -103,61 +101,84 @@ def chat(vault_copy, monkeypatch):
         ]
     )
     monkeypatch.setattr(
-        chat_graph,
+        local_backend,
         "configured_model",
         lambda model: ToolScript(messages=iter([AIMessage(next(answers))])),
     )
-    monkeypatch.setattr(chat_graph, "configured_fallbacks", lambda: [])
-    graph = chat_graph.builder.compile(checkpointer=InMemorySaver())
-    config = {"configurable": {"thread_id": "chat-1"}}
-    context = {"vault_path": str(vault_copy)}
+    monkeypatch.setattr(local_backend, "configured_fallbacks", lambda: [])
+    backend = LocalBackend.in_memory(vault_copy)
+    history: list[tuple[str, str]] = []
 
     def say(text):
-        out = graph.invoke(
-            {"messages": [{"role": "user", "content": text}]},
-            config=config,
-            context=context,
-        )
-        return out["messages"][-1].content, out.get("ingest_thread")
+        answer = reply(backend, text, history, today=TODAY)
+        history.extend([("user", text), ("assistant", answer)])
+        return answer
 
-    return say, ingest
+    return say, ingest, backend
 
 
 def test_review_waits_while_you_ask_questions_then_revise_and_approve(chat, vault_copy):
-    say, ingest = chat
-    reply, thread = say("/ingest 2026-10-12")
-    assert reply.startswith(f"**Review: {NOTE}**") and thread
-    assert "Keep the old BI tool until Q1" in reply and "`/approve`" in reply
+    say, ingest, backend = chat
+    reply_ = say("/ingest 2026-10-12")
+    assert reply_.startswith(f"**Review: {NOTE}**")
+    (open_review,) = backend.pending()
+    assert f"(/review/{open_review.thread_id})" in reply_  # link to the review page
+    assert "Keep the old BI tool until Q1" in reply_ and "`/approve`" in reply_
 
     # no time to review: ask questions instead; the review stays open
-    reply, still = say("When is the Atlas beta?")
-    assert reply.startswith("Atlas beta moved to Oct 20") and still == thread
-    assert "A review is still open" in reply
-    reply, still = say("What does Sam want?")
-    assert reply.startswith("Sam wants to own search") and still == thread
+    reply_ = say("When is the Atlas beta?")
+    assert reply_.startswith("Atlas beta moved to Oct 20")
+    assert f"A review is still open for {NOTE}" in reply_
+    assert say("What does Sam want?").startswith("Sam wants to own search")
 
     # back to it: show it again, revise, then approve
-    assert say("/review")[0].startswith(f"**Review: {NOTE}**")
-    reply, still = say("/revise It was Q2, not Q1")
-    assert (
-        still == thread
-        and "until Q2" in reply
-        and "### Keep the old BI tool until Q1" not in reply
-    )
+    assert say("/review").startswith(f"**Review: {NOTE}**")
+    reply_ = say("/revise It was Q2, not Q1")
+    assert "until Q2" in reply_ and "### Keep the old BI tool until Q1" not in reply_
     assert "It was Q2, not Q1" in ingest.briefs[1]
-    reply, done = say("/approve")
-    assert reply.startswith("Applied") and done is None
+    assert say("/approve").startswith("Applied")
+    assert backend.pending() == []
     log = (vault_copy / "30_decisions/2026/decisions-2026-q4.md").read_text()
     assert "### Keep the old BI tool until Q2" in log
 
-    assert say("/approve")[0].startswith("No review is open")
+    assert say("/approve").startswith("No review is open")
 
 
 def test_one_review_at_a_time_and_bad_answers_are_explained(chat):
-    say, _ = chat
+    say, _, _ = chat
     say("/ingest 2026-10-12")
-    assert say("/ingest 2026-10-13")[0].startswith("A review is open for")
-    reply, thread = say("/approve except f99")
-    assert "Not accepted: unknown file ids ['f99']" in reply and thread
-    assert say("/reject")[0].startswith("Done. Nothing was written.")
-    assert say("/ingest 2026-01-01")[0].startswith("No note at")
+    assert say("/ingest 2026-10-13").startswith("A review is open for")
+    reply_ = say("/approve except f99")
+    assert "Not accepted: unknown file ids ['f99']" in reply_
+    assert say("/reject").startswith("Done. Nothing was written.")
+    assert say("/ingest 2026-01-01").startswith("No note at 00_raw/daily/2026-01-01.md")
+
+
+def test_with_two_reviews_open_the_chat_lists_them_instead_of_guessing(chat):
+    say, _, backend = chat
+    first = backend.start_ingest(NOTE)  # e.g. started from Studio
+    second = backend.start_ingest(NOTE)
+    listing = say("/approve")
+    assert listing.startswith("2 reviews are open")
+    assert f"(/review/{first.thread_id})" in listing
+    assert f"(/review/{second.thread_id})" in listing
+    assert len(backend.pending()) == 2  # nothing was answered
+
+
+def test_the_assistant_sees_questions_and_answers_but_not_commands(
+    vault_copy, monkeypatch
+):
+    monkeypatch.setattr(local_backend, "configured_model", lambda model: EchoModel())
+    monkeypatch.setattr(local_backend, "configured_fallbacks", lambda: [])
+    backend = LocalBackend.in_memory(vault_copy)
+    history = [
+        ("user", "What is Atlas?"),
+        ("assistant", "A risk analytics project."),
+        ("user", "/help"),
+        ("assistant", "Commands: ..."),
+    ]
+    assert questions_only(history) == history[:2]
+    # EchoModel replies with the turns it was sent
+    assert reply(backend, "Is it on track?", history) == (
+        "What is Atlas? | A risk analytics project. | Is it on track?"
+    )
