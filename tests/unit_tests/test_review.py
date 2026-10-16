@@ -2,10 +2,9 @@
 
 import pytest
 
-from llm_wiki.domain.changes import AppendToSection, CreateFile, FileDiff
-from llm_wiki.domain.facts import Decision, SectionFacts
+from llm_wiki.domain.changes import CreateFile, FileDiff
+from llm_wiki.domain.review import ReviewTask
 from llm_wiki.review import approved_digests, build_request, check_answer
-from llm_wiki.routing import INBOX_PATH
 
 
 def _diff(path, before):
@@ -20,35 +19,23 @@ def _diff(path, before):
 
 DIFFS = [
     _diff("20_people/person-sam-ortiz.md", "a" * 64),
-    _diff("05_generated/inbox.md", None),
+    _diff("10_projects/project-delq.md", None),
     _diff("90_meta/ingest-ledger.json", None),
 ]
-FACTS = {
-    "32": SectionFacts(decisions=[Decision(line=35, title="Ship on Friday")]),
-    "20": SectionFacts(decisions=[Decision(line=23, title="Keep the old BI tool")]),
-}
-INBOX_EDIT = AppendToSection(
-    path=INBOX_PATH,
-    heading="## 2026-10-12",
-    lines=("- 2026-10-12: learning (Cookies): Must match. ([[2026-10-12]])",),
-)
-REQUEST = build_request("00_raw/daily/2026-10-12.md", DIFFS, FACTS, [INBOX_EDIT], ["w"])
+REQUEST = build_request("00_raw/daily/2026-10-12.md", DIFFS, ["w"])
 
 
-def test_request_lists_files_decisions_and_inbox():
+def test_request_lists_files_by_path():
     assert [(f.id, f.path, f.change) for f in REQUEST.files] == [
-        ("f1", "05_generated/inbox.md", "new"),  # by path: IDs stable across rounds
+        (
+            "f1",
+            "10_projects/project-delq.md",
+            "new",
+        ),  # by path: IDs stable across rounds
         ("f2", "20_people/person-sam-ortiz.md", "changed"),
         ("f3", "90_meta/ingest-ledger.json", "new"),
     ]
     assert REQUEST.files[1].digest == DIFFS[0].digest
-    assert [(d.id, d.title) for d in REQUEST.decisions] == [
-        ("d1", "Keep the old BI tool"),  # note order, not dict order
-        ("d2", "Ship on Friday"),
-    ]
-    assert [i.text for i in REQUEST.inbox] == [
-        "2026-10-12: learning (Cookies): Must match. ([[2026-10-12]])"
-    ]
     assert REQUEST.warnings == ("w",)
 
 
@@ -78,9 +65,7 @@ def test_only_wiki_pages_are_editable_and_carry_their_text():
 
 def test_revise_rounds_are_counted_down():
     def request(revisions):
-        return build_request(
-            "n.md", DIFFS, FACTS, [], [], revisions=revisions, can_revise=True
-        )
+        return build_request("n.md", DIFFS, [], revisions=revisions, can_revise=True)
 
     assert request(0).revisions_left == 3
     answer, error = check_answer(request(2), {"action": "revise", "feedback": "x"})
@@ -89,17 +74,13 @@ def test_revise_rounds_are_counted_down():
     assert error.startswith("revise limit reached (3)")
 
 
-def test_decision_pages_edits_and_repeated_warnings_are_shown():
+def test_edits_and_repeated_warnings_are_shown():
     request = build_request(
         "n.md",
         DIFFS,
-        FACTS,
-        [],
         ["w", "w", "v"],
-        decision_pages=[35],
         edited=["20_people/person-sam-ortiz.md", "gone.md"],
     )
-    assert [(d.id, d.page) for d in request.decisions] == [("d1", False), ("d2", True)]
     assert request.edited == ("20_people/person-sam-ortiz.md",)  # only shown files
     assert request.warnings == ("w", "v")
 
@@ -107,8 +88,7 @@ def test_decision_pages_edits_and_repeated_warnings_are_shown():
 @pytest.mark.parametrize(
     "raw",
     [
-        {"action": "make_page", "decisions": ["d1"]},
-        {"action": "edit", "file": "f1", "text": "# Sam\n"},
+        {"action": "edit", "file": "f1", "text": "# Delq\n"},
     ],
 )
 def test_loop_answers_approve_nothing(raw):
@@ -131,12 +111,12 @@ def test_reject_approves_nothing():
         ({"action": "approve", "feedback": "x"}, 'feedback not allowed with "approve"'),
         ({"action": "revise"}, '"revise" needs feedback'),
         ({"action": "edit", "file": "f1"}, '"edit" needs text'),
-        ({"action": "make_page", "decisions": ["d9"]}, "unknown decision ids ['d9']"),
+        ({"action": "make_page", "decisions": ["d1"]}, "invalid answer (action:"),
         ({"action": "edit", "file": "f3", "text": "x"}, "f3 is 90_meta/ingest-ledger"),
         ({"action": "edit", "file": "f7", "text": "x"}, "unknown file ids ['f7']"),
         ({"action": "revise", "feedback": "x"}, "nothing to revise"),
-        ({"action": "answer"}, '"answer" needs people, wins or tasks'),
-        ({"action": "answer", "people": {"p1": "new"}}, "unknown person ids ['p1']"),
+        ({"action": "answer"}, '"answer" needs wins or tasks'),
+        ({"action": "answer", "people": {"p1": "new"}}, "invalid answer (people:"),
         ({"action": "answer", "wins": ["w1"]}, "unknown win ids ['w1']"),
         ({"action": "approve", "note": "hi"}, "invalid answer (note:"),
         (None, "invalid answer"),
@@ -154,21 +134,19 @@ def test_answer_with_no_wins_is_valid():
 
 
 def test_task_answers_name_a_project_or_none():
-    from llm_wiki.domain.review import ReviewTask
-
     request = REQUEST.model_copy(
         update={"tasks": (ReviewTask(id="m1", line=9, text="Reply to Priya"),)}
     )
     projects = ["project-atlas"]
     ok, error = check_answer(
-        request, {"action": "answer", "tasks": {"m1": "none"}}, [], projects
+        request, {"action": "answer", "tasks": {"m1": "none"}}, projects
     )
     assert error is None and ok.tasks == {"m1": "none"}
     _, error = check_answer(
-        request, {"action": "answer", "tasks": {"m1": "project-zed"}}, [], projects
+        request, {"action": "answer", "tasks": {"m1": "project-zed"}}, projects
     )
     assert "not a project page" in error
     _, error = check_answer(
-        request, {"action": "answer", "tasks": {"m9": "none"}}, [], projects
+        request, {"action": "answer", "tasks": {"m9": "none"}}, projects
     )
     assert error.startswith("unknown task ids")

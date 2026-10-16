@@ -14,7 +14,7 @@ import pydantic
 
 from llm_wiki.domain.daily import DailyNote
 from llm_wiki.domain.ledger import IngestLedger, LedgerEntry
-from llm_wiki.extraction import line_key, prose_lines, task_lines
+from llm_wiki.note_lines import line_key, prose_lines, task_lines
 
 LEDGER_PATH = "90_meta/ingest-ledger.json"
 

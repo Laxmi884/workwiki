@@ -1,4 +1,4 @@
-"""The ingest ledger and "only new lines" extraction (pure, scripted model)."""
+"""The ingest ledger and which note lines are new prose (pure)."""
 
 import datetime
 
@@ -6,21 +6,15 @@ import pytest
 
 from llm_wiki.daily_syntax import parse_daily_note
 from llm_wiki.domain.common import SectionKind
-from llm_wiki.domain.facts import SectionFacts, Win
 from llm_wiki.domain.ledger import IngestLedger
-from llm_wiki.entity_index import build_index
-from llm_wiki.extraction import (
-    build_messages,
-    extract_section,
+from llm_wiki.ledger import LEDGER_PATH, dump_ledger, load_ledger, prose_keys, record
+from llm_wiki.note_lines import (
+    has_new_prose,
     line_key,
-    needs_model,
     new_lines,
     prose_lines,
     task_lines,
 )
-from llm_wiki.ledger import LEDGER_PATH, dump_ledger, load_ledger, prose_keys, record
-
-from .scripted_model import ScriptedModel
 
 NOW = datetime.datetime(2026, 10, 13, 9, 0, tzinfo=datetime.UTC)
 SHA = "a" * 64
@@ -82,46 +76,24 @@ def test_line_key_ignores_spacing_not_words():
     assert line_key("- Found the root cause") != line_key("- Found the real cause")
 
 
-# --- extraction with seen lines ------------------------------------------------------
+# --- new prose lines -----------------------------------------------------------------
 
 
 def _seen(*texts):
     return frozenset(line_key(t) for t in texts)
 
 
-def test_new_lines_and_needs_model():
+def test_new_lines_and_has_new_prose():
     lines = prose_lines(LOG, task_lines(NOTE))
     seen = _seen("- Morning: deep work")
     assert new_lines(lines, seen) == [(6, "- Found the root cause #win")]
     everything = _seen("- Morning: deep work", "- Found the root cause #win")
-    assert not needs_model(LOG, task_lines(NOTE), everything)
-    assert needs_model(LOG, task_lines(NOTE), seen)
+    assert not has_new_prose(LOG, task_lines(NOTE), everything)
+    assert has_new_prose(LOG, task_lines(NOTE), seen)
 
 
-def test_prompt_marks_seen_lines_as_context_and_requires_only_new_tags():
-    lines = prose_lines(LOG, task_lines(NOTE))
-    _, human = build_messages(
-        LOG, lines, build_index([]), seen=_seen("- Found the root cause #win")
-    )
-    assert "   5 | - Morning: deep work" in human.content
-    assert "   6 ~ - Found the root cause #win" in human.content
-    assert "Required" not in human.content  # the #win line was already ingested
-
-
-def test_facts_citing_seen_lines_are_dropped_without_retry():
-    seen = _seen("- Found the root cause #win")
-    answer = SectionFacts(wins=[Win(line=6, text="Found the root cause")])
-    model = ScriptedModel(answer)
-    facts, warnings = extract_section(
-        model, LOG, task_lines(NOTE), build_index([]), seen=seen
-    )
-    assert facts == SectionFacts()
-    assert warnings == ["section 'Log': wins fact cites line 6, already ingested"]
-    assert len(model.calls) == 1
-
-
-def test_sections_are_unaffected_without_seen_lines():
-    assert {s.kind for s in NOTE.sections if needs_model(s, task_lines(NOTE))} == {
+def test_prose_sections_without_seen_lines():
+    assert {s.kind for s in NOTE.sections if has_new_prose(s, task_lines(NOTE))} == {
         SectionKind.LOG,
         SectionKind.LEARNED,
     }

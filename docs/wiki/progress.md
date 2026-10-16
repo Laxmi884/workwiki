@@ -6,7 +6,7 @@ Single source of truth for project status. Updated at the end of every session.
 
 Working mode (CLAUDE.md, since 2026-10-15): Claude builds in reviewed steps, each with a git-ignored notebook in `notebooks/` (00–11 exist; `notebooks/_src/nbNN.py` builds them, `_src/run.sh` executes; an answer key lives outside the repo). Ingest = the `ingest_agent` graph ([[decisions/0006-agent-ingest-spike|0006]] option B); phase 3 is built (3d apply, 3e SQLite runner + vault git commit) and the 0006 agent-quality fixes are in; all three await the user's review (notebooks 08–10).
 
-**0007 committed (`00551c0`), timeout + task-named person pages committed (`aee8200`), 2026-10-16.** Notebook 11 built (4 exercises, answer-key verified): the user works through it, then Claude reviews the answers. Model now `deepseek/deepseek-v4.1-flash` (~$0.001/run; spend $2.47 of $2.50). Remaining 0006 to-do: cut-over (agent graph default, delete the 0004 model steps).
+**0006 cut-over done (2026-10-16):** the ingest agent graph is the only ingest graph. Steps 2+3 built (review cleanup + deleting the 0004 pipeline) and await commit. Next after that: the user does notebook 11; then phase 4 (assistant deep agent). Review HTML is planned in phase 7. Model now `deepseek/deepseek-v4.1-flash` (~$0.001/run; spend $2.47 of $2.50).
 
 ## Open decisions
 
@@ -60,7 +60,7 @@ Working mode (CLAUDE.md, since 2026-10-15): Claude builds in reviewed steps, eac
   - [x] 0007 task → project proposals built and committed (`00551c0`, 2026-10-16)
   - [x] Timeout + task-named person pages committed (`aee8200`, 2026-10-16)
   - [x] Notebook 11 for 0007 built, answer-key verified (2026-10-16); user exercises pending
-  - [ ] 0006 cut-over (user chose 2026-10-16: drop `make_page` for now; keep the agent-only experiment harness). Step 1 done 2026-10-16: runner + `langgraph.json` `ingest` → agent graph, tests ported (`AgentRounds`). Steps 2 (review cleanup) and 3 (delete 0004 code) open. Original note: agent graph handles answer / make_page / edit, runner defaults to `ingest_agent`, then delete the 0004 model steps (extract, find_names, route, `ingest/graph.py`, `names.py`, round-1 script) and their tests From the first real note (2026-10-14): unknown names → people questions,
+  - [x] 0006 cut-over (2026-10-16; step 1 `4fd1836`, steps 2+3 awaiting commit): the agent graph is the only ingest graph (runner default, `langgraph.json` `ingest`); review lost `make_page`, people questions and the inbox; deleted `ingest/graph.py`, extract/find_names/fan_out/route, `extraction.py` (line helpers → `note_lines.py`), `names.py`, `answers.py`, `domain/facts.py`, fact routing (`routing.py` keeps origins, paths, `win_edits`), `scripts/compare_ingest.py`; experiment harness agent-only. 415 tests pass.
     new-project proposals for unlinked tasks (mapping rule 4), done tasks offered as win
     candidates, task sub-bullets read by the model, "remember this" → approved edit to
     aliases / `90_meta/rules.md`

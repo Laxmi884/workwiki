@@ -1,8 +1,9 @@
-"""Ingest nodes: note → task IDs and index → facts → page edits → diffs.
+"""Code nodes of the ingest graph: note → task IDs and index → diffs → review → apply.
 
-Each node reads the vault through `vault_reader` (no writes) and returns a partial
-state update. The pure logic lives in `daily_syntax`, `task_tracking`, `extraction`
-and `routing`.
+The agent step (`ingest_agent/graph.py`, decision 0006) sits between `track_tasks` and
+`render`. Each node reads the vault through `vault_reader` and returns a partial state
+update; only `apply` writes. The pure logic lives in `daily_syntax`, `task_tracking`,
+`ledger`, `review` and `apply`.
 """
 
 from __future__ import annotations
@@ -14,18 +15,9 @@ from typing import Any
 from langchain_core.language_models import BaseChatModel
 from langgraph.graph import END
 from langgraph.runtime import Runtime
-from langgraph.types import Send, interrupt
+from langgraph.types import interrupt
 
-from llm_wiki import (
-    answers,
-    extraction,
-    ledger,
-    names,
-    review,
-    routing,
-    task_tracking,
-    vault_git,
-)
+from llm_wiki import ledger, note_lines, review, task_tracking, vault_git
 from llm_wiki.apply import ApplyConflict, apply_diffs
 from llm_wiki.config import get_settings
 from llm_wiki.daily_syntax import parse_daily_note
@@ -42,19 +34,8 @@ from llm_wiki.domain.entities import EntityKind
 from llm_wiki.domain.review import ReviewAnswer, ReviewRequest
 from llm_wiki.domain.task_index import DoneTask, MappedBy
 from llm_wiki.domain.tasks import TaskStatus
-from llm_wiki.entity_index import (
-    EntityIndex,
-    kind_of,
-    load_index,
-    with_created,
-    with_proposed,
-)
-from llm_wiki.ingest.state import (
-    ExtractInput,
-    FindNamesInput,
-    IngestContext,
-    IngestState,
-)
+from llm_wiki.entity_index import EntityIndex, kind_of, load_index, with_created
+from llm_wiki.ingest.state import IngestContext, IngestState
 from llm_wiki.models import (
     ModelSpec,
     choose_model_spec,
@@ -116,19 +97,11 @@ def _daily_notes(vault: Path, read: VaultReader) -> list[DailyNote]:
 
 
 def _entities(state: IngestState, runtime: Runtime[IngestContext]) -> EntityIndex:
-    """Return the vault's entity index plus pages proposed in this run.
+    """Return the vault's entity index plus the entity pages this run's edits create.
 
-    Proposed: pages and aliases answered in the review, and entity pages the run's
-    edits create (so tasks link to them, e.g. "### 1:1 with Joanna").
+    So tasks link to pages proposed in the same run, e.g. "### 1:1 with Joanna".
     """
-    return with_created(
-        with_proposed(
-            load_index(vault_path(runtime)),
-            state.get("new_entities", []),
-            state.get("new_aliases", {}),
-        ),
-        state.get("fact_edits", []),
-    )
+    return with_created(load_index(vault_path(runtime)), state.get("fact_edits", []))
 
 
 def load_note(state: IngestState, runtime: Runtime[IngestContext]) -> dict[str, Any]:
@@ -250,91 +223,6 @@ def track_tasks(state: IngestState, runtime: Runtime[IngestContext]) -> dict[str
     }
 
 
-def find_names(
-    state: FindNamesInput, runtime: Runtime[IngestContext]
-) -> dict[str, Any]:
-    """Ask the model for people and project groups in task lines and headings."""
-    note = state["note"]
-    scan, warnings = names.scan_names(
-        chat_model(runtime),
-        note,
-        state["task_projects"],
-        load_index(vault_path(runtime)),
-    )
-    return {"name_scan": scan, "warnings": [f"{note.path}: {w}" for w in warnings]}
-
-
-def extract(state: ExtractInput, runtime: Runtime[IngestContext]) -> dict[str, Any]:
-    """Extract one prose section's facts with the model (2e sends one per section)."""
-    note = state["note"]
-    (section,) = [s for s in note.sections if s.start_line == state["section_line"]]
-    facts, warnings = extraction.extract_section(
-        chat_model(runtime),
-        section,
-        extraction.task_lines(note),
-        load_index(vault_path(runtime)),
-        previous=state.get("previous"),
-        feedback=state.get("feedback", []),
-        seen=frozenset(state.get("seen_lines", [])),
-    )
-    return {
-        "facts": {str(section.start_line): facts},
-        "warnings": [f"{note.path}: {w}" for w in warnings],
-    }
-
-
-def fan_out(state: IngestState) -> list[Send] | str:
-    """Send prose sections to `extract` and task lines to `find_names`, in parallel.
-
-    `find_names` runs once per run; with nothing to send, go to `route`. After an
-    "answer" the facts stand: straight to `route`.
-    """
-    if state.get("review_action") == "answer":
-        return "route"
-    note = state["note"]
-    tasks = extraction.task_lines(note)
-    seen = frozenset(state.get("seen_lines", []))
-    facts = state.get("facts", {})
-    sends = [
-        Send(
-            "extract",
-            {
-                "note": note,
-                "section_line": section.start_line,
-                "previous": facts.get(str(section.start_line)),
-                "feedback": state.get("feedback", []),
-                "seen_lines": state.get("seen_lines", []),
-            },
-        )
-        for section in note.sections
-        if extraction.needs_model(section, tasks, seen)
-    ]
-    if "name_scan" not in state and names.scan_lines(note):
-        payload = {"note": note, "task_projects": state.get("task_projects", {})}
-        sends.append(Send("find_names", payload))
-    return sends or "route"
-
-
-def route(state: IngestState, runtime: Runtime[IngestContext]) -> dict[str, Any]:
-    """Turn all facts into page edits (rebuilt from scratch each round)."""
-    vault = vault_path(runtime)
-    read = vault_reader(vault)
-    new_entities = state.get("new_entities", [])
-    edits = answers.entity_edits(
-        new_entities, state.get("new_aliases", {}), load_index(vault)
-    )
-    chosen = set(state.get("chosen_wins", []))
-    routed, warnings = routing.route_facts(
-        state["note"],
-        state.get("facts", {}),
-        _entities(state, runtime),
-        lambda path: read(path) is not None,
-        decision_pages=state.get("decision_pages", []),
-        task_wins=[t for t in state.get("done_tasks", []) if t.line in chosen],
-    )
-    return {"fact_edits": edits + routed, "warnings": warnings}
-
-
 def render(state: IngestState, runtime: Runtime[IngestContext]) -> dict[str, Any]:
     """Render task, fact, user-text and ledger edits into one diff per file.
 
@@ -366,9 +254,9 @@ def render(state: IngestState, runtime: Runtime[IngestContext]) -> dict[str, Any
 
 def _can_revise(state: IngestState) -> bool:
     note = state["note"]
-    tasks = extraction.task_lines(note)
+    tasks = note_lines.task_lines(note)
     seen = frozenset(state.get("seen_lines", []))
-    return any(extraction.needs_model(s, tasks, seen) for s in note.sections)
+    return any(note_lines.has_new_prose(s, tasks, seen) for s in note.sections)
 
 
 def review_changes(
@@ -382,16 +270,6 @@ def review_changes(
     """
     overrides = state.get("overrides", {})
     entities = _entities(state, runtime)
-    people = review.people_questions(
-        state["note"],
-        state.get("name_scan"),
-        state.get("facts", {}),
-        entities,
-        state.get("ignored_names", []),
-    )
-    known_people = [
-        e.slug for e in entities.entities.values() if e.kind is EntityKind.PERSON
-    ]
     known_projects = [
         *(e.slug for e in entities.entities.values() if e.kind is EntityKind.PROJECT),
         *(
@@ -405,14 +283,10 @@ def review_changes(
     request = review.build_request(
         state["note"].path,
         state.get("diffs", []),
-        state.get("facts", {}),
-        state.get("fact_edits", []),
         [*state.get("warnings", []), *state.get("round_warnings", [])],
-        decision_pages=state.get("decision_pages", []),
         revisions=state.get("revisions", 0),
         can_revise=_can_revise(state),
         edited=list(overrides),
-        people=people,
         done_tasks=state.get("done_tasks", []),
         chosen_wins=state.get("chosen_wins", []),
         tasks=review.task_questions(
@@ -424,7 +298,7 @@ def review_changes(
     )
     while True:
         raw = interrupt(request.model_dump(mode="json"))
-        answer, error = review.check_answer(request, raw, known_people, known_projects)
+        answer, error = review.check_answer(request, raw, known_projects)
         if answer is not None:
             break
         request = request.model_copy(update={"error": error})
@@ -441,12 +315,8 @@ def review_changes(
             "overrides": {},
             "warnings": dropped,
         }
-    elif answer.action == "make_page":
-        lines = {d.line for d in request.decisions if d.id in answer.decisions}
-        pages = sorted({*state.get("decision_pages", []), *lines})
-        update |= {"decision_pages": pages, "overrides": {}, "warnings": dropped}
     elif answer.action == "answer":
-        update |= _answered(state, request, answer, entities)
+        update |= _answered(state, request, answer)
         update |= {"overrides": {}, "warnings": dropped}
     else:  # edit
         (target,) = [f for f in request.files if f.id == answer.file]
@@ -456,32 +326,10 @@ def review_changes(
 
 
 def _answered(
-    state: IngestState,
-    request: ReviewRequest,
-    answer: ReviewAnswer,
-    entities: EntityIndex,
+    state: IngestState, request: ReviewRequest, answer: ReviewAnswer
 ) -> dict[str, Any]:
-    """Turn an "answer" into state: new pages, aliases, ignored names, picked wins."""
-    new_entities = list(state.get("new_entities", []))
-    new_aliases = {k: list(v) for k, v in state.get("new_aliases", {}).items()}
-    ignored = list(state.get("ignored_names", []))
-    question = {p.id: p for p in request.people}
-    for pid, value in (answer.people or {}).items():
-        name = question[pid].name
-        if value == "new":
-            taken = {*entities.entities, *(e.slug for e in new_entities)}
-            new_entities.append(
-                answers.new_entity(EntityKind.PERSON, name, taken.__contains__)
-            )
-        elif value == "ignore":
-            ignored.append(name)
-        else:
-            new_aliases.setdefault(value, []).append(name)
-    update: dict[str, Any] = {
-        "new_entities": new_entities,
-        "new_aliases": new_aliases,
-        "ignored_names": ignored,
-    }
+    """Turn an "answer" into state: picked wins and task → project answers."""
+    update: dict[str, Any] = {}
     if answer.wins is not None:
         picked = set(answer.wins)
         update["chosen_wins"] = [w.line for w in request.wins if w.id in picked]
@@ -545,26 +393,3 @@ def after_apply(state: IngestState) -> str:
     if not conflicts or state["note"].path in conflicts:
         return END
     return "render"
-
-
-def after_review(state: IngestState) -> list[Send] | str:
-    """Approve applies, reject ends; the other answers go back as far as they need.
-
-    approve → apply (when at least one file is approved; else the run ends),
-
-    revise → extract (the model reads the note again with the feedback),
-    answer → track_tasks (answered names re-map tasks; facts stand),
-    make_page → route (same facts, new places), edit → render (same edits + user text).
-    """
-    action = state.get("review_action")
-    if action == "revise":
-        return fan_out(state)
-    if action == "answer":
-        return "track_tasks"
-    if action == "make_page":
-        return "route"
-    if action == "edit":
-        return "render"
-    if action == "approve" and state.get("approved"):
-        return "apply"
-    return END

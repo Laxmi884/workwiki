@@ -1,6 +1,6 @@
 """Round 2 of the 0006 spike: ingest 20 corpus days in order, like real use.
 
-Each variant (graph + model + skills + reviewer) gets its own scratch vault, seeded with
+Each variant (model + skills + reviewer) runs the ingest agent graph and gets its own scratch vault, seeded with
 the fixture pages. Every day:
 
     note → ingest until the review → score the first pass
@@ -44,15 +44,10 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.tracers.context import register_configure_hook
 from pydantic import BaseModel, Field
 
-from llm_wiki.diffs import vault_reader
-from llm_wiki.domain.changes import AppendToSection, FileDiff, sha256_text
-from llm_wiki.domain.facts import SectionFacts
-from llm_wiki.entity_index import load_index
-from llm_wiki.ingest.graph import builder as pipeline_builder
+from llm_wiki.domain.changes import FileDiff, sha256_text
 from llm_wiki.ingest_agent.agent import SKILLS_DIR, _section_body
 from llm_wiki.ingest_agent.graph import builder as agent_builder
 from llm_wiki.models import choose_model_spec, make_chat_model
-from llm_wiki.routing import route_facts
 from llm_wiki.runner import IngestRunner
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -130,38 +125,9 @@ def count_calls() -> Iterator[CallCounter]:
 # --- what was filed -----------------------------------------------------------------
 
 
-def pipeline_filed(values: dict[str, Any], vault: Path) -> list[dict[str, Any]]:
-    """Route each extracted fact alone to see which page and section it lands on."""
-    read = vault_reader(vault)
-    entities = load_index(vault)
-    filed = []
-    for facts in values.get("facts", {}).values():
-        for field in SectionFacts.model_fields:
-            for f in getattr(facts, field):
-                edits, _ = route_facts(
-                    values["note"],
-                    {"0": SectionFacts(**{field: [f]})},
-                    entities,
-                    lambda p: read(p) is not None,
-                )
-                filed += [
-                    {
-                        "line": f.line,
-                        "path": e.path,
-                        "section": e.heading,
-                        "text": f.model_dump_json(exclude={"line"}),
-                    }
-                    for e in edits
-                    if isinstance(e, AppendToSection)
-                ]
-    return filed
-
-
-def filed_of(kind: str, values: dict[str, Any], vault: Path) -> list[dict[str, Any]]:
+def filed_of(values: dict[str, Any]) -> list[dict[str, Any]]:
     """Return the run's filings as dicts: line, path, section, text."""
-    if kind == "agent":
-        return list(values.get("agent_filed", []))
-    return pipeline_filed(values, vault)
+    return list(values.get("agent_filed", []))
 
 
 # --- scoring ------------------------------------------------------------------------
@@ -358,7 +324,6 @@ class Variant:
 
     Attributes:
         name: Short label, e.g. "glimmer-oracle".
-        graph: "agent" or "pipeline".
         model: "provider:model" for the ingest model.
         reviewer: "oracle" (labels), "teacher" (a model) or "none" (approve as is).
         teacher: "provider:model" for the teacher reviewer.
@@ -367,7 +332,6 @@ class Variant:
     """
 
     name: str
-    graph: str
     model: str
     reviewer: str = "oracle"
     teacher: str | None = None
@@ -413,7 +377,7 @@ def run_day(
 
     res = runner.start(note, thread_id=f"{v.name}-{day}-{attempt}")
     values = _state(runner, res.thread_id)
-    filed = filed_of(v.graph, values, vault)
+    filed = filed_of(values)
     first = score(day, filed, labels, active)
     if v.reviewer == "oracle":
         lines = src.read_text().splitlines()
@@ -430,7 +394,7 @@ def run_day(
         answer = {"action": "revise", "feedback": "\n".join(feedback)}
         res = runner.resume(res.thread_id, answer)
         values = _state(runner, res.thread_id)
-        filed = filed_of(v.graph, values, vault)
+        filed = filed_of(values)
         final, revised = score(day, filed, labels, active), True
     diffs = list(values.get("diffs", []))
     runner.resume(res.thread_id, {"action": "approve"})
@@ -486,8 +450,7 @@ def run_variant(
     old_file = out_dir / f"{v.name}.json"
     previous = json.loads(old_file.read_text()) if reuse and old_file.exists() else []
     context = {"vault_path": str(vault), "model": v.model, "skills_dir": str(v.skills)}
-    builder = agent_builder if v.graph == "agent" else pipeline_builder
-    runner = IngestRunner.in_memory(context=context, graph_builder=builder)  # type: ignore[arg-type]
+    runner = IngestRunner.in_memory(context=context, graph_builder=agent_builder)
     teacher = None
     if v.reviewer == "teacher":
         teacher = make_chat_model(choose_model_spec(v.teacher, None), temperature=0)

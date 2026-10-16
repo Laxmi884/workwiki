@@ -36,38 +36,6 @@ class ReviewFile(BaseModel):
     after_text: str = ""
 
 
-class ReviewDecision(BaseModel):
-    """A decision found in the note.
-
-    Attributes:
-        page: Whether it gets its own page (a "make_page" answer).
-    """
-
-    model_config = ConfigDict(frozen=True)
-
-    id: str
-    title: str
-    line: int
-    page: bool = False
-
-
-class ReviewPerson(BaseModel):
-    """A name with no page: answer "new", "ignore" or an existing person slug.
-
-    Attributes:
-        name: As written, e.g. "Eugene".
-        lines: Note lines naming them.
-        context: The first of those lines, to recognise them by.
-    """
-
-    model_config = ConfigDict(frozen=True)
-
-    id: str
-    name: str
-    lines: tuple[int, ...]
-    context: str
-
-
 class ReviewWin(BaseModel):
     """A task done in this note; picked ones go to the impact page as wins.
 
@@ -108,28 +76,16 @@ class ReviewTask(BaseModel):
     why: str = ""
 
 
-class ReviewInboxItem(BaseModel):
-    """A fact whose person, project or topic matched no page (3c adds answers)."""
-
-    model_config = ConfigDict(frozen=True)
-
-    id: str
-    text: str
-
-
 class ReviewRequest(BaseModel):
     """Everything the user needs to approve or reject one ingest.
 
     Attributes:
         note: The ingested note.
         files: Proposed changes, one per file.
-        decisions: Decisions found; "make_page" gives one its own page.
-        inbox: Unmatched facts (shown; answers come in 3c-2).
         warnings: Problems found along the way.
         revisions_left: How many more "revise" answers are allowed.
         can_revise: False when the note has no prose for the model to read again.
         edited: Paths whose text is the user's own (from "edit" answers).
-        people: Names with no page, to answer with "answer".
         wins: Tasks done in this note; picked ones become wins.
         tasks: Tasks with no project by rules 1–3, with the model's proposals; the
             proposals are in `tasks.json` unless answered (decision 0007).
@@ -140,32 +96,27 @@ class ReviewRequest(BaseModel):
 
     note: str
     files: tuple[ReviewFile, ...]
-    decisions: tuple[ReviewDecision, ...] = ()
-    inbox: tuple[ReviewInboxItem, ...] = ()
     warnings: tuple[str, ...] = ()
     revisions_left: int = 0
     can_revise: bool = False
     edited: tuple[str, ...] = ()
-    people: tuple[ReviewPerson, ...] = ()
     wins: tuple[ReviewWin, ...] = ()
     tasks: tuple[ReviewTask, ...] = ()
     error: str | None = None
 
 
-Action = Literal["approve", "reject", "revise", "make_page", "edit", "answer"]
+Action = Literal["approve", "reject", "revise", "edit", "answer"]
 
 # Which optional fields each action takes ("reject" is the file list of an approval).
 _FIELDS: dict[str, set[str]] = {
     "approve": {"reject"},
     "reject": set(),
     "revise": {"feedback"},
-    "make_page": {"decisions"},
     "edit": {"file", "text"},
-    "answer": {"people", "wins", "tasks"},
+    "answer": {"wins", "tasks"},
 }
 _REQUIRED: dict[str, set[str]] = {
     "revise": {"feedback"},
-    "make_page": {"decisions"},
     "edit": {"file", "text"},
 }
 
@@ -178,21 +129,16 @@ class ReviewAnswer(BaseModel):
         {"action": "approve", "reject": ["f2"]}                all but f2
         {"action": "reject"}                                   nothing is written
         {"action": "revise", "feedback": "Also note X"}        re-read the note
-        {"action": "make_page", "decisions": ["d1"]}           d1 gets its own page
         {"action": "edit", "file": "f4", "text": "..."}        f4's full new text
-        {"action": "answer", "people": {"p1": "new", "p2": "person-sam-ortiz",
-         "p3": "ignore"}, "wins": ["w2"],
-         "tasks": {"m1": "project-atlas", "m2": "none"}}       questions
+        {"action": "answer", "wins": ["w2"],
+         "tasks": {"m1": "project-atlas", "m2": "none"}}       wins, tasks
 
     Attributes:
         action: What to do.
         reject: approve: file IDs to leave out.
         feedback: revise: what the model got wrong or missed.
-        decisions: make_page: decision IDs.
         file: edit: the file ID.
         text: edit: the file's complete new text.
-        people: answer: person question ID → "new" (make a page), "ignore" (not a
-            person) or an existing person slug (the name becomes its alias).
         wins: answer: win IDs to put on the impact page; replaces earlier picks.
         tasks: answer: task ID → a project slug (existing or proposed in this
             review) or "none" (no project; not proposed again).
@@ -203,10 +149,8 @@ class ReviewAnswer(BaseModel):
     action: Action
     reject: tuple[str, ...] = Field(default=())
     feedback: str | None = None
-    decisions: tuple[str, ...] = Field(default=())
     file: str | None = None
     text: str | None = None
-    people: dict[str, str] | None = None
     wins: tuple[str, ...] | None = None
     tasks: dict[str, str] | None = None
 
@@ -214,15 +158,7 @@ class ReviewAnswer(BaseModel):
     def _fields_match_action(self) -> ReviewAnswer:
         given = {
             name
-            for name in (
-                "reject",
-                "feedback",
-                "decisions",
-                "file",
-                "text",
-                "people",
-                "tasks",
-            )
+            for name in ("reject", "feedback", "file", "text", "tasks")
             if getattr(self, name) not in (None, (), "", {})
         }
         if self.wins is not None:  # [] is an answer too: pick none
@@ -232,5 +168,5 @@ class ReviewAnswer(BaseModel):
         if missing := sorted(_REQUIRED.get(self.action, set()) - given):
             raise ValueError(f'"{self.action}" needs {", ".join(missing)}')
         if self.action == "answer" and not given:
-            raise ValueError('"answer" needs people, wins or tasks')
+            raise ValueError('"answer" needs wins or tasks')
         return self

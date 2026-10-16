@@ -1,4 +1,4 @@
-"""Ingest graph state and per-run context (decision 0004)."""
+"""Ingest graph state and per-run context (decisions 0004, 0006)."""
 
 from __future__ import annotations
 
@@ -9,16 +9,7 @@ from typing_extensions import TypedDict
 
 from llm_wiki.domain.changes import Edit, FileDiff
 from llm_wiki.domain.daily import DailyNote
-from llm_wiki.domain.entities import Entity
-from llm_wiki.domain.facts import NameScan, SectionFacts
 from llm_wiki.domain.task_index import DoneTask, TaskProposal
-
-
-def merge_facts(
-    old: dict[str, SectionFacts], new: dict[str, SectionFacts]
-) -> dict[str, SectionFacts]:
-    """Reducer: parallel extracts add their section's key; a re-run replaces its own."""
-    return {**old, **new}
 
 
 class IngestContext(TypedDict, total=False):
@@ -26,8 +17,8 @@ class IngestContext(TypedDict, total=False):
 
     Attributes:
         vault_path: Vault folder, e.g. "~/WorkDev".
-        model: "provider:model" for extraction (decision 0003).
-        skills_dir: Skills folder for the 0006 spike's ingest agent (default: its own).
+        model: "provider:model" for the ingest agent (decision 0003).
+        skills_dir: Skills folder for the ingest agent (default: its own).
     """
 
     vault_path: str
@@ -54,26 +45,20 @@ class IngestState(TypedDict, total=False):
         chosen_projects: Task line → the user's review answer: a project slug, or
             None for "no project" (sticky).
         done_tasks: Tasks this note marks done for the first time (track_tasks).
-        name_scan: People and project groups in task lines and headings (find_names).
-        facts: Section key (its start line, e.g. "20") → facts (extract).
         feedback: The user's revise messages, oldest first (review).
         revisions: How many revise rounds have run (at most `review.MAX_REVISIONS`).
-        decision_pages: Note lines of decisions that get their own page (review).
         overrides: Path → the user's own text for that page (review "edit"); a
-            revise or make_page clears them.
-        fact_edits: Edits from all facts, rebuilt each round (route).
+            revise or answer clears them.
+        fact_edits: The agent's checked edits plus picked wins, rebuilt each round.
         diffs: One proposed diff per changed file (render).
         review_action: The user's last answer: "approve" or "reject" (the run ends),
-            or "revise", "make_page", "edit", "answer" (it loops back).
+            or "revise", "edit", "answer" (it loops back).
         approved: Digests of the approved diffs; only these may be written (3d).
         written: Paths `apply` wrote (or found already up to date).
         commit: The vault git commit of those paths, if any (3e).
         apply_conflicts: Approved paths that changed since the review; nothing was
             written and the run re-renders for a fresh review.
         chosen_wins: Lines of done tasks the user picked as wins (review "answer").
-        new_entities: Pages the user asked for ("new"); proposed, not yet written.
-        new_aliases: Slug → names the user said are that entity.
-        ignored_names: Names the user said are not people (this run).
         warnings: Problems found anywhere; nodes append.
         round_warnings: What the agent step says about its latest round (replaced each
             round, so a revise doesn't repeat old notes); the review shows both.
@@ -91,11 +76,8 @@ class IngestState(TypedDict, total=False):
     task_proposals: list[TaskProposal]
     chosen_projects: dict[int, str | None]
     done_tasks: list[DoneTask]
-    name_scan: NameScan
-    facts: Annotated[dict[str, SectionFacts], merge_facts]
     feedback: list[str]
     revisions: int
-    decision_pages: list[int]
     overrides: dict[str, str]
     fact_edits: list[Edit]
     diffs: list[FileDiff]
@@ -105,9 +87,6 @@ class IngestState(TypedDict, total=False):
     commit: str | None
     apply_conflicts: list[str]
     chosen_wins: list[int]
-    new_entities: list[Entity]
-    new_aliases: dict[str, list[str]]
-    ignored_names: list[str]
     warnings: Annotated[list[str], operator.add]
     round_warnings: list[str]
 
@@ -120,33 +99,3 @@ class IngestInput(TypedDict):
     """
 
     note_path: str
-
-
-class FindNamesInput(TypedDict):
-    """What `find_names` gets (sent alongside the extracts).
-
-    Attributes:
-        note: The parsed note.
-        task_projects: Task line → project slug or None; None lines may be grouped.
-    """
-
-    note: DailyNote
-    task_projects: dict[int, str | None]
-
-
-class ExtractInput(TypedDict, total=False):
-    """What one `extract` run gets (2e sends one per prose section).
-
-    Attributes:
-        note: The parsed note.
-        section_line: Start line of the section to read; also its key in `facts`.
-        previous: The section's facts from the last round, when revising.
-        feedback: The user's revise messages.
-        seen_lines: Keys of prose lines already ingested; they're context only.
-    """
-
-    note: DailyNote
-    section_line: int
-    previous: SectionFacts | None
-    feedback: list[str]
-    seen_lines: list[str]

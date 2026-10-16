@@ -35,13 +35,10 @@ MODELS = {
 
 
 def variant(name: str, examples: Path | None) -> Variant:
-    """Parse "<model>-<reviewer>[-pipeline|-examples]" into a Variant."""
+    """Parse "<model>-<reviewer>[-examples]" into a Variant."""
     parts = name.split("-")
     model, reviewer = MODELS[parts[0]], parts[1]
-    graph = "pipeline" if "pipeline" in parts else "agent"
-    v = Variant(
-        name=name, graph=graph, model=model, reviewer=reviewer, teacher=MODELS["ultra"]
-    )
+    v = Variant(name=name, model=model, reviewer=reviewer, teacher=MODELS["ultra"])
     if "examples" in parts:
         assert examples is not None, (
             "--examples-skills is needed for an -examples variant"

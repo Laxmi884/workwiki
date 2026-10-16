@@ -1,4 +1,4 @@
-"""The `ingest_agent` graph (decision 0006 spike): the 0004 graph with one agent step.
+"""The ingest graph (decision 0006): code steps around one deep-agent step.
 
     load_note ──(unchanged / broken ledger)──→ END
         ↓
@@ -8,10 +8,10 @@
            ├─ revise ─→ stage (feedback + the previous filing)
            ├─ answer ─→ pick_wins (picked wins become impact edits; code only)
            │              → map_tasks → render
-           └─ edit / make_page ─→ render  (fresh review)
+           └─ edit ─→ render  (fresh review)
 
-Code nodes are the 0004 ones. `stage` replaces extract, find_names and route: the
-agent reads the note and the vault and stages edits that `staging` checks.
+Code nodes live in `ingest/nodes.py`. In `stage` the agent reads the note and the vault
+and stages edits that `staging` checks.
 `map_tasks` is `track_tasks` again, now with the agent's task → project proposals and
 the user's answers (decision 0007).
 """
@@ -31,7 +31,7 @@ from langgraph.types import RetryPolicy
 
 from llm_wiki.diffs import VaultReader, vault_reader
 from llm_wiki.domain.changes import Edit
-from llm_wiki.entity_index import EntityIndex, load_index
+from llm_wiki.entity_index import load_index
 from llm_wiki.ingest import nodes
 from llm_wiki.ingest.state import IngestContext, IngestInput, IngestState
 from llm_wiki.ingest_agent.agent import (
@@ -51,7 +51,7 @@ from llm_wiki.ingest_agent.staging import (
     task_people_pages,
     with_mappings,
 )
-from llm_wiki.routing import route_facts
+from llm_wiki.routing import win_edits
 
 RECURSION_LIMIT = 120  # agent steps: ~2 per tool call
 
@@ -182,7 +182,7 @@ def stage(state: AgentIngestState, runtime: Runtime[IngestContext]) -> dict[str,
     questions = result.get("questions", [])
     return {
         "agent_edits": staged,
-        "fact_edits": staged + _win_edits(state, staged, read, entities),
+        "fact_edits": staged + _win_edits(state, staged, read),
         "agent_filed": [dataclasses.asdict(f) for f in filed],
         "task_proposals": kept_proposals,
         "questions": questions,
@@ -214,25 +214,13 @@ def _for_the_user(refusals: list[str], questions: list[str]) -> list[str]:
 
 
 def _win_edits(
-    state: AgentIngestState,
-    agent_edits: list[Edit],
-    read: VaultReader,
-    entities: EntityIndex,
+    state: AgentIngestState, agent_edits: list[Edit], read: VaultReader
 ) -> list[Edit]:
     """Return edits for the done tasks the user picked as wins (no model involved)."""
     chosen = set(state.get("chosen_wins", []))
     wins = [t for t in state.get("done_tasks", []) if t.line in chosen]
-    if not wins:
-        return []
     created = proposed_paths(agent_edits)
-    edits, _ = route_facts(
-        state["note"],
-        {},
-        entities,
-        lambda p: read(p) is not None or p in created,
-        task_wins=wins,
-    )
-    return edits
+    return win_edits(state["note"], wins, lambda p: read(p) is not None or p in created)
 
 
 def pick_wins(
@@ -241,7 +229,7 @@ def pick_wins(
     """After a review "answer": the agent's edits plus the picked wins (then map_tasks)."""
     vault = nodes.vault_path(runtime)
     agent_edits = state.get("agent_edits", [])
-    wins = _win_edits(state, agent_edits, vault_reader(vault), load_index(vault))
+    wins = _win_edits(state, agent_edits, vault_reader(vault))
     return {"fact_edits": agent_edits + wins, "round_warnings": []}
 
 

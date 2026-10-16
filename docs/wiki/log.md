@@ -16,6 +16,7 @@ Newest first. One entry per session, 2–5 bullets: what was done, what was lear
 - Next: user does notebook 11; then the 0006 cut-over.
 - **Cut-over planned (user chose):** drop `make_page` for now, keep the agent-only experiment harness; 3 steps. **Step 1 done:** runner default and `langgraph.json` `ingest` → agent graph; runner/apply/git tests run on it via `AgentRounds` (one script per round, records briefs); old runner tests pinned as `test_runner_0004.py` until step 3. 487 tests pass.
 - Review HTML goes in phase 7 with the other surfaces (user chose). LiveSync stays a user-run setup trial.
+- **Cut-over steps 2+3 (done together: step 2 alone would break the pipeline tests step 3 deletes):** review is now files, tasks, wins, warnings (no `make_page`, people questions or inbox); the 0004 pipeline is deleted (graph, extract/find_names/route nodes, `extraction`, `names`, `answers`, `domain/facts`, fact routing, round-1 script); shared helpers moved to `note_lines.py` and a slim `routing.py` (`win_edits`). Experiment harness agent-only. 415 tests pass (the rest were pipeline tests). Real run via the runner default: same mappings, tasks linked to `person-joanna`, 295 s (provider latency, no retries).
 
 ## 2026-10-15
 

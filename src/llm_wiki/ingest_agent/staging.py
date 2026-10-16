@@ -52,8 +52,8 @@ from llm_wiki.entity_index import (
     path_for,
     with_created,
 )
-from llm_wiki.extraction import line_key
 from llm_wiki.inline_syntax import find_links
+from llm_wiki.note_lines import line_key
 from llm_wiki.routing import (
     DECISIONS,
     HELP_GIVEN,
