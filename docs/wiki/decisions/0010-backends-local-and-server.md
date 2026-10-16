@@ -76,7 +76,7 @@ Target `langgraph.json` (S5):
   "image_distro": "wolfi",
   "source": { "kind": "uv" },
   "graphs": {
-    "ingest": "./src/llm_wiki/ingest_agent/graph.py:graph",
+    "ingest": "./src/llm_wiki/ingest/graph.py:graph",
     "assistant": "./src/llm_wiki/assistant/graph.py:make_graph"
   },
   "env": ".env",

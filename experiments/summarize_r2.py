@@ -1,7 +1,7 @@
 # ruff: noqa: T201  (a CLI script prints its tables)
 """Summarize 0006 round-2 results: one table per question the experiment asks.
 
-uv run python scripts/summarize_r2.py <out-dir>
+uv run python -m experiments.summarize_r2 <out-dir>
 """
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ from collections import defaultdict
 from pathlib import Path
 from statistics import mean
 
-from llm_wiki.ingest_agent.experiment import load_corpus
+from experiments.experiment import load_corpus
 
 PREFS = ["chores", "one_on_one", "customer", "interview", "state"]
 

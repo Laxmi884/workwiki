@@ -1,6 +1,6 @@
 """Code nodes of the ingest graph: note → task IDs and index → diffs → review → apply.
 
-The agent step (`ingest_agent/graph.py`, decision 0006) sits between `track_tasks` and
+The agent step (`graph.py`, decision 0006) sits between `track_tasks` and
 `render`. Each node reads the vault through `vault_reader` and returns a partial state
 update; only `apply` writes. The pure logic lives in `daily_syntax`, `task_tracking`,
 `ledger`, `review` and `apply`.

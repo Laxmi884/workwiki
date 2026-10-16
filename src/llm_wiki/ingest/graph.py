@@ -10,7 +10,7 @@
            │              → map_tasks → render
            └─ edit ─→ render  (fresh review)
 
-Code nodes live in `ingest/nodes.py`. In `stage` the agent reads the note and the vault
+Code nodes live in `nodes.py`, the agent in `agent.py`. In `stage` the agent reads the note and the vault
 and stages edits that `staging` checks.
 `map_tasks` is `track_tasks` again, now with the agent's task → project proposals and
 the user's answers (decision 0007).
@@ -33,14 +33,13 @@ from llm_wiki.diffs import VaultReader, vault_reader
 from llm_wiki.domain.changes import Edit
 from llm_wiki.entity_index import load_index
 from llm_wiki.ingest import nodes
-from llm_wiki.ingest.state import IngestContext, IngestInput, IngestState
-from llm_wiki.ingest_agent.agent import (
+from llm_wiki.ingest.agent import (
     SKILLS_DIR,
     AgentContext,
     build_brief,
     build_ingest_agent,
 )
-from llm_wiki.ingest_agent.staging import (
+from llm_wiki.ingest.staging import (
     Filed,
     StagingContext,
     citable_lines,
@@ -51,6 +50,7 @@ from llm_wiki.ingest_agent.staging import (
     task_people_pages,
     with_mappings,
 )
+from llm_wiki.ingest.state import IngestContext, IngestInput, IngestState
 from llm_wiki.routing import win_edits
 
 RECURSION_LIMIT = 120  # agent steps: ~2 per tool call
@@ -273,4 +273,4 @@ builder.add_conditional_edges(
 builder.add_edge("pick_wins", "map_tasks")
 builder.add_conditional_edges("apply", nodes.after_apply, ["render", END])
 
-graph = builder.compile(name="ingest_agent")
+graph = builder.compile(name="ingest")

@@ -1,6 +1,6 @@
 """Spike 0006 round 2: the corpus, the scoring and the scripted reviewer (no models)."""
 
-from llm_wiki.ingest_agent.experiment import (
+from experiments.experiment import (
     load_corpus,
     make_vault,
     oracle_feedback,

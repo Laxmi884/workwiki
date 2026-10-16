@@ -66,6 +66,9 @@ lint.ignore = [
 [tool.ruff.lint.pydocstyle]
 convention = "google"
 
+[tool.pytest.ini_options]
+pythonpath = ["."]  # tests import the spike harness in experiments/ (not part of llm_wiki)
+
 [dependency-groups]
 dev = [
     "anyio>=4.14.2",

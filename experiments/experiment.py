@@ -45,12 +45,12 @@ from langchain_core.tracers.context import register_configure_hook
 from pydantic import BaseModel, Field
 
 from llm_wiki.domain.changes import FileDiff, sha256_text
-from llm_wiki.ingest_agent.agent import SKILLS_DIR, _section_body
-from llm_wiki.ingest_agent.graph import builder as agent_builder
+from llm_wiki.ingest.agent import SKILLS_DIR, _section_body
+from llm_wiki.ingest.graph import builder as agent_builder
 from llm_wiki.models import choose_model_spec, make_chat_model
 from llm_wiki.runner import IngestRunner
 
-ROOT = Path(__file__).resolve().parents[3]
+ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = ROOT / "tests/fixtures/vault"
 CORPUS = ROOT / "tests/fixtures/corpus"
 PROJECT = "llm-wiki-r2"

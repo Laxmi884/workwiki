@@ -7,7 +7,7 @@ from langchain.agents import create_agent
 from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
 from langchain_core.messages import AIMessage, HumanMessage
 
-from llm_wiki.ingest_agent.agent import model_middleware
+from llm_wiki.ingest.agent import model_middleware
 
 
 class Overloaded(GenericFakeChatModel):

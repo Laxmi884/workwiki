@@ -29,8 +29,8 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langsmith import Client
 from pydantic import BaseModel, Field
 
-from llm_wiki.ingest_agent.agent import READ_TOOLS
-from llm_wiki.ingest_agent.experiment import CORPUS
+from experiments.experiment import CORPUS
+from llm_wiki.ingest.agent import READ_TOOLS
 from llm_wiki.models import choose_model_spec, make_chat_model
 
 DATASET = "llm-wiki-r2-qa"

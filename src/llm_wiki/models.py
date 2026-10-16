@@ -95,7 +95,7 @@ def without_sdk_retries(chat: BaseChatModel) -> BaseChatModel:
     to `max_retries` × 150 s, or a full hour when `max_retries=0` (no config means its
     default). One hung provider then stalls a run for many minutes with nothing in
     the logs. With "none", each request is sent once and a failure reaches our retry
-    middleware (`ingest_agent.agent.model_middleware`), which logs and backs off.
+    middleware (`ingest.agent.model_middleware`), which logs and backs off.
     """
     from openrouter.utils.retries import BackoffStrategy, RetryConfig  # noqa: PLC0415
 

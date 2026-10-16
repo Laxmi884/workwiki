@@ -5,7 +5,7 @@ Takes the teacher's approved filings on the first N corpus days that the labels 
 as right, plus the chores it correctly left out and one Current state it wrote, and
 writes them into a copy of the skills as wiki-filing/examples.md.
 
-    uv run python scripts/make_examples.py <out>/ultra-oracle.json <out>/vaults/ultra-oracle \
+    uv run python -m experiments.make_examples <out>/ultra-oracle.json <out>/vaults/ultra-oracle \
         <out>/skills-examples --days 5
 """
 
@@ -16,8 +16,8 @@ import json
 import shutil
 from pathlib import Path
 
-from llm_wiki.ingest_agent.agent import SKILLS_DIR, _section_body
-from llm_wiki.ingest_agent.experiment import CORPUS, load_corpus
+from experiments.experiment import CORPUS, load_corpus
+from llm_wiki.ingest.agent import SKILLS_DIR, _section_body
 
 
 def target_of(path: str) -> str:

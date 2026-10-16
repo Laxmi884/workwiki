@@ -29,7 +29,7 @@ the default). `add_node(..., input_schema=WiderState)` overrides it.
 - The review page used to read thread state (`note`, `agent_filed`, `task_ids`). Over the server
   those come back as JSON, so the review itself now carries them: `ReviewRequest.facts`
   (`ReviewFact`: path, section, text, line, quote), `note_date`, `task_ids_added`.
-- Node input: `src/llm_wiki/ingest_agent/graph.py` adds `review` with
+- Node input: `src/llm_wiki/ingest/graph.py` adds `review` with
   `input_schema=AgentIngestState`, otherwise `agent_filed` never reached `review_changes`.
 
 ## Paid-media reference

@@ -1,8 +1,8 @@
 # ruff: noqa: T201  (a CLI script prints its results)
 """Run the 0006 round-2 second-brain Q&A over finished vaults.
 
-    uv run python scripts/run_qa.py --vaults <out>/vaults/ultra-oracle --scope wiki
-    uv run python scripts/run_qa.py --vaults <out>/vaults/ultra-oracle --scope raw
+    uv run python -m experiments.run_qa --vaults <out>/vaults/ultra-oracle --scope wiki
+    uv run python -m experiments.run_qa --vaults <out>/vaults/ultra-oracle --scope raw
 
 Prints mean correctness per vault; details are in the LangSmith experiment.
 """
@@ -13,7 +13,7 @@ import argparse
 import json
 from pathlib import Path
 
-from llm_wiki.ingest_agent.qa import run_qa
+from experiments.qa import run_qa
 
 ANSWER = "openrouter:deepseek/deepseek-v4.1-flash"
 JUDGE = "openrouter:google/gemini-2.5-flash-lite"

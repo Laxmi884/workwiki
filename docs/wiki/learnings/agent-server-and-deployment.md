@@ -25,7 +25,7 @@ graphs must compile **without** a checkpointer; `langgraph dev` raises if one br
 
 ## How we used it
 
-- `langgraph.json` exports `ingest` (`ingest_agent/graph.py:graph`) and `assistant`
+- `langgraph.json` exports `ingest` (`ingest/graph.py:graph`) and `assistant`
   (`assistant/graph.py:make_graph`, a factory). A factory may take `ServerRuntime`, `RunnableConfig`,
   both or nothing (`langgraph_api/_factory_utils.py`); `runtime.execution_runtime.context` holds the run's
   context, and is None while the server only reads the schema.

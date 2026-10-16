@@ -10,10 +10,9 @@ from llm_wiki.daily_syntax import parse_daily_note
 from llm_wiki.diffs import vault_reader
 from llm_wiki.domain.changes import AppendToSection, CreateFile
 from llm_wiki.entity_index import load_index
-from llm_wiki.ingest import nodes
-from llm_wiki.ingest_agent import staging
-from llm_wiki.ingest_agent.graph import builder as agent_builder
-from llm_wiki.ingest_agent.staging import StagingContext, StagingError
+from llm_wiki.ingest import nodes, staging
+from llm_wiki.ingest.graph import builder as agent_builder
+from llm_wiki.ingest.staging import StagingContext, StagingError
 from llm_wiki.note_lines import line_key
 from llm_wiki.runner import IngestRunner
 
@@ -444,7 +443,7 @@ def test_existing_person_needs_their_name_in_the_line_parent_or_heading(ctx):
 
 
 def test_review_lists_dropped_facts_and_counts_other_refusals():
-    from llm_wiki.ingest_agent.graph import _for_the_user
+    from llm_wiki.ingest.graph import _for_the_user
 
     refusals = [
         "file_fact: line 8 doesn't name project-atlas",

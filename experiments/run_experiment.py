@@ -1,8 +1,8 @@
 # ruff: noqa: T201  (a CLI script prints its progress)
 """Run round-2 variants of the 0006 spike over the 20-day corpus (sequential days).
 
-    uv run python scripts/run_experiment.py --variants ultra-oracle --days 2
-    uv run python scripts/run_experiment.py --variants glimmer-oracle,qwen27-oracle
+    uv run python -m experiments.run_experiment --variants ultra-oracle --days 2
+    uv run python -m experiments.run_experiment --variants glimmer-oracle,qwen27-oracle
 
 Results: <out>/<variant>.json and <out>/vaults/<variant>/ (the finished wiki).
 """
@@ -12,7 +12,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from llm_wiki.ingest_agent.experiment import (
+from experiments.experiment import (
     Variant,
     load_corpus,
     run_variant,

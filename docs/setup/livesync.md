@@ -117,7 +117,7 @@ Test both ways: edit on the phone → see it on the Mac; edit on the Mac → see
 ## 8. Check it with the agent
 
 1. Write a short daily note on the phone in `00_raw/daily/`.
-2. On the Mac (Obsidian open), run ingest on it (`langgraph dev` → `ingest_agent`).
+2. On the Mac (Obsidian open), run ingest on it (`langgraph dev` → `ingest`).
 3. Once 3d (apply) exists: approve, then see the updated pages on the phone.
 
 ## Undo

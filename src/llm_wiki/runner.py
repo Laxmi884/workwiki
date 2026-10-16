@@ -33,8 +33,8 @@ import llm_wiki.domain
 from llm_wiki.backend.base import RunResult, run_result
 from llm_wiki.config import get_settings
 from llm_wiki.domain.review import ReviewAnswer
+from llm_wiki.ingest.graph import builder
 from llm_wiki.ingest.state import IngestContext
-from llm_wiki.ingest_agent.graph import builder
 
 
 def checkpoint_types() -> list[tuple[str, str]]:

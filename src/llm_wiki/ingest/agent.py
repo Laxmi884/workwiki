@@ -32,8 +32,8 @@ from llm_wiki.domain.changes import Edit
 from llm_wiki.domain.daily import DailyNote
 from llm_wiki.domain.task_index import DoneTask, TaskProposal
 from llm_wiki.entity_index import EntityIndex, path_for
-from llm_wiki.ingest_agent import staging
-from llm_wiki.ingest_agent.staging import (
+from llm_wiki.ingest import staging
+from llm_wiki.ingest.staging import (
     CURRENT_STATE,
     Filed,
     StagingContext,

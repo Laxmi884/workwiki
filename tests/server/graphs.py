@@ -22,7 +22,7 @@ from unit_tests.scripted_model import AgentRounds, EchoModel, bi_tool_decision
 from llm_wiki.assistant.agent import build_assistant
 from llm_wiki.assistant.graph import AssistantContext, run_choice
 from llm_wiki.ingest import nodes
-from llm_wiki.ingest_agent.graph import builder
+from llm_wiki.ingest.graph import builder
 
 nodes.chat_model = AgentRounds([bi_tool_decision()])
 nodes.fallback_models = lambda runtime: []

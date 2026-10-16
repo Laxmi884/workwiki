@@ -6,7 +6,7 @@
   "graphs": {
     "wiki": "./src/llm_wiki/chat/graph.py:graph",
     "assistant": "./src/llm_wiki/assistant/graph.py:make_graph",
-    "ingest": "./src/llm_wiki/ingest_agent/graph.py:graph"
+    "ingest": "./src/llm_wiki/ingest/graph.py:graph"
   },
   "env": ".env",
   "image_distro": "wolfi",

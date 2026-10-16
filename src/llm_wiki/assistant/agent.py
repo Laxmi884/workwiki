@@ -28,7 +28,7 @@ from langgraph.checkpoint.base import BaseCheckpointSaver
 from llm_wiki.assistant.tools import make_find_tasks
 from llm_wiki.diffs import vault_reader
 from llm_wiki.domain.brag import BragDraft
-from llm_wiki.ingest_agent.agent import READ_TOOLS, RULES_PATH, model_middleware
+from llm_wiki.ingest.agent import READ_TOOLS, RULES_PATH, model_middleware
 
 SKILLS_DIR = Path(__file__).parent / "skills"
 SUBAGENT_SKILLS_DIR = Path(__file__).parent / "subagent_skills"
