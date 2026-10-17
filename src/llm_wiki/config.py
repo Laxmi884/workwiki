@@ -17,7 +17,7 @@ from dotenv import load_dotenv
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
-from llm_wiki.models import ModelSpec
+from llm_wiki.models import ModelSpec, ReasoningEffort
 
 
 class Settings(BaseSettings):
@@ -44,6 +44,13 @@ class Settings(BaseSettings):
             OpenRouter calls that were still reasoning ran 206 s and over 460 s with
             the default (likely the connection stays active while the model works).
             Not applied to local Ollama models. Default 180.
+        reasoning_effort: `WIKI_REASONING_EFFORT`. How hard reasoning models think:
+            "max", "xhigh", "high", "medium", "low", "minimal" or "none" (reasoning
+            off). Sent to OpenRouter models only (the run's model and the fallbacks);
+            whether a model honours it is up to OpenRouter and the model. Ignored for
+            Anthropic (its effort field also turns thinking on) and Ollama (reasoning
+            already off). Unset: the provider's default. On 2026-10-16 single DeepSeek
+            calls with the default ran 81 s and 175 s, mostly reasoning tokens.
         backend: `WIKI_BACKEND`. How surfaces reach the agents (decision 0010):
             "local" (this process, our SQLite) or "server" (an Agent Server at
             `server_url`). Default "local".
@@ -64,6 +71,7 @@ class Settings(BaseSettings):
     model: str | None = None
     fallback_models: Annotated[tuple[str, ...], NoDecode] = ()
     model_timeout: float = Field(default=180.0, gt=0)
+    reasoning_effort: ReasoningEffort | None = None
     review_url: str = "http://127.0.0.1:2024"
     state_dir: Path = Path("~/.llm-wiki")
     backend: Literal["local", "server"] = "local"
@@ -94,6 +102,13 @@ class Settings(BaseSettings):
         if value is None or not value.strip():
             return None
         return ModelSpec.parse(value).spec  # fail at startup, not mid-run
+
+    @field_validator("reasoning_effort", mode="before")
+    @classmethod
+    def _effort(cls, value: object) -> object:
+        if isinstance(value, str):
+            return value.strip().lower() or None  # blank: provider default
+        return value
 
     @field_validator("fallback_models", mode="before")
     @classmethod

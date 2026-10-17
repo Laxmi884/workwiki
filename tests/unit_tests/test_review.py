@@ -2,7 +2,14 @@
 
 import pytest
 
-from llm_wiki.domain.changes import CreateFile, FileDiff
+from llm_wiki.domain.changes import (
+    RULES_PATH,
+    AppendId,
+    CreateFile,
+    FileDiff,
+    RememberRules,
+    ReplaceFile,
+)
 from llm_wiki.domain.review import ReviewPage, ReviewProject, ReviewQuestion, ReviewTask
 from llm_wiki.review import (
     approved_digests,
@@ -12,13 +19,22 @@ from llm_wiki.review import (
 )
 
 
+def _edit(path):
+    """An edit of the type allowed at `path` (a diff holds only its own file's)."""
+    if path.startswith("00_raw/"):
+        return AppendId(path=path, line_no=1, task_id="t-abc123")
+    if path.endswith(".json") or path == "05_generated/open-tasks.md":
+        return ReplaceFile(path=path, text="x\n")
+    return CreateFile(path=path, text="x\n")
+
+
 def _diff(path, before):
     return FileDiff(
         path=path,
         before_sha256=before,
         after_text="x\n",
         unified_diff=f"+x ({path})\n",
-        edits=(CreateFile(path="05_generated/a.md", text="x\n"),),
+        edits=(_edit(path),),
     )
 
 
@@ -66,6 +82,25 @@ def test_only_wiki_pages_are_editable_and_carry_their_text():
         ("f2", True, "x\n"),
         ("f3", False, ""),  # code-owned json: not editable, text not sent
     ]
+
+
+def test_the_rules_file_is_shown_but_not_editable():
+    # rules.md is the agents' memory: only the Rule box (code) writes it, so an edit
+    # answer can't put free text there.
+    rules = FileDiff(
+        path=RULES_PATH,
+        before_sha256=None,
+        after_text="# Rules\n\n## Rules\n- x\n",
+        unified_diff="+- x\n",
+        edits=(RememberRules(lines=("- x",)),),
+    )
+    request = build_request("n.md", [rules], [])
+    (file,) = request.files
+    assert (file.editable, file.required) == (False, False)
+    assert file.after_text == rules.after_text  # shown, so the user sees the rules
+    answer, error = check_answer(request, {"action": "edit", "file": "f1", "text": "x"})
+    assert answer is None
+    assert "f1 is 90_meta/rules.md, which only code writes" in error
 
 
 def test_revise_rounds_are_counted_down():

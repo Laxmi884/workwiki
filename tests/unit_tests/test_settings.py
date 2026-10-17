@@ -122,3 +122,23 @@ def test_review_page_and_ask_commands_load_dotenv(monkeypatch, tmp_path):
         monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
         command()
     assert seen == ["sk-test", "sk-test"]
+
+
+def test_reasoning_effort_default_unset(monkeypatch, tmp_path):
+    monkeypatch.delenv("WIKI_REASONING_EFFORT", raising=False)
+    assert Settings(_env_file=None, vault_path=tmp_path).reasoning_effort is None
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [("low", "low"), (" Minimal ", "minimal"), ("none", "none"), ("", None)],
+)
+def test_reasoning_effort_from_env(monkeypatch, tmp_path, raw, expected):
+    monkeypatch.setenv("WIKI_REASONING_EFFORT", raw)
+    assert Settings(_env_file=None, vault_path=tmp_path).reasoning_effort == expected
+
+
+def test_reasoning_effort_checked_at_startup(monkeypatch, tmp_path):
+    monkeypatch.setenv("WIKI_REASONING_EFFORT", "lowest")
+    with pytest.raises(pydantic.ValidationError, match="reasoning_effort"):
+        Settings(_env_file=None, vault_path=tmp_path)

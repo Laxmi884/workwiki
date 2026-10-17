@@ -12,11 +12,15 @@ Any provider `init_chat_model` supports works once its package is installed
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from langchain.chat_models import init_chat_model
 from langchain_core.language_models import BaseChatModel
 from pydantic import BaseModel, ConfigDict
+
+# OpenRouter's `reasoning.effort` values, most to least; "none" turns reasoning off.
+# https://openrouter.ai/docs/guides/best-practices/reasoning-tokens
+ReasoningEffort = Literal["max", "xhigh", "high", "medium", "low", "minimal", "none"]
 
 # Friendly names → init_chat_model provider names.
 _PROVIDER_ALIASES = {
@@ -86,6 +90,20 @@ def timeout_kwargs(provider: str, seconds: float | None) -> dict[str, Any]:
     if provider == "openrouter":
         return {"timeout": int(seconds * 1000)}
     return {"timeout": seconds}
+
+
+def reasoning_kwargs(provider: str, effort: ReasoningEffort | None) -> dict[str, Any]:
+    """Return the provider's reasoning-effort argument for `effort`, or {} for none.
+
+    Only OpenRouter gets one: `ChatOpenRouter(reasoning=...)` is sent as the request's
+    `reasoning` object, and OpenRouter maps the effort for models without a native
+    effort control (e.g. to a token budget). Anthropic's `reasoning_effort` field also
+    switches adaptive thinking on, so it is not mapped; Ollama already runs with
+    reasoning off. Unset leaves the provider's default.
+    """
+    if effort is None or provider != "openrouter":
+        return {}
+    return {"reasoning": {"effort": effort}}
 
 
 def without_sdk_retries(chat: BaseChatModel) -> BaseChatModel:

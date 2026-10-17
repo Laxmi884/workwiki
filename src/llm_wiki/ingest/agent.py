@@ -26,8 +26,9 @@ from deepagents.middleware import FilesystemMiddleware
 from langchain.agents.middleware import ModelFallbackMiddleware, ModelRetryMiddleware
 from langchain.tools import ToolRuntime, tool
 from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import ToolMessage
+from langchain_core.messages import AIMessage, ToolMessage
 from langgraph.types import Command
+from pydantic import ValidationError
 
 from llm_wiki.domain.changes import Edit
 from llm_wiki.domain.daily import DailyNote
@@ -125,6 +126,38 @@ def _live(runtime: ToolRuntime) -> tuple[list[Edit], list[Filed]]:
     return edits, filed
 
 
+def _mappings(runtime: ToolRuntime[AgentContext]) -> list[tuple[int, str | None, str]]:
+    """Return the task → project proposals as they stand once this turn is merged.
+
+    Parallel tool calls in one model turn all read the state from before the turn, so
+    a `map_task` beside a `file_fact` isn't in `mappings` yet (the 2026-10-16 run: a
+    fact citing a task mapped in the same turn was refused, then redone). The turn's
+    `map_task` calls are added in call order, each checked as `map_task` checks it;
+    one it would refuse doesn't count.
+    """
+    calls = list(runtime.state.get("mappings", []))
+    turn = next(
+        (
+            m.tool_calls
+            for m in reversed(runtime.state.get("messages", []))
+            if isinstance(m, AIMessage)
+            and any(c.get("id") == runtime.tool_call_id for c in m.tool_calls)
+        ),
+        [],
+    )
+    for c in turn:
+        if c["name"] != map_task.name:
+            continue
+        try:
+            args = map_task.tool_call_schema.model_validate(c["args"])
+            calls.append(
+                staging.stage_mapping(runtime.context.staging, **args.model_dump())
+            )
+        except (ValidationError, StagingError):
+            continue
+    return calls
+
+
 def _reply(runtime: ToolRuntime, text: str, **update: Any) -> Command:
     message = ToolMessage(text, tool_call_id=runtime.tool_call_id)
     return Command(update={**update, "messages": [message]})
@@ -154,9 +187,7 @@ def file_fact(
         line: The note line number the fact comes from.
         title: Only for decision-log: the decision as a short title.
     """
-    ctx = staging.with_mappings(
-        runtime.context.staging, runtime.state.get("mappings", [])
-    )
+    ctx = staging.with_mappings(runtime.context.staging, _mappings(runtime))
     try:
         edits, record = staging.stage_fact(
             ctx,

@@ -22,8 +22,9 @@ class ReviewFile(BaseModel):
         digest: The `FileDiff` digest; approval is for exactly this change.
         diff: Unified diff to show.
         editable: Whether an "edit" answer may replace its text (wiki pages only; not
-            the raw note or code-owned `90_meta/*.json`).
-        after_text: The proposed full text, the starting point for an edit.
+            the raw note, the open-tasks page or anything in `90_meta/`).
+        after_text: The proposed full text, the starting point for an edit; also
+            sent for `90_meta/rules.md`, to read.
         required: Bookkeeping (note task IDs, task index, open-tasks page, ingest
             ledger): written with every approval, never left out (decision 0013).
     """

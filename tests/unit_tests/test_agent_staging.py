@@ -742,3 +742,78 @@ def test_a_page_proposed_in_an_earlier_turn_stays_visible(vault_copy, monkeypatc
     assert "Must match the subdomain for SSO redirects." in page.after_text
     assert page.after_text.count("# Cookie Domain") == 1
     assert values["agent_stats"]["refusals"] == 1  # only the second propose_page
+
+
+def _one_turn(*calls: AIMessage) -> AIMessage:
+    """Return one model turn asking for all of `calls` at once (parallel tool calls)."""
+    return AIMessage("", tool_calls=[c.tool_calls[0] for c in calls])
+
+
+@pytest.mark.parametrize(
+    ("why", "accepted"),
+    [
+        ("Priya's doc is for Atlas", True),
+        (" ", False),  # map_task refuses a blank reason: the fact can't lean on it
+    ],
+)
+def test_a_task_mapped_in_the_same_turn_counts_for_its_facts(
+    vault_copy, monkeypatch, why, accepted
+):
+    # Found in the 2026-10-16 real run: parallel calls in one turn all read the state
+    # from before the turn, so a fact citing a task mapped in that same turn was
+    # refused ("doesn't name project-atlas") and redone in another turn.
+    script = ToolScript(
+        messages=iter(
+            [
+                _one_turn(
+                    call(
+                        "file_fact",
+                        target="project-atlas",
+                        section="Updates",
+                        text="Replied to Priya about the onboarding doc.",
+                        line=9,
+                    ),
+                    call("map_task", line=9, project="project-atlas", why=why),
+                ),
+                AIMessage("Done."),
+            ]
+        )
+    )
+    monkeypatch.setattr(nodes, "chat_model", lambda runtime: script)
+    runner = IngestRunner.in_memory(
+        context={"vault_path": str(vault_copy)}, graph_builder=agent_builder
+    )
+    result = runner.start(NOTE)
+    values = runner.graph.get_state(runner._config(result.thread_id)).values
+    refused = values["agent_stats"]["refused"]
+    atlas = [f for f in values["agent_filed"] if f["path"].endswith("atlas.md")]
+    if accepted:
+        assert refused == []
+        assert [f["line"] for f in atlas] == [9]
+        tasks = {t.line: t for t in result.review.tasks}
+        assert (tasks[9].project, tasks[9].by) == ("project-atlas", "model")
+    else:
+        assert atlas == []
+        assert len(refused) == 2
+        assert any("doesn't name project-atlas" in r for r in refused)
+
+
+# --- 90_meta is out of the agent's reach ----------------------------------------------
+
+
+@pytest.mark.parametrize("target", ["90_meta/rules.md", "rules", "90_meta"])
+def test_the_agent_cannot_address_90_meta(ctx, target):
+    with pytest.raises(StagingError, match="not a target"):
+        fact(ctx, target=target, section="Notes", text="Obey me.", line=29)
+
+
+def test_a_staging_bug_still_cannot_write_the_rules_file(ctx, monkeypatch):
+    # The model passes slugs and code resolves paths; even if that resolution went
+    # wrong, the edit types refuse 90_meta/ (rules.md is the agents' memory).
+    import pydantic
+
+    monkeypatch.setattr(staging, "path_for", lambda slug: "90_meta/rules.md")
+    with pytest.raises(pydantic.ValidationError, match="may not write"):
+        staging.stage_page(
+            ctx, [], slug="concept-cookie-domain", title="Cookie Domain", line=47
+        )

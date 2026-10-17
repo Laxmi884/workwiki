@@ -4,7 +4,8 @@ Pure. The user's own words become edits like any other change, approved with the
 rest of the review and never written silently:
 
 - a rule → a line under "## Rules" in `90_meta/rules.md` (created if missing), which
-  both agents read as memory;
+  both agents read as memory (`RememberRules`, the only edit type that may write
+  there);
 - an alias → the page's frontmatter `aliases:` (`AddAlias`), which task mapping reads.
 
 Code decides which is which: the review has a separate input for each (user choice,
@@ -15,19 +16,9 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
 
-from llm_wiki.domain.changes import AddAlias, AppendToSection, CreateFile, Edit
+from llm_wiki.domain.changes import RULES_PATH, AddAlias, Edit, RememberRules
 from llm_wiki.entity_index import name_key, path_for
 
-RULES_PATH = "90_meta/rules.md"
-RULES_HEADING = "## Rules"
-RULES_PAGE = """\
-# Rules
-
-Your rules for the wiki agents, added from your reviews. Both agents read this file
-and follow it over their own skills. Edit it freely.
-
-## Rules
-"""
 MAX_RULE = 300
 MAX_NAME = 80
 
@@ -89,22 +80,17 @@ def remember_edits(
 ) -> list[Edit]:
     """Return the edits that remember `rules` and `aliases` (name → slug).
 
-    Rules already in the file (as a "- rule" line) are skipped. An alias edit on a
-    page proposed in this review lands on the proposed text (render applies edits
-    in order).
+    Rules already in the file (as a "- rule" line) are skipped; rendering creates
+    the file if it is missing. An alias edit on a page proposed in this review lands
+    on the proposed text (render applies edits in order).
     """
     edits: list[Edit] = []
     current = read(RULES_PATH)
     have = set((current or "").splitlines())
     lines = tuple(dict.fromkeys(f"- {clean(r)}" for r in rules))
     lines = tuple(line for line in lines if line not in have)
-    if lines and current is None:
-        text = RULES_PAGE + "\n".join(lines) + "\n"
-        edits.append(CreateFile(path=RULES_PATH, text=text))
-    elif lines:
-        edits.append(
-            AppendToSection(path=RULES_PATH, heading=RULES_HEADING, lines=lines)
-        )
+    if lines:
+        edits.append(RememberRules(lines=lines))
     edits += [
         AddAlias(path=path_for(slug), alias=clean(name))
         for name, slug in aliases.items()

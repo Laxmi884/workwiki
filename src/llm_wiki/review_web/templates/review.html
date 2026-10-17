@@ -180,8 +180,11 @@ select.task-pick { font: 600 16px/1.3 var(--serif); color: var(--ink); backgroun
       <summary>Show the exact change</summary>
       <pre class="diff">{% for kind, line in diff_lines(card.file.diff) %}<span class="{{ kind }}">{{ line }}</span>{% endfor %}</pre>
     </details>
+    {% if card.file.editable %}
     <button type="button" class="linkish open-editor" aria-controls="edit-{{ card.file.id }}">Edit this page</button>
+    {% endif %}
   </div>
+  {% if card.file.editable %}
   <form class="editor" id="edit-{{ card.file.id }}" data-file="{{ card.file.id }}" hidden>
     <textarea name="text" aria-label="Full text of {{ card.title }}" spellcheck="true">{{ card.file.after_text }}</textarea>
     <div class="editor-bar">
@@ -190,6 +193,7 @@ select.task-pick { font: 600 16px/1.3 var(--serif); color: var(--ink); backgroun
       <button type="submit" class="go">Use my text</button>
     </div>
   </form>
+  {% endif %}
 </section>
 {% endfor %}
 

@@ -1,11 +1,13 @@
 import pydantic
 import pytest
 
+from llm_wiki import model_setup
 from llm_wiki.config import Settings
 from llm_wiki.models import (
     ModelSpec,
     choose_model_spec,
     make_chat_model,
+    reasoning_kwargs,
     timeout_kwargs,
     without_sdk_retries,
 )
@@ -108,3 +110,68 @@ def test_openrouter_model_gets_the_timeout_and_no_sdk_retries(monkeypatch):
     assert chat.request_timeout == 2500
     assert without_sdk_retries(chat) is chat
     assert chat.client.sdk_configuration.retry_config.strategy == "none"
+
+
+# --- reasoning effort (WIKI_REASONING_EFFORT) ------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("provider", "expected"),
+    [
+        ("openrouter", {"reasoning": {"effort": "low"}}),
+        ("anthropic", {}),  # its effort field also turns thinking on: not mapped
+        ("ollama", {}),  # local models already run with reasoning off
+    ],
+)
+def test_reasoning_kwargs(provider, expected):
+    assert reasoning_kwargs(provider, "low") == expected
+    assert reasoning_kwargs(provider, None) == {}
+
+
+def test_openrouter_request_carries_the_effort(monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test")
+    chat = model_setup.build_model(
+        ModelSpec.parse("openrouter:deepseek/deepseek-v4.1-flash"),
+        reasoning_effort="low",
+    )
+    assert chat.reasoning == {"effort": "low"}
+    # The params ChatOpenRouter passes to `client.chat.send` (built offline).
+    assert chat._default_params["reasoning"] == {"effort": "low"}
+
+
+def test_no_effort_adds_nothing(monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test")
+    chat = model_setup.build_model(ModelSpec.parse("openrouter:openai/gpt-5-mini"))
+    assert chat.reasoning is None
+    assert "reasoning" not in chat._default_params
+
+
+def test_other_providers_ignore_the_effort(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test")
+    claude = model_setup.build_model(
+        ModelSpec.parse("anthropic:claude-haiku-5-5"), reasoning_effort="low"
+    )
+    assert claude.reasoning_effort is None
+    assert claude.thinking is None
+    local = model_setup.build_model(
+        ModelSpec.parse("ollama:llama3.1:8b"), reasoning_effort="high"
+    )
+    assert local.reasoning is False  # unchanged: no hidden thinking locally
+
+
+def test_configured_models_use_the_setting(monkeypatch, tmp_path):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test")
+    (tmp_path / "vault").mkdir()
+    settings = Settings(
+        _env_file=None,
+        vault_path=tmp_path / "vault",
+        state_dir=tmp_path / "state",
+        model="openrouter:deepseek/deepseek-v4.1-flash",
+        fallback_models=("openrouter:openai/gpt-5-mini", "ollama:qwen3"),
+        reasoning_effort="minimal",
+    )
+    monkeypatch.setattr(model_setup, "get_settings", lambda: settings)
+    main = model_setup.configured_model()
+    remote, local = model_setup.configured_fallbacks()
+    assert main.reasoning == remote.reasoning == {"effort": "minimal"}
+    assert local.reasoning is False

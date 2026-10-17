@@ -1,9 +1,12 @@
 """Remember (0009 R3): rules and aliases → checked, then proposed edits (pure)."""
 
+import json
+
 import pytest
 
 from llm_wiki.diffs import render_diffs
-from llm_wiki.domain.changes import AddAlias, AppendToSection, CreateFile
+from llm_wiki.domain.changes import RULES_PAGE, AddAlias, RememberRules
+from llm_wiki.ingest.state import STORED_AS_JSON
 from llm_wiki.remember import (
     RULES_PATH,
     check_aliases,
@@ -22,14 +25,17 @@ def _vault(files):
 
 
 def test_first_rule_creates_the_rules_file():
-    edits = remember_edits(["Don't  file\nlunch plans"], {}, _vault({}))
-    (create,) = edits
-    assert isinstance(create, CreateFile) and create.path == RULES_PATH
-    assert create.text.endswith("## Rules\n- Don't file lunch plans\n")
+    read = _vault({})
+    edits = remember_edits(["Don't  file\nlunch plans"], {}, read)
+    assert edits == [RememberRules(lines=("- Don't file lunch plans",))]
+    (diff,), warnings = render_diffs(edits, read)
+    assert not warnings and diff.path == RULES_PATH and diff.before_sha256 is None
+    assert diff.after_text == RULES_PAGE + "- Don't file lunch plans\n"
 
 
 def test_later_rules_are_appended_and_repeats_skipped():
-    rules = "# Rules\n\n## Rules\n- Don't file lunch plans\n"
+    rules = "# Rules\n\n## Rules\n- Don't file lunch plans\n\n## Mine\n- keep\n"
+    read = _vault({RULES_PATH: rules})
     edits = remember_edits(
         [
             "Don't file lunch plans",
@@ -37,19 +43,25 @@ def test_later_rules_are_appended_and_repeats_skipped():
             "Atlas is the analytics app",
         ],
         {},
-        _vault({RULES_PATH: rules}),
+        read,
     )
-    assert edits == [
-        AppendToSection(
-            path=RULES_PATH,
-            heading="## Rules",
-            lines=("- Atlas is the analytics app",),
-        )
-    ]
-    assert (
-        remember_edits(["Don't file lunch plans"], {}, _vault({RULES_PATH: rules}))
-        == []
+    assert edits == [RememberRules(lines=("- Atlas is the analytics app",))]
+    (diff,), _ = render_diffs(edits, read)
+    assert diff.after_text == (
+        "# Rules\n\n## Rules\n- Don't file lunch plans\n"
+        "- Atlas is the analytics app\n\n## Mine\n- keep\n"
     )
+    assert remember_edits(["Don't file lunch plans"], {}, read) == []
+
+
+def test_an_approved_rule_survives_a_checkpoint_round_trip():
+    read = _vault({})
+    edits = remember_edits(["Don't file lunch plans"], {}, read)
+    diffs, _ = render_diffs(edits, read)
+    for field, value in (("agent_edits", edits), ("diffs", diffs)):
+        codec = STORED_AS_JSON[field]
+        stored = codec.dump_python(value, mode="json")
+        assert codec.validate_python(json.loads(json.dumps(stored))) == value
 
 
 def test_an_alias_is_an_aliases_edit_on_its_page():

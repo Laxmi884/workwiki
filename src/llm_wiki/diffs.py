@@ -16,12 +16,14 @@ import yaml
 
 from llm_wiki.domain.changes import (
     RAW_DAILY_FOLDER,
+    RULES_HEADING,
+    RULES_PAGE,
     AddAlias,
     AppendId,
-    AppendToSection,
     CreateFile,
     Edit,
     FileDiff,
+    RememberRules,
     ReplaceFile,
     ReplaceSection,
     UserText,
@@ -104,17 +106,17 @@ def _with_final_eol(lines: list[str], eol: str) -> list[str]:
     return lines
 
 
-def _append_to_section(text: str, edit: AppendToSection) -> str:
+def _append_to_section(text: str, heading: str, added: Sequence[str]) -> str:
     """Insert after the section's last non-blank line; add the heading at the end if missing."""
     eol = _eol(text)
     lines = text.splitlines(keepends=True)
-    new = [line + eol for line in edit.lines]
-    found = _find_section(lines, edit.heading)
+    new = [line + eol for line in added]
+    found = _find_section(lines, heading)
 
     if found is None:
         lines = _with_final_eol(lines, eol)
         gap = [eol] if lines and lines[-1].strip() else []
-        return "".join([*lines, *gap, edit.heading + eol, *new])
+        return "".join([*lines, *gap, heading + eol, *new])
 
     start, end = found
     insert_at = start + 1
@@ -152,6 +154,10 @@ def apply_edit(text: str | None, edit: Edit) -> str:
         if text is not None:
             raise RenderError("file already exists")
         return edit.text
+    if isinstance(edit, RememberRules):
+        return _append_to_section(
+            RULES_PAGE if text is None else text, RULES_HEADING, edit.lines
+        )
     if text is None:
         raise RenderError("file does not exist")
     if isinstance(edit, AppendId):
@@ -160,7 +166,7 @@ def apply_edit(text: str | None, edit: Edit) -> str:
         return _add_alias(text, edit)
     if isinstance(edit, ReplaceSection):
         return _replace_section(text, edit)
-    return _append_to_section(text, edit)
+    return _append_to_section(text, edit.heading, edit.lines)
 
 
 def _replace_section(text: str, edit: ReplaceSection) -> str:

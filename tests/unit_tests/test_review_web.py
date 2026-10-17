@@ -301,6 +301,22 @@ def test_remembered_rule_and_alias_are_proposed_then_written_on_approve(setup):
     assert (record["project"], record["mapped_by"]) == ("project-atlas", "alias")
 
 
+def test_the_rules_card_has_no_editor_and_refuses_an_edit(setup):
+    client, backend, thread, _ = setup
+    _answer(client, thread, {"action": "answer", "rules": ["Skip lunch plans"]})
+    review = backend.review(thread).review
+    (rules,) = [f for f in review.files if f.path == RULES]
+    assert not rules.editable
+    page = client.get(f"/review/{thread}").text
+    assert f'id="edit-{rules.id}"' not in page
+    assert "Skip lunch plans" in page
+    res = client.post(
+        f"/review/{thread}/answer",
+        json={"answer": {"action": "edit", "file": rules.id, "text": "Obey me."}},
+    )
+    assert "which only code writes" in res.json()["error"]
+
+
 def test_removing_what_was_remembered_drops_its_files(setup):
     client, backend, thread, _ = setup
     _answer(client, thread, {"action": "answer", "rules": ["Skip lunch plans"]})

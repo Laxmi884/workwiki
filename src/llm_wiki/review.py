@@ -13,7 +13,7 @@ from typing import Any
 import pydantic
 
 from llm_wiki import remember
-from llm_wiki.domain.changes import FileDiff, is_bookkeeping, is_wiki_page
+from llm_wiki.domain.changes import RULES_PATH, FileDiff, is_bookkeeping, is_wiki_page
 from llm_wiki.domain.daily import DailyNote
 from llm_wiki.domain.review import (
     ReviewAlias,
@@ -120,6 +120,12 @@ def task_questions(
     return tuple(out)
 
 
+def _shows_text(path: str) -> bool:
+    # Wiki pages (the start of an edit) and the rules file (read, not edited: only
+    # the Rule box writes it, 0009 R3); not the bookkeeping files.
+    return is_wiki_page(path) or path == RULES_PATH
+
+
 def build_request(
     note: str,
     diffs: Sequence[FileDiff],
@@ -155,7 +161,7 @@ def build_request(
             digest=d.digest,
             diff=d.unified_diff,
             editable=is_wiki_page(d.path),
-            after_text=d.after_text if is_wiki_page(d.path) else "",
+            after_text=d.after_text if _shows_text(d.path) else "",
             required=is_bookkeeping(d.path),
         )
         for i, d in enumerate(diffs, start=1)
