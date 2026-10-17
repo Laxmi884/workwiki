@@ -34,7 +34,11 @@ None specific; the lesson is general: keep retries in the one layer you can see.
 - A request timeout is not a deadline (2026-10-16 real run, seen in LangSmith): with `WIKI_MODEL_TIMEOUT=180`, DeepSeek Flash calls on OpenRouter ran 206 s and 460 s+ while reasoning (one returned 13.8k output tokens). Likely the connection stays active, so the timeout only catches a silent provider. Slowness there came from extra turns (a staging bug made the agent loop) and long reasoning, not from a hang: read the trace before blaming the provider.
 - Slow isn't failed: long reasoning needs a smaller effort, not a retry. `WIKI_REASONING_EFFORT` (2026-10-17)
   sends `ChatOpenRouter(reasoning={"effort": ...})` for OpenRouter models only; unset keeps the provider default.
-  Whether DeepSeek Flash honours it is unverified (needs a paid run). Notebook 3.7 section 4b.
+  Measured 2026-10-17 (DeepSeek Flash; user approved the paid test, $0.03): one call unset 71–135 s / 3.4k–8.3k
+  reasoning tokens, `low` 82–86 s / ~3.5k steady, `none` 4.7 s / 0. Full ingest of the 2026-10-14 note on a scratch
+  vault: unset 4 min 35 s (2026-10-16), `low` 110 s (10 calls, 0 refusals, closest to the approved review), `none`
+  47 s (asked instead of creating Risk culture, nothing on loss history). Neither wrote "Current state"
+  summaries. `low` set in `.env`. Notebook 3.7 section 4b.
 
 ## In my words
 
