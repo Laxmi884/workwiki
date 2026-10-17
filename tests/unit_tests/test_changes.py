@@ -129,8 +129,21 @@ def test_diff_needs_at_least_one_edit():
 # --- ReplaceFile ----------------------------------------------------------------
 
 
-def test_replace_file_only_for_meta_json():
+def test_replace_file_only_for_code_owned_files():
     assert ReplaceFile(path="90_meta/tasks.json", text="{}").kind == "replace_file"
-    for path in ("90_meta/notes.md", "20_people/person-sam.json", "00_raw/x.json"):
+    assert ReplaceFile(path="05_generated/open-tasks.md", text="# Open tasks\n")
+    for path in (
+        "90_meta/notes.md",
+        "20_people/person-sam.json",
+        "00_raw/x.json",
+        "05_generated/brief.md",  # only the open-tasks page is code-owned there
+    ):
         with pytest.raises(pydantic.ValidationError, match="whole-file rewrites"):
             ReplaceFile(path=path, text="{}")
+
+
+def test_the_open_tasks_page_is_not_editable_in_the_review():
+    from llm_wiki.domain.changes import is_wiki_page
+
+    assert not is_wiki_page("05_generated/open-tasks.md")
+    assert is_wiki_page("05_generated/brief.md")

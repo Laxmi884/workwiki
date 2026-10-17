@@ -49,9 +49,10 @@ def test_start_pauses_at_the_review(runner, model):
     assert review.note == NOTE
     assert [(f.id, f.path) for f in review.files] == [
         ("f1", NOTE),
-        ("f2", DECISION_LOG),
-        ("f3", "90_meta/ingest-ledger.json"),
-        ("f4", "90_meta/tasks.json"),
+        ("f2", "05_generated/open-tasks.md"),  # decision 0012
+        ("f3", DECISION_LOG),
+        ("f4", "90_meta/ingest-ledger.json"),
+        ("f5", "90_meta/tasks.json"),
     ]
     assert "### Keep the old BI tool until Q1" in _file(result, DECISION_LOG).after_text
     assert "   [task t-q7m2xa; open; project project-atlas]" in model.briefs[0]
@@ -67,10 +68,11 @@ def test_bad_answer_asks_again_then_approve_some(runner):
         f.digest for f in started.review.files
     ]  # same changes, nothing re-run
 
-    done = runner.resume(started.thread_id, {"action": "approve", "reject": ["f2"]})
+    log = _file(started, DECISION_LOG).id
+    done = runner.resume(started.thread_id, {"action": "approve", "reject": [log]})
     assert done.status == "done" and done.action == "approve"
     assert list(done.approved) == [
-        f.digest for f in started.review.files if f.id != "f2"
+        f.digest for f in started.review.files if f.id != log
     ]
 
 

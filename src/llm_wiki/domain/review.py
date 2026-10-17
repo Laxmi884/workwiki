@@ -57,6 +57,24 @@ class ReviewFact(BaseModel):
     quote: str = ""
 
 
+class ReviewQuestion(BaseModel):
+    """A question the agent asked about one note line, answered in the review.
+
+    Attributes:
+        id: Short handle for answers, e.g. "q1".
+        line: The note line it is about.
+        quote: That line as written, without bullet, checkbox or task ID.
+        text: The question.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    id: str
+    line: int
+    quote: str = ""
+    text: str
+
+
 class ReviewWin(BaseModel):
     """A task done in this note; picked ones go to the impact page as wins.
 
@@ -158,6 +176,7 @@ class ReviewRequest(BaseModel):
         projects: The projects a task answer may name, by title; the same list the
             answer is checked against.
         facts: What the agent filed, per page, with the note lines cited.
+        questions: The agent's questions; answered together as one "revise".
         rules: Rules the user asked to remember in this review; approved, they are
             added to `90_meta/rules.md`, which both agents read (0009 R3).
         aliases: Names the user asked to remember, each added to its page's
@@ -180,6 +199,7 @@ class ReviewRequest(BaseModel):
     tasks: tuple[ReviewTask, ...] = ()
     projects: tuple[ReviewProject, ...] = ()
     facts: tuple[ReviewFact, ...] = ()
+    questions: tuple[ReviewQuestion, ...] = ()
     rules: tuple[str, ...] = ()
     aliases: tuple[ReviewAlias, ...] = ()
     pages: tuple[ReviewPage, ...] = ()
@@ -194,12 +214,11 @@ Action = Literal["approve", "reject", "revise", "edit", "answer"]
 _FIELDS: dict[str, set[str]] = {
     "approve": {"reject"},
     "reject": set(),
-    "revise": {"feedback", "remember"},
+    "revise": {"feedback", "remember", "answers"},
     "edit": {"file", "text"},
     "answer": {"wins", "tasks", "rules", "aliases"},
 }
 _REQUIRED: dict[str, set[str]] = {
-    "revise": {"feedback"},
     "edit": {"file", "text"},
 }
 
@@ -218,6 +237,7 @@ class ReviewAnswer(BaseModel):
         {"action": "answer", "rules": ["Skip lunch notes"],
          "aliases": {"Sammy": "person-sam-ortiz"}}            remember
         {"action": "revise", "feedback": "...", "remember": true}  and keep it as a rule
+        {"action": "revise", "answers": {"q1": "Risk analytics work"}}  answer questions
 
     Attributes:
         action: What to do.
@@ -232,6 +252,8 @@ class ReviewAnswer(BaseModel):
         aliases: answer: name → page slug, the names to remember; replaces the
             earlier list.
         remember: revise: also remember the feedback as a rule.
+        answers: revise: question ID → the user's answer; code adds them to the
+            feedback, so feedback is optional when answers are given.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -246,12 +268,13 @@ class ReviewAnswer(BaseModel):
     rules: tuple[str, ...] | None = None
     aliases: dict[str, str] | None = None
     remember: bool = False
+    answers: dict[str, str] | None = None
 
     @model_validator(mode="after")
     def _fields_match_action(self) -> ReviewAnswer:
         given = {
             name
-            for name in ("reject", "feedback", "file", "text", "tasks")
+            for name in ("reject", "feedback", "file", "text", "tasks", "answers")
             if getattr(self, name) not in (None, (), "", {})
         }
         # [] / {} are answers too: pick none, forget all
@@ -266,4 +289,8 @@ class ReviewAnswer(BaseModel):
             raise ValueError(f'"{self.action}" needs {", ".join(missing)}')
         if self.action == "answer" and not given:
             raise ValueError('"answer" needs wins, tasks, rules or aliases')
+        if self.action == "revise" and not given & {"feedback", "answers"}:
+            raise ValueError('"revise" needs feedback or answers')
+        if self.remember and "feedback" not in given:
+            raise ValueError("remember keeps the feedback as a rule: give feedback")
         return self

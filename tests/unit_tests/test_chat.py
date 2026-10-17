@@ -45,6 +45,11 @@ TODAY = datetime.date(2026, 10, 16)
             {"action": "answer", "tasks": {"m1": "project-x", "m2": "none"}},
         ),
         ("/wins none", "answer", {"action": "answer", "wins": []}),
+        (
+            "/answer q1 Risk analytics\nwork",
+            "answer",
+            {"action": "revise", "answers": {"q1": "Risk analytics work"}},
+        ),
         ("/review", "review", None),
     ],
 )
@@ -64,6 +69,9 @@ def test_parse_commands(text, kind, value):
         "/edit f3",
         "/tasks m1",
         "/wins",
+        "/answer",
+        "/answer q1",
+        "/answer 1 Risk",
         "/remember",
         "/alias Sammy",
         "/alias = person-sam-ortiz",

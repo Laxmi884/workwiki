@@ -3,8 +3,13 @@
 import pytest
 
 from llm_wiki.domain.changes import CreateFile, FileDiff
-from llm_wiki.domain.review import ReviewPage, ReviewProject, ReviewTask
-from llm_wiki.review import approved_digests, build_request, check_answer
+from llm_wiki.domain.review import ReviewPage, ReviewProject, ReviewQuestion, ReviewTask
+from llm_wiki.review import (
+    approved_digests,
+    build_request,
+    check_answer,
+    revise_feedback,
+)
 
 
 def _diff(path, before):
@@ -206,3 +211,50 @@ def test_valid_remember_answers(raw):
 )
 def test_bad_remember_answers(raw, error):
     assert error in check_answer(REMEMBER, raw)[1]
+
+
+# --- the agent's questions ---------------------------------------------------------
+
+ASKED = build_request(
+    "00_raw/daily/2026-10-12.md",
+    DIFFS,
+    [],
+    can_revise=True,
+    questions=[
+        ReviewQuestion(id="q1", line=9, quote="Add jfrog CI", text="Which project?"),
+        ReviewQuestion(id="q2", line=12, quote="Ask Eugene", text="Who is Eugene?"),
+    ],
+)
+
+
+def test_answers_become_the_feedback_the_agent_reads():
+    answer, error = check_answer(
+        ASKED,
+        {
+            "action": "revise",
+            "answers": {"q1": "Risk  analytics\nwork"},
+            "feedback": "Also skip lunch.",
+        },
+    )
+    assert error is None
+    assert revise_feedback(ASKED, answer) == (
+        'Line 9 ("Add jfrog CI") you asked: Which project? Answer: Risk analytics work\n'
+        "Also skip lunch."
+    )
+
+
+@pytest.mark.parametrize(
+    ("raw", "error"),
+    [
+        ({"action": "revise", "answers": {"q9": "x"}}, "unknown question ids ['q9']"),
+        ({"action": "revise", "answers": {"q1": "  "}}, "q1: the answer is empty"),
+        ({"action": "revise", "answers": {"q1": "x" * 501}}, "at most 500"),
+        (
+            {"action": "revise", "answers": {"q1": "x"}, "remember": True},
+            "remember keeps the feedback",
+        ),
+        ({"action": "answer", "answers": {"q1": "x"}}, "answers not allowed"),
+    ],
+)
+def test_bad_question_answers(raw, error):
+    assert error in check_answer(ASKED, raw)[1]

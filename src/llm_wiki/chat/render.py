@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 from llm_wiki.backend import RunResult
+from llm_wiki.domain.changes import OPEN_TASKS_PATH
 from llm_wiki.domain.review import ReviewRequest
 
 MAX_DIFF_LINES = 80
 
 
 def _is_code_owned(path: str) -> bool:
-    return path.startswith("90_meta/") and path.endswith(".json")
+    return (path.startswith("90_meta/") and path.endswith(".json")) or (
+        path == OPEN_TASKS_PATH
+    )
 
 
 def _diff_block(diff: str) -> str:
@@ -30,6 +33,12 @@ def render_review(review: ReviewRequest, link: str | None = None) -> str:
         out.append(f"[Open the review page]({link}) to see and answer it there.")
     if review.error:
         out.append(f"⚠️ Not accepted: {review.error}")
+    if review.questions:
+        out.append("**The agent asks** (answer with `/answer q1 <your answer>`):")
+        out += [
+            f"- `{q.id}` L{q.line} {q.text}" + (f" _(“{q.quote}”)_" if q.quote else "")
+            for q in review.questions
+        ]
     out.append("**Files** (approval covers exactly these changes):")
     for f in review.files:
         mine = " (your edit)" if f.path in review.edited else ""

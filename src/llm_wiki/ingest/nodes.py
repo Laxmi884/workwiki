@@ -17,7 +17,15 @@ from langgraph.graph import END
 from langgraph.runtime import Runtime
 from langgraph.types import interrupt
 
-from llm_wiki import ledger, note_lines, remember, review, task_tracking, vault_git
+from llm_wiki import (
+    ledger,
+    note_lines,
+    open_tasks,
+    remember,
+    review,
+    task_tracking,
+    vault_git,
+)
 from llm_wiki.apply import ApplyConflict, apply_diffs
 from llm_wiki.config import get_settings
 from llm_wiki.daily_syntax import parse_daily_note
@@ -147,6 +155,8 @@ def assign_ids(state: IngestState, runtime: Runtime[IngestContext]) -> dict[str,
 def track_tasks(state: IngestState, runtime: Runtime[IngestContext]) -> dict[str, Any]:
     """Fold the note's tasks into `90_meta/tasks.json` (status, project, people).
 
+    Also rewrites `05_generated/open-tasks.md` from the updated index (decision 0012).
+
     Runs again after an "answer" in the review, with the answered pages known, so the
     index is rebuilt from the vault's copy each time (the old rewrite is replaced).
     The agent graph also runs it after its agent step (as `map_tasks`): the model's
@@ -173,14 +183,15 @@ def track_tasks(state: IngestState, runtime: Runtime[IngestContext]) -> dict[str
         updated, _ = task_tracking.update_task_index(
             index, note, new_ids, entities, chosen
         )
-    edits = [
-        e
-        for e in state.get("task_edits", [])
-        if e.path != task_tracking.TASK_INDEX_PATH
-    ]
+    rebuilt = (task_tracking.TASK_INDEX_PATH, open_tasks.OPEN_TASKS_PATH)
+    edits = [e for e in state.get("task_edits", []) if e.path not in rebuilt]
     if updated != index:
         text = task_tracking.dump_task_index(updated)
         edits.append(ReplaceFile(path=task_tracking.TASK_INDEX_PATH, text=text))
+    # The open-tasks page (0012), from the index as it will be; render_diffs drops it
+    # when the page already says this.
+    page = open_tasks.render_open_tasks(updated, entities)
+    edits.append(ReplaceFile(path=open_tasks.OPEN_TASKS_PATH, text=page))
 
     projects: dict[int, str | None] = {}
     done: list[DoneTask] = []
@@ -292,12 +303,14 @@ def review_changes(
         ),
         key=lambda p: p.title.lower(),
     )
+    questions = review.agent_questions(state["note"], state.get("questions", []))
     request = review.build_request(
         state["note"].path,
         state.get("diffs", []),
         [*state.get("warnings", []), *state.get("round_warnings", [])],
         revisions=state.get("revisions", 0),
-        can_revise=_can_revise(state),
+        # answering the agent's questions is a revise, even on a note with no new prose
+        can_revise=_can_revise(state) or bool(questions),
         edited=list(overrides),
         done_tasks=state.get("done_tasks", []),
         chosen_wins=state.get("chosen_wins", []),
@@ -309,6 +322,7 @@ def review_changes(
         ),
         projects=projects,
         facts=review.filed_facts(state["note"], state.get("agent_filed", [])),
+        questions=questions,
         rules=state.get("remembered_rules", []),
         aliases=state.get("remembered_aliases", {}),
         pages=pages,
@@ -327,14 +341,17 @@ def review_changes(
     if answer.action in ("approve", "reject"):
         update["approved"] = review.approved_digests(request, answer)
     elif answer.action == "revise":
-        assert answer.feedback is not None
         update |= {
-            "feedback": [*state.get("feedback", []), answer.feedback],
+            "feedback": [
+                *state.get("feedback", []),
+                review.revise_feedback(request, answer),
+            ],
             "revisions": state.get("revisions", 0) + 1,
             "overrides": {},
             "warnings": dropped,
         }
         if answer.remember:
+            assert answer.feedback is not None
             rules = state.get("remembered_rules", [])
             update["remembered_rules"] = list(
                 dict.fromkeys([*rules, remember.clean(answer.feedback)])

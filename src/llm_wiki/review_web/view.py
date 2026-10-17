@@ -120,6 +120,8 @@ def book_note(path: str) -> str:
         return "your note: only task IDs are added"
     if path.endswith("tasks.json"):
         return "task index: projects and status"
+    if path.endswith("open-tasks.md"):
+        return "open tasks: rebuilt from the task index"
     if path.endswith("ingest-ledger.json"):
         return "ingest log: marks this note as filed"
     return "code-owned"

@@ -91,7 +91,7 @@ class IngestAgentState(DeepAgentState):
     Attributes:
         staged: Accepted edits, in call order.
         filed: One record per accepted fact (line → page), for the comparison.
-        questions: Questions for the review, with their note line.
+        questions: (note line, question) for the review.
         refusals: Every refused staging call, with the reason.
         withdrawn: (line, path, n) of facts the agent took back: n is how many facts
             were filed when it did, so only earlier ones are removed.
@@ -101,7 +101,7 @@ class IngestAgentState(DeepAgentState):
 
     staged: Annotated[list[Edit], operator.add]
     filed: Annotated[list[Filed], operator.add]
-    questions: Annotated[list[str], operator.add]
+    questions: Annotated[list[tuple[int, str]], operator.add]
     refusals: Annotated[list[str], operator.add]
     withdrawn: Annotated[list[tuple[int, str, int]], operator.add]
     mappings: Annotated[list[tuple[int, str | None, str]], operator.add]

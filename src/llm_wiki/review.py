@@ -22,6 +22,7 @@ from llm_wiki.domain.review import (
     ReviewFile,
     ReviewPage,
     ReviewProject,
+    ReviewQuestion,
     ReviewRequest,
     ReviewTask,
     ReviewWin,
@@ -64,6 +65,34 @@ def filed_facts(
     )
 
 
+def agent_questions(
+    note: DailyNote, asked: Sequence[Mapping[str, Any]]
+) -> tuple[ReviewQuestion, ...]:
+    """Turn the agent's questions (dicts: line, text) into review questions, in order."""
+    return tuple(
+        ReviewQuestion(
+            id=f"q{i}", line=q["line"], quote=note_line(note, q["line"]), text=q["text"]
+        )
+        for i, q in enumerate(asked, start=1)
+    )
+
+
+def revise_feedback(request: ReviewRequest, answer: ReviewAnswer) -> str:
+    """Return the feedback the agent reads for a revise: answers first, then the rest.
+
+    Line 9 ("jfrog CI…") you asked: Which project is it about? Answer: Risk analytics.
+    """
+    asked = {q.id: q for q in request.questions}
+    parts = [
+        f'Line {asked[qid].line} ("{asked[qid].quote}") you asked: {asked[qid].text} '
+        f"Answer: {' '.join(text.split())}"
+        for qid, text in (answer.answers or {}).items()
+    ]
+    if answer.feedback:
+        parts.append(answer.feedback)
+    return "\n".join(parts)
+
+
 def task_questions(
     note: DailyNote,
     open_tasks: Collection[int],
@@ -104,6 +133,7 @@ def build_request(
     tasks: Sequence[ReviewTask] = (),
     projects: Sequence[ReviewProject] = (),
     facts: Sequence[ReviewFact] = (),
+    questions: Sequence[ReviewQuestion] = (),
     rules: Sequence[str] = (),
     aliases: Mapping[str, str] | None = None,
     pages: Sequence[ReviewPage] = (),
@@ -149,6 +179,7 @@ def build_request(
         tasks=tuple(tasks),
         projects=tuple(projects),
         facts=tuple(f for f in facts if f.path in {d.path for d in diffs}),
+        questions=tuple(questions),
         rules=tuple(rules),
         aliases=tuple(ReviewAlias(name=n, slug=s) for n, s in (aliases or {}).items()),
         pages=tuple(pages),
@@ -162,6 +193,20 @@ def _unknown(kind: str, given: Sequence[str], valid: Sequence[str]) -> str | Non
     if not unknown:
         return None
     return f"unknown {kind} ids {unknown}; valid ids: {', '.join(valid) or 'none'}"
+
+
+MAX_ANSWER = 500
+
+
+def _check_answers(request: ReviewRequest, answers: Mapping[str, str]) -> str | None:
+    if error := _unknown("question", list(answers), [q.id for q in request.questions]):
+        return error
+    for qid, text in answers.items():
+        if not text.strip():
+            return f"{qid}: the answer is empty"
+        if len(text) > MAX_ANSWER:
+            return f"{qid}: an answer is at most {MAX_ANSWER} characters"
+    return None
 
 
 def _check_tasks(request: ReviewRequest, tasks: Mapping[str, str]) -> str | None:
@@ -244,10 +289,10 @@ def check_answer(
             error = "nothing to revise: the note has no prose for the model to read"
         elif request.revisions_left == 0:
             error = f"revise limit reached ({MAX_REVISIONS}); approve, edit or reject"
-        elif answer.remember:
-            error = remember.check_rules([answer.feedback or ""])
         else:
-            error = None
+            error = _check_answers(request, answer.answers or {})
+        if error is None and answer.remember:
+            error = remember.check_rules([answer.feedback or ""])
     elif answer.action == "edit":
         error = _unknown("file", [answer.file or ""], file_ids)
         if error is None:

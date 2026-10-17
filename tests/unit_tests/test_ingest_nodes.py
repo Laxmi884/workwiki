@@ -38,7 +38,7 @@ def test_fixture_note_gives_id_edits_and_a_new_task_index(fixture_vault):
 
     diffs, warnings = render_diffs(state["task_edits"], vault_reader(fixture_vault))
     assert warnings == []
-    note_diff, index_diff = diffs
+    note_diff, index_diff, open_diff = diffs
     assert note_diff.path == NOTE
     added = [
         line for line in note_diff.unified_diff.splitlines() if line.startswith("+")
@@ -50,6 +50,13 @@ def test_fixture_note_gives_id_edits_and_a_new_task_index(fixture_vault):
     index, _ = load_task_index(index_diff.after_text)
     assert len(index.tasks) == 12
     assert index.tasks["t-q7m2xa"].project == "project-atlas"
+    # the open-tasks page (0012), from the same index
+    assert open_diff.path == "05_generated/open-tasks.md"
+    assert (
+        "### [[project-atlas|Atlas]]\n- Review Q3 budget draft" in open_diff.after_text
+    )
+    assert "[[2026-10-12#^t-q7m2xa|note]]" in open_diff.after_text
+    assert "Fix login redirect bug" not in open_diff.after_text  # done
 
 
 def test_ids_already_used_in_other_notes_are_avoided(tmp_path, fixture_vault):
@@ -63,7 +70,7 @@ def test_ids_already_used_in_other_notes_are_avoided(tmp_path, fixture_vault):
 
 def test_existing_index_is_updated_not_recreated(tmp_path, fixture_vault):
     vault = _copy(fixture_vault, tmp_path)
-    index_edit = _run(vault)["task_edits"][-1]
+    (index_edit,) = [e for e in _run(vault)["task_edits"] if e.path == TASK_INDEX_PATH]
     (vault / TASK_INDEX_PATH).write_text(index_edit.text)  # as if approved
 
     state = _run(vault, "00_raw/daily/2026-10-13.md")

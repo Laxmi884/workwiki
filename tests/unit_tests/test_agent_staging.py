@@ -189,10 +189,13 @@ def test_scripted_agent_run_reaches_the_review(vault_copy, monkeypatch):
     paths = [f.path for f in result.review.files]
     assert "20_people/person-sam-ortiz.md" in paths
     assert not any(p.endswith("x.md") for p in paths)
-    assert result.review.warnings[-2:] == (
-        "question line 23: Is BI a project?",
-        "code refused 1 of the agent's calls (details in the trace)",
+    assert result.review.warnings[-1] == (
+        "code refused 1 of the agent's calls (details in the trace)"
     )
+    assert not any("Is BI a project?" in w for w in result.review.warnings)
+    (question,) = result.review.questions
+    assert (question.id, question.line, question.text) == ("q1", 23, "Is BI a project?")
+    assert question.quote == "Decided to keep the old BI tool until Q1 #decision"
     values = runner.graph.get_state(runner._config(result.thread_id)).values
     assert values["agent_stats"]["refusals"] == 1
     assert [
@@ -431,7 +434,10 @@ def test_a_heading_may_be_cited_for_a_new_page_or_a_question(ctx):
         ctx, [], slug="project-atlas-sync", title="Atlas", line=21
     )
     assert page.path == "10_projects/project-atlas-sync.md"
-    assert staging.check_question(ctx, "Who is on the sync?", 21).startswith("line 21")
+    assert staging.check_question(ctx, "Who is  on the sync?", 21) == (
+        21,
+        "Who is on the sync?",
+    )
     with pytest.raises(StagingError, match="can't be cited"):
         fact(ctx, target="project-atlas", section="Updates", text="x", line=21)
 
@@ -450,8 +456,7 @@ def test_review_lists_dropped_facts_and_counts_other_refusals():
         "ask_user: line 17 can't be cited",
         "finalize: dropped line 8 on 10_projects/p.md: the line doesn't name that page",
     ]
-    assert _for_the_user(refusals, ["line 9: ad hoc?"]) == [
-        "question line 9: ad hoc?",
+    assert _for_the_user(refusals) == [  # questions have their own section now
         "the agent's question was refused: line 17 can't be cited",
         "not filed: dropped line 8 on 10_projects/p.md: the line doesn't name that page",
         "code refused 1 of the agent's calls (details in the trace)",

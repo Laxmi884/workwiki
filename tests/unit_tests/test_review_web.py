@@ -57,6 +57,7 @@ def test_approve_some_files_then_the_page_shows_the_result(setup):
     assert res.json() == {"status": "done", "error": None}
     assert not (vault / LOG).exists()  # left out
     assert "^t-" in (vault / NOTE).read_text()  # the rest written
+    assert "## By project" in (vault / "05_generated/open-tasks.md").read_text()
     page = client.get(f"/review/{thread}").text
     assert "Written to your wiki" in page and NOTE in page
 
@@ -309,3 +310,45 @@ def test_revise_can_also_remember_the_feedback(setup):
     review = backend.review(thread).review
     assert review.rules == ("Skip lunch plans",)
     assert RULES in [f.path for f in review.files]
+
+
+# --- the agent's questions ---------------------------------------------------------
+
+
+@pytest.fixture
+def asked(vault_copy, monkeypatch):
+    """A review where the agent asked about a prose line and about a task line."""
+    rounds = AgentRounds(
+        [
+            call("ask_user", question="Is BI a project?", line=23),
+            call("ask_user", question="Which project is this?", line=26),
+        ]
+    )
+    monkeypatch.setattr(nodes, "chat_model", rounds)
+    backend = LocalBackend.in_memory(vault_copy)
+    monkeypatch.setattr(web, "backend", lambda: backend)
+    thread = backend.start_ingest(NOTE).thread_id
+    return TestClient(web.app), backend, thread, rounds
+
+
+def test_questions_have_their_own_section_and_answers_go_to_the_agent(asked):
+    client, backend, thread, rounds = asked
+    review = backend.review(thread).review
+    assert [(q.id, q.line) for q in review.questions] == [("q1", 23), ("q2", 26)]
+    assert not any("Is BI a project?" in w for w in review.warnings)
+    page = client.get(f"/review/{thread}").text
+    assert "The agent asks" in page and 'id="asks"' in page
+    assert "<mark>Decided to keep the old BI tool until Q1 #decision</mark>" in page
+    assert 'name="q1"' in page and 'name="q2"' in page
+    task = next(t for t in review.tasks if t.line == 26)  # q2 is about a task line
+    assert f'href="#task-{task.id}"' in page and f'id="task-{task.id}"' in page
+
+    _answer(client, thread, {"action": "revise", "answers": {"q1": "No, a tool."}})
+    assert (
+        rounds.briefs[1].count(
+            'Line 23 ("Decided to keep the old BI tool until Q1 #decision") you asked: '
+            "Is BI a project? Answer: No, a tool."
+        )
+        == 1
+    )
+    assert backend.review(thread).review.revisions_left == 2

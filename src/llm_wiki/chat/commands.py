@@ -5,6 +5,7 @@
     /approve [except f2 f5]         approve all files, or all but some
     /reject                         write nothing
     /revise <what to change>        the agent reads the note again with this feedback
+    /answer q1 <your answer>        answer the agent's question (a revise)
     /edit f3                        (next lines: the page's full new text)
     /tasks m1=project-x m2=none     task → project answers
     /wins w1 w2  |  /wins none      pick done tasks as wins
@@ -31,6 +32,7 @@ Commands:
 - `/review`: show the open review again
 - `/approve` · `/approve except f2 f5` · `/reject`
 - `/revise <what to change>`: the agent reads the note again with your feedback
+- `/answer q1 <your answer>`: answer the agent's question (the agent reads it again)
 - `/edit f3` then, on the next lines, the page's full new text
 - `/tasks m1=project-x m2=none`: task → project answers
 - `/wins w1 w2` or `/wins none`: pick done tasks as wins
@@ -118,6 +120,16 @@ def parse_command(text: str, today: datetime.date | None = None) -> ChatCommand:
                 "`/revise` needs what to change, e.g. `/revise line 9 is Atlas`"
             )
         return ChatCommand("answer", answer={"action": "revise", "feedback": feedback})
+    if name == "/answer":
+        qid, _, text = arg.partition(" ")
+        text = " ".join(f"{text}\n{rest_lines}".split())
+        if not re.fullmatch(r"q\d+", qid) or not text:
+            return _error(
+                "`/answer q1 <your answer>`, e.g. `/answer q1 Risk analytics`"
+            )
+        return ChatCommand(
+            "answer", answer={"action": "revise", "answers": {qid: text}}
+        )
     if name == "/edit":
         if not re.fullmatch(r"f\d+", arg) or not rest_lines.strip():
             return _error("`/edit f3`, then the page's full new text on the next lines")

@@ -601,13 +601,13 @@ def mapped_pages(calls: Sequence[tuple[int, str | None, str]]) -> set[str]:
     return {path_for(p) for p in last.values() if p is not None}
 
 
-def check_question(ctx: StagingContext, question: str, line: int) -> str:
-    """Check a question for the review and return it with its line."""
+def check_question(ctx: StagingContext, question: str, line: int) -> tuple[int, str]:
+    """Check a question for the review and return (line, question)."""
     _check_name_line(ctx, line)
     question = " ".join(question.split())
     if not question or len(question) > 300:
         raise StagingError("a question must be one line under 300 characters")
-    return f"line {line}: {question}"
+    return line, question
 
 
 def _orphan(

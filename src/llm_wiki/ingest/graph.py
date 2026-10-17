@@ -68,7 +68,8 @@ class AgentIngestState(IngestState, total=False):
     Attributes:
         agent_filed: Accepted facts as dicts (`Filed` fields: line, path, section,
             text), last round. Plain dicts so the checkpointer restores them.
-        questions: The agent's questions for the review, last round.
+        questions: The agent's questions for the review, last round, as dicts
+            (line, text); the review shows them in their own section.
         agent_stats: Last round's numbers: seconds, tool calls, refusals (count and
             texts), tokens.
         agent_edits: The agent's checked edits, last round. `fact_edits` is these plus
@@ -77,7 +78,7 @@ class AgentIngestState(IngestState, total=False):
 
     agent_edits: list[Edit]
     agent_filed: list[dict[str, Any]]
-    questions: list[str]
+    questions: list[dict[str, Any]]
     agent_stats: dict[str, Any]
 
 
@@ -185,7 +186,10 @@ def stage(state: AgentIngestState, runtime: Runtime[IngestContext]) -> dict[str,
             for m, u in usage.usage_metadata.items()
         },
     }
-    questions = result.get("questions", [])
+    questions = [
+        {"line": line, "text": text}
+        for line, text in dict.fromkeys(map(tuple, result.get("questions", [])))
+    ]
     return {
         "agent_edits": staged,
         "fact_edits": staged + _win_edits(state, staged, read),
@@ -193,16 +197,17 @@ def stage(state: AgentIngestState, runtime: Runtime[IngestContext]) -> dict[str,
         "task_proposals": kept_proposals,
         "questions": questions,
         "agent_stats": stats,
-        "round_warnings": _for_the_user(refusals, questions),
+        "round_warnings": _for_the_user(refusals),
     }
 
 
-def _for_the_user(refusals: list[str], questions: list[str]) -> list[str]:
+def _for_the_user(refusals: list[str]) -> list[str]:
     """Return what the review should say about this round: only what the user can use.
 
     Facts code dropped at the end and refused questions are listed (the user may want
     them, e.g. via revise); refused calls the agent could still fix are only counted
-    (details in `agent_stats` and the trace).
+    (details in `agent_stats` and the trace). The agent's questions are not warnings:
+    the review has a section for them.
     """
     lost = [r.removeprefix("ask_user: ") for r in refusals if r.startswith("ask_user:")]
     dropped = [
@@ -211,8 +216,7 @@ def _for_the_user(refusals: list[str], questions: list[str]) -> list[str]:
         if r.startswith(("finalize: dropped line", "finalize: dropped task line"))
     ]
     other = len(refusals) - len(lost) - len(dropped)
-    out = [f"question {q}" for q in questions]
-    out += [f"the agent's question was refused: {r}" for r in lost]
+    out = [f"the agent's question was refused: {r}" for r in lost]
     out += [f"not filed: {r}" for r in dropped]
     if other:
         out.append(f"code refused {other} of the agent's calls (details in the trace)")
