@@ -573,6 +573,11 @@ def test_task_proposals_reach_the_index_and_the_user_can_correct_them(
         "named on the line",
     )
     assert 8 not in tasks  # linked on its line: rule 1
+    # the choices a task answer may name: vault projects and this review's new ones
+    assert [(p.slug, p.title) for p in first.review.projects] == [
+        ("project-atlas", "Atlas"),
+        ("project-growth-plan", "growth plan"),
+    ]
     page = next(f for f in first.review.files if f.path.endswith("growth-plan.md"))
     index = next(f for f in first.review.files if f.path == "90_meta/tasks.json")
     assert '"mapped_by": "model"' in index.diff

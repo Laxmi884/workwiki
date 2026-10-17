@@ -15,7 +15,6 @@ checks answers (ids, digests, revise limit) and serves one vault (`WIKI_VAULT_PA
 from __future__ import annotations
 
 import functools
-from pathlib import Path
 from typing import Any
 
 from jinja2 import Environment, PackageLoader, select_autoescape
@@ -34,7 +33,7 @@ from llm_wiki.backend import (
     get_backend,
 )
 from llm_wiki.chat import session
-from llm_wiki.review_web.view import ReviewView, book_note, build_view
+from llm_wiki.review_web.view import book_note, build_view
 
 env = Environment(
     loader=PackageLoader("llm_wiki.review_web", "templates"),
@@ -95,20 +94,7 @@ def review_page(request: Request) -> HTMLResponse:
         view=view,
         diff_lines=diff_lines,
         book_note=book_note,
-        project_names=project_names(backend().vault, view),
     )
-
-
-def project_names(vault: Path, view: ReviewView | None) -> dict[str, str]:
-    """Return slug → title for pages in the vault and pages this review creates."""
-    from llm_wiki.entity_index import load_index  # noqa: PLC0415
-
-    names = {slug: e.title for slug, e in load_index(vault).entities.items()}
-    for card in view.pages if view else []:
-        names.setdefault(
-            card.file.path.rsplit("/", 1)[-1].removesuffix(".md"), card.title
-        )
-    return names
 
 
 def _answer(thread: str, answer: Any) -> JSONResponse:

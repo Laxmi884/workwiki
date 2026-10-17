@@ -55,6 +55,7 @@ class ReviewView:
     bookkeeping: list[ReviewFile]
     task_ids: int
     attention: list[str]
+    edited: list[str] = field(default_factory=list)  # titles of pages with your text
 
 
 def _title(f: ReviewFile) -> str:
@@ -93,7 +94,13 @@ def build_view(review: ReviewRequest) -> ReviewView:
     date = review.note_date
     title = f"Daily note, {date:%A %-d %B %Y}" if date else review.note
     return ReviewView(
-        title, lede, pages, bookkeeping, review.task_ids_added, list(review.warnings)
+        title,
+        lede,
+        pages,
+        bookkeeping,
+        review.task_ids_added,
+        list(review.warnings),
+        [c.title for c in pages if c.edited],
     )
 
 

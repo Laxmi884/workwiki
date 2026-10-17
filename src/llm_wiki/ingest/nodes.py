@@ -24,17 +24,16 @@ from llm_wiki.daily_syntax import parse_daily_note
 from llm_wiki.diffs import VaultReader, render_diffs, vault_reader
 from llm_wiki.domain.changes import (
     RAW_DAILY_FOLDER,
-    CreateFile,
     ReplaceFile,
     UserText,
     sha256_text,
 )
 from llm_wiki.domain.daily import DailyNote
 from llm_wiki.domain.entities import EntityKind
-from llm_wiki.domain.review import ReviewAnswer, ReviewRequest
+from llm_wiki.domain.review import ReviewAnswer, ReviewProject, ReviewRequest
 from llm_wiki.domain.task_index import DoneTask, MappedBy
 from llm_wiki.domain.tasks import TaskStatus
-from llm_wiki.entity_index import EntityIndex, kind_of, load_index, with_created
+from llm_wiki.entity_index import EntityIndex, load_index, with_created
 from llm_wiki.ingest.state import IngestContext, IngestState
 from llm_wiki.model_setup import configured_fallbacks, configured_model
 
@@ -243,17 +242,15 @@ def review_changes(
     (`after_review` routes on it).
     """
     overrides = state.get("overrides", {})
-    entities = _entities(state, runtime)
-    known_projects = [
-        *(e.slug for e in entities.entities.values() if e.kind is EntityKind.PROJECT),
-        *(
-            slug
-            for e in state.get("fact_edits", [])
-            if isinstance(e, CreateFile)
-            and kind_of(slug := e.path.rsplit("/", 1)[-1].removesuffix(".md"))
-            is EntityKind.PROJECT
+    entities = _entities(state, runtime)  # with the pages this run proposes
+    projects = sorted(
+        (
+            ReviewProject(slug=e.slug, title=e.title)
+            for e in entities.entities.values()
+            if e.kind is EntityKind.PROJECT
         ),
-    ]
+        key=lambda p: p.title.lower(),
+    )
     request = review.build_request(
         state["note"].path,
         state.get("diffs", []),
@@ -269,13 +266,14 @@ def review_changes(
             state.get("task_proposals", []),
             state.get("chosen_projects", {}),
         ),
+        projects=projects,
         facts=review.filed_facts(state["note"], state.get("agent_filed", [])),
         note_date=state["note"].date,
         task_ids_added=len(state.get("task_ids", {})),
     )
     while True:
         raw = interrupt(request.model_dump(mode="json"))
-        answer, error = review.check_answer(request, raw, known_projects)
+        answer, error = review.check_answer(request, raw)
         if answer is not None:
             break
         request = request.model_copy(update={"error": error})

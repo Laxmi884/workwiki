@@ -3,7 +3,7 @@
 import pytest
 
 from llm_wiki.domain.changes import CreateFile, FileDiff
-from llm_wiki.domain.review import ReviewTask
+from llm_wiki.domain.review import ReviewProject, ReviewTask
 from llm_wiki.review import approved_digests, build_request, check_answer
 
 
@@ -133,20 +133,22 @@ def test_answer_with_no_wins_is_valid():
     assert error is None and answer.wins == ()
 
 
-def test_task_answers_name_a_project_or_none():
+def test_task_answers_name_a_project_of_the_review_or_none():
     request = REQUEST.model_copy(
-        update={"tasks": (ReviewTask(id="m1", line=9, text="Reply to Priya"),)}
+        update={
+            "tasks": (ReviewTask(id="m1", line=9, text="Reply to Priya"),),
+            "projects": (ReviewProject(slug="project-atlas", title="Atlas"),),
+        }
     )
-    projects = ["project-atlas"]
-    ok, error = check_answer(
-        request, {"action": "answer", "tasks": {"m1": "none"}}, projects
-    )
+    ok, error = check_answer(request, {"action": "answer", "tasks": {"m1": "none"}})
     assert error is None and ok.tasks == {"m1": "none"}
+    ok, error = check_answer(
+        request, {"action": "answer", "tasks": {"m1": "project-atlas"}}
+    )
+    assert error is None
     _, error = check_answer(
-        request, {"action": "answer", "tasks": {"m1": "project-zed"}}, projects
+        request, {"action": "answer", "tasks": {"m1": "project-zed"}}
     )
     assert "not a project page" in error
-    _, error = check_answer(
-        request, {"action": "answer", "tasks": {"m9": "none"}}, projects
-    )
+    _, error = check_answer(request, {"action": "answer", "tasks": {"m9": "none"}})
     assert error.startswith("unknown task ids")

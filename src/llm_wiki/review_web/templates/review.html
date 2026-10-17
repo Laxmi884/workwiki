@@ -54,13 +54,33 @@ details.books > summary { cursor: pointer; font-weight: 600; }
 .bar-in { max-width: 760px; margin: 0 auto; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .bar .status { flex: 1; min-width: 180px; font-size: 14px; color: var(--soft); }
 .bar .status.err { color: var(--red); font-weight: 600; }
+.card-tools { display: flex; gap: 18px; align-items: baseline; margin: 8px 20px 16px; flex-wrap: wrap; }
+.card-tools details.exact { margin: 0; }
+.card-tools details.exact[open] { flex-basis: 100%; }
+.linkish { background: none; border: 0; padding: 0; font: 400 14px/1.4 var(--sans); color: var(--teal);
+  text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.editor { margin: 4px 20px 18px; }
+.editor textarea, .revise textarea { width: 100%; border: 1px solid var(--rule); border-radius: 10px;
+  background: var(--paper); color: var(--ink); padding: 12px 14px; resize: vertical; }
+.editor textarea { min-height: 320px; font: 14px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.revise textarea { min-height: 96px; font: 400 16px/1.5 var(--sans); }
+.editor-bar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
+.hint { color: var(--faint); font-size: 14px; margin: 0; flex: 1; min-width: 200px; }
+select.task-pick { font: 600 16px/1.3 var(--serif); color: var(--ink); background: var(--card);
+  border: 1px solid var(--rule); border-radius: 8px; padding: 6px 8px; margin: 4px 0 2px; max-width: 100%; }
+.revise { background: var(--card); border: 1px solid var(--rule); border-radius: 14px; padding: 16px 18px; }
+.revise .editor-bar { justify-content: flex-end; }
+.confirm { display: none; flex-basis: 100%; gap: 10px; align-items: center; flex-wrap: wrap;
+  background: var(--amber-wash); color: var(--amber); border-radius: 10px; padding: 10px 12px; font-size: 14px; }
+.confirm.on { display: flex; }
+.confirm span { flex: 1; min-width: 200px; }
 .done-files { list-style: none; padding: 0; margin: 12px 0 0; }
 .done-files li { padding: 8px 0; border-top: 1px solid var(--rule); font-size: 15px; }
 @media (max-width: 560px) {
   h1 { font-size: 28px; }
   .page-head { flex-wrap: wrap; padding: 16px 16px 4px; }
   .fact { padding: 10px 16px 12px; grid-template-columns: 26px 1fr; }
-  .section-name, .plain-page, details.exact { margin-left: 16px; margin-right: 16px; }
+  .section-name, .plain-page, .card-tools, .editor { margin-left: 16px; margin-right: 16px; }
   .bar .status { flex-basis: 100%; }
   .bar #approve { flex: 1; }
 }
@@ -85,7 +105,7 @@ details.books > summary { cursor: pointer; font-weight: 600; }
       <div class="where">{{ card.file.path }}</div>
     </div>
     <span class="tag {{ card.file.change }}">{{ ("new " if card.file.change == "new" else "") ~ card.kind }}{% if card.edited %}, your edit{% endif %}</span>
-    <label class="include"><input type="checkbox" class="pick" value="{{ card.file.id }}" checked><span>Include</span></label>
+    <label class="include"><input type="checkbox" class="pick" value="{{ card.file.id }}" data-path="{{ card.file.path }}" checked><span>Include</span></label>
   </div>
   {% for section, rows in card.sections %}
   <div class="section-name">{{ section }}</div>
@@ -101,23 +121,36 @@ details.books > summary { cursor: pointer; font-weight: 600; }
     {% if card.file.change == "new" %}Nothing filed on it yet. It's here because tasks in this note {{ "name this person" if card.kind == "person" else "belong to it" }}, so your task index can link them.{% else %}Changed without a filed fact, e.g. its current state was rewritten.{% endif %}
   </div>
   {% endfor %}
-  <details class="exact">
-    <summary>Show the exact change</summary>
-    <pre class="diff">{% for kind, line in diff_lines(card.file.diff) %}<span class="{{ kind }}">{{ line }}</span>{% endfor %}</pre>
-  </details>
+  <div class="card-tools">
+    <details class="exact">
+      <summary>Show the exact change</summary>
+      <pre class="diff">{% for kind, line in diff_lines(card.file.diff) %}<span class="{{ kind }}">{{ line }}</span>{% endfor %}</pre>
+    </details>
+    <button type="button" class="linkish open-editor" aria-controls="edit-{{ card.file.id }}">Edit this page</button>
+  </div>
+  <form class="editor" id="edit-{{ card.file.id }}" data-file="{{ card.file.id }}" hidden>
+    <textarea name="text" aria-label="Full text of {{ card.title }}" spellcheck="true">{{ card.file.after_text }}</textarea>
+    <div class="editor-bar">
+      <p class="hint">Your text replaces this page in this review; the facts above stop applying to it.</p>
+      <button type="button" class="close-editor">Cancel</button>
+      <button type="submit" class="go">Use my text</button>
+    </div>
+  </form>
 </section>
 {% endfor %}
 
 {% if review.tasks %}
 <h2>Tasks and their projects</h2>
-<p class="h2-note">Stored in your task index. The agent's guesses are marked; anything it couldn't place stays without a project.</p>
+<p class="h2-note">Stored in your task index. The agent's guesses are marked; pick another project, or "No project" so it isn't guessed again.</p>
 <ul class="list">
 {% for t in review.tasks %}
 <li class="task"><span class="ln">{{ t.line }}</span>
 <div><div class="mine">{{ t.text }}</div>
-{% if t.project %}<div class="proj">{{ project_names.get(t.project, t.project) }}</div>
-<div class="why">{% if t.by == "model" %}Guessed: {{ t.why }}{% else %}Your choice{% endif %}</div>
-{% else %}<div class="none">No project</div>{% endif %}</div></li>
+<select class="task-pick" data-task="{{ t.id }}" aria-label="Project for line {{ t.line }}">
+  <option value="none"{% if not t.project %} selected{% endif %}>No project</option>
+  {% for p in review.projects %}<option value="{{ p.slug }}"{% if t.project == p.slug %} selected{% endif %}>{{ p.title }}</option>{% endfor %}
+</select>
+<div class="why">{% if t.by == "model" %}Guessed: {{ t.why }}{% elif t.by == "user" %}Your choice{% else %}Nothing guessed{% endif %}</div></div></li>
 {% endfor %}
 </ul>
 {% endif %}
@@ -127,17 +160,30 @@ details.books > summary { cursor: pointer; font-weight: 600; }
 <p class="h2-note">Ticked tasks go on this quarter's impact page, for your review season.</p>
 <ul class="list">
 {% for w in review.wins %}
-<li><label><input type="checkbox" class="win" value="{{ w.id }}" {% if w.chosen %}checked{% endif %} disabled>
+<li><label><input type="checkbox" class="win" value="{{ w.id }}" {% if w.chosen %}checked{% endif %}>
 <div><div>{{ w.text }}</div>{% if w.chosen %}<div class="win-on">Counted as a win</div>{% endif %}</div></label></li>
 {% endfor %}
 </ul>
+{% endif %}
+
+{% if review.can_revise %}
+<h2>Ask the agent again</h2>
+{% if review.revisions_left %}
+<p class="h2-note">Say what it got wrong or missed. It re-reads your note and you get a fresh review (about a minute; uses the model). {{ review.revisions_left }} {{ "revision" if review.revisions_left == 1 else "revisions" }} left.</p>
+<form class="revise" id="revise">
+  <textarea name="feedback" aria-label="What the agent should change" placeholder="e.g. The beta date belongs on Atlas's current state, not under Updates."></textarea>
+  <div class="editor-bar"><button type="submit" class="go">Revise</button></div>
+</form>
+{% else %}
+<p class="h2-note">No revisions left. Edit a page, approve what's right, or reject.</p>
+{% endif %}
 {% endif %}
 
 <h2>Bookkeeping</h2>
 <details class="books">
   <summary>{{ view.task_ids }} task IDs added, plus the task index and ingest log</summary>
   {% for f in view.bookkeeping %}
-  <label class="book"><input type="checkbox" class="pick" value="{{ f.id }}" checked>
+  <label class="book"><input type="checkbox" class="pick" value="{{ f.id }}" data-path="{{ f.path }}" checked>
     <span>{{ f.path }}</span><span class="why">{{ book_note(f.path) }}</span></label>
   {% endfor %}
 </details>
@@ -159,15 +205,28 @@ details.books > summary { cursor: pointer; font-weight: 600; }
 {% block scripts %}
 {% if view %}
 <div class="bar"><div class="bar-in">
+  <div class="confirm" id="confirm" role="alert">
+    <span id="confirm-text"></span>
+    <button type="button" id="undo">Keep my text</button>
+    <button type="button" class="go" id="go-on">Go ahead</button>
+  </div>
   <span class="status" id="status"></span>
   <button class="quiet" id="reject">Reject</button>
   <button class="go" id="approve">Approve</button>
 </div></div>
 <script>
+const edited = {{ view.edited|tojson }};
 const picks = [...document.querySelectorAll("input.pick")];
+const wins = [...document.querySelectorAll("input.win")];
 const status = document.getElementById("status");
 const approve = document.getElementById("approve");
 const reject = document.getElementById("reject");
+const confirmBox = document.getElementById("confirm");
+const leftKey = "left-out:" + location.pathname;  // survives the reload after an answer
+try {
+  const left = JSON.parse(sessionStorage.getItem(leftKey) || "[]");
+  picks.forEach(p => { if (left.includes(p.dataset.path)) p.checked = false; });
+} catch (e) {}
 function refresh() {
   const on = picks.filter(p => p.checked).length;
   picks.forEach(p => { const card = p.closest(".page"); if (card) card.classList.toggle("out", !p.checked); });
@@ -175,24 +234,66 @@ function refresh() {
   status.textContent = on === picks.length ? `All ${on} files will be written` : `${on} of ${picks.length} files will be written`;
   approve.disabled = on === 0;
   approve.textContent = on === picks.length ? "Approve all" : `Approve ${on} files`;
+  try { sessionStorage.setItem(leftKey, JSON.stringify(picks.filter(p => !p.checked).map(p => p.dataset.path))); } catch (e) {}
 }
 picks.forEach(p => p.addEventListener("change", refresh));
 refresh();
+const controls = () => [...document.querySelectorAll("main button, main select, main input, main textarea, .bar button")];
 async function send(answer, busy) {
-  [approve, reject].forEach(b => b.disabled = true);
+  confirmBox.classList.remove("on");
+  const was = controls().map(c => [c, c.disabled]);
+  was.forEach(([c]) => c.disabled = true);
+  status.classList.remove("err");
   status.textContent = busy;
-  const res = await fetch(location.pathname + "/answer", {
-    method: "POST", headers: {"content-type": "application/json"}, body: JSON.stringify({answer}),
-  });
-  const body = await res.json();
-  if (!res.ok || body.error) {
-    [approve, reject].forEach(b => b.disabled = false);
+  let body = {error: "No answer from the server; try again."}, ok = false;
+  try {
+    const res = await fetch(location.pathname + "/answer", {
+      method: "POST", headers: {"content-type": "application/json"}, body: JSON.stringify({answer}),
+    });
+    body = await res.json(); ok = res.ok;
+  } catch (e) {}
+  if (!ok || body.error) {
+    was.forEach(([c, d]) => c.disabled = d);
     refresh();
     status.textContent = body.error; status.classList.add("err");
     return;
   }
   location.reload();
 }
+// Tasks, wins and revise re-render every page, so your own text is dropped (0009 R2).
+function dropsEdits(answer, busy) {
+  if (!edited.length) { send(answer, busy); return; }
+  document.getElementById("confirm-text").textContent =
+    `This drops your text for ${edited.join(", ")}; the agent's version comes back.`;
+  document.getElementById("go-on").onclick = () => send(answer, busy);
+  confirmBox.classList.add("on");
+}
+document.getElementById("undo").onclick = () => location.reload();  // puts the controls back
+document.querySelectorAll("select.task-pick").forEach(s => s.addEventListener("change", () =>
+  dropsEdits({action: "answer", tasks: {[s.dataset.task]: s.value}}, "Updating the task index…")));
+wins.forEach(w => w.addEventListener("change", () =>
+  dropsEdits({action: "answer", wins: wins.filter(x => x.checked).map(x => x.value)}, "Updating your wins…")));
+const revise = document.getElementById("revise");
+if (revise) revise.addEventListener("submit", e => {
+  e.preventDefault();
+  const feedback = revise.feedback.value.trim();
+  if (!feedback) { status.textContent = "Say what to change first."; status.classList.add("err"); revise.feedback.focus(); return; }
+  dropsEdits({action: "revise", feedback}, "The agent is re-reading your note…");
+});
+document.querySelectorAll(".open-editor").forEach(b => b.addEventListener("click", () => {
+  const form = document.getElementById(b.getAttribute("aria-controls"));
+  form.hidden = false; b.hidden = true; form.text.focus();
+}));
+document.querySelectorAll("form.editor").forEach(form => {
+  form.querySelector(".close-editor").addEventListener("click", () => {
+    form.text.value = form.text.defaultValue; form.hidden = true;
+    form.closest(".page").querySelector(".open-editor").hidden = false;
+  });
+  form.addEventListener("submit", e => {
+    e.preventDefault();
+    send({action: "edit", file: form.dataset.file, text: form.text.value}, "Saving your text…");
+  });
+});
 approve.onclick = () => {
   const left = picks.filter(p => !p.checked).map(p => p.value);
   send(left.length ? {action: "approve", reject: left} : "approve", "Writing to your vault…");

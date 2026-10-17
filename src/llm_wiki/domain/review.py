@@ -97,6 +97,20 @@ class ReviewTask(BaseModel):
     why: str = ""
 
 
+class ReviewProject(BaseModel):
+    """A project a task may be answered with: a page in the vault or new in this review.
+
+    Attributes:
+        slug: The project's slug, e.g. "project-atlas".
+        title: Its page title, for showing.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    slug: str
+    title: str
+
+
 class ReviewRequest(BaseModel):
     """Everything the user needs to approve or reject one ingest.
 
@@ -110,6 +124,8 @@ class ReviewRequest(BaseModel):
         wins: Tasks done in this note; picked ones become wins.
         tasks: Tasks with no project by rules 1–3, with the model's proposals; the
             proposals are in `tasks.json` unless answered (decision 0007).
+        projects: The projects a task answer may name, by title; the same list the
+            answer is checked against.
         facts: What the agent filed, per page, with the note lines cited.
         note_date: The note's date, if it has one.
         task_ids_added: How many task IDs this ingest appends to the note.
@@ -126,6 +142,7 @@ class ReviewRequest(BaseModel):
     edited: tuple[str, ...] = ()
     wins: tuple[ReviewWin, ...] = ()
     tasks: tuple[ReviewTask, ...] = ()
+    projects: tuple[ReviewProject, ...] = ()
     facts: tuple[ReviewFact, ...] = ()
     note_date: datetime.date | None = None
     task_ids_added: int = 0

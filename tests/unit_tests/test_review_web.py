@@ -36,7 +36,7 @@ def test_page_shows_files_diffs_and_checkboxes(setup):
     page = client.get(f"/review/{thread}").text
     review = backend.review(thread).review
     for f in review.files:
-        assert f'value="{f.id}" checked' in page and f.path in page
+        assert f'value="{f.id}" data-path="{f.path}" checked' in page
     # the decision log card: the filed text next to the note line it cites
     assert "Decided to keep the old BI tool until Q1 #decision</mark>" in page
     assert "Not recorded in the note." in page and "Show the exact change" in page
@@ -132,3 +132,92 @@ def test_chat_box_answers_commands_and_reports_backend_failures(setup, monkeypat
     monkeypatch.setattr(backend, "pending", down)
     res = client.post("/chat/send", json={"message": "/review", "history": []})
     assert res.status_code == 502 and "ConnectError" in res.json()["error"]
+
+
+# R2 (0009): every control is a `ReviewAnswer`; the page reloads with the new diffs.
+
+
+def _answer(client, thread, answer):
+    res = client.post(f"/review/{thread}/answer", json={"answer": answer})
+    assert res.json() == {"status": "review", "error": None}, res.json()
+
+
+def test_page_offers_task_win_edit_and_revise_controls(setup):
+    client, backend, thread, _ = setup
+    review = backend.review(thread).review
+    page = client.get(f"/review/{thread}").text
+    # one dropdown per task: "No project" plus the review's own project list
+    assert [(p.slug, p.title) for p in review.projects] == [("project-atlas", "Atlas")]
+    for t in review.tasks:
+        assert f'data-task="{t.id}"' in page
+    assert page.count('<option value="project-atlas">Atlas</option>') == len(
+        review.tasks
+    )
+    for w in review.wins:  # enabled now
+        assert f'class="win" value="{w.id}" >' in page
+    (log,) = [f for f in review.files if f.path == LOG]
+    assert f'id="edit-{log.id}" data-file="{log.id}" hidden' in page
+    assert "Keep the old BI tool until Q1" in page  # its full text, to edit
+    assert 'id="revise"' in page and "3 revisions left" in page
+    assert "const edited = [];" in page
+
+
+def test_a_task_answer_from_the_page_updates_the_task_index(setup):
+    client, backend, thread, _ = setup
+    task = backend.review(thread).review.tasks[0]
+    _answer(client, thread, {"action": "answer", "tasks": {task.id: "project-atlas"}})
+    review = backend.review(thread).review
+    (again,) = [t for t in review.tasks if t.id == task.id]
+    assert (again.project, again.by) == ("project-atlas", "user")
+    index = next(f for f in review.files if f.path == "90_meta/tasks.json")
+    assert '"mapped_by": "user"' in index.diff
+    page = client.get(f"/review/{thread}").text
+    assert '<option value="project-atlas" selected>Atlas</option>' in page
+    assert "Your choice" in page
+
+    res = client.post(  # a project that isn't in the list is refused, and shown
+        f"/review/{thread}/answer",
+        json={"answer": {"action": "answer", "tasks": {task.id: "project-zed"}}},
+    )
+    assert "not a project page" in res.json()["error"]
+
+
+def test_picking_a_win_from_the_page_adds_the_impact_page(setup):
+    client, backend, thread, _ = setup
+    win = backend.review(thread).review.wins[0]
+    _answer(client, thread, {"action": "answer", "wins": [win.id]})
+    review = backend.review(thread).review
+    assert [w.chosen for w in review.wins] == [True, False]
+    impact = next(f for f in review.files if f.path.startswith("40_impact/"))
+    assert win.text in impact.after_text
+    page = client.get(f"/review/{thread}").text
+    assert f'class="win" value="{win.id}" checked>' in page
+    assert "Counted as a win" in page
+
+    _answer(client, thread, {"action": "answer", "wins": []})  # and back
+    assert not any(
+        f.path.startswith("40_impact/") for f in backend.review(thread).review.files
+    )
+
+
+def test_an_edit_from_the_page_is_marked_and_later_answers_warn(setup):
+    client, backend, thread, _ = setup
+    (log,) = [f for f in backend.review(thread).review.files if f.path == LOG]
+    text = log.after_text.replace(
+        "Not recorded in the note.", "Until Q1, then revisit."
+    )
+    _answer(client, thread, {"action": "edit", "file": log.id, "text": text})
+    review = backend.review(thread).review
+    (log,) = [f for f in review.files if f.path == LOG]
+    assert review.edited == (LOG,) and "Until Q1, then revisit." in log.after_text
+    page = client.get(f"/review/{thread}").text
+    assert "decisions, your edit" in page
+    assert 'const edited = ["Decisions 2026 Q4"];' in page  # the page asks first
+
+
+def test_revise_from_the_page_runs_another_round(setup):
+    client, backend, thread, _ = setup
+    _answer(client, thread, {"action": "revise", "feedback": "Also note the beta date"})
+    review = backend.review(thread).review
+    assert review.revisions_left == 2
+    assert "2 revisions left" in client.get(f"/review/{thread}").text

@@ -18,6 +18,7 @@ from llm_wiki.domain.review import (
     ReviewAnswer,
     ReviewFact,
     ReviewFile,
+    ReviewProject,
     ReviewRequest,
     ReviewTask,
     ReviewWin,
@@ -98,6 +99,7 @@ def build_request(
     done_tasks: Sequence[DoneTask] = (),
     chosen_wins: Collection[int] = (),
     tasks: Sequence[ReviewTask] = (),
+    projects: Sequence[ReviewProject] = (),
     facts: Sequence[ReviewFact] = (),
     note_date: datetime.date | None = None,
     task_ids_added: int = 0,
@@ -139,6 +141,7 @@ def build_request(
             for i, t in enumerate(done_tasks, start=1)
         ),
         tasks=tuple(tasks),
+        projects=tuple(projects),
         facts=tuple(f for f in facts if f.path in {d.path for d in diffs}),
         note_date=note_date,
         task_ids_added=task_ids_added,
@@ -152,11 +155,10 @@ def _unknown(kind: str, given: Sequence[str], valid: Sequence[str]) -> str | Non
     return f"unknown {kind} ids {unknown}; valid ids: {', '.join(valid) or 'none'}"
 
 
-def _check_tasks(
-    request: ReviewRequest, tasks: Mapping[str, str], known: Collection[str]
-) -> str | None:
+def _check_tasks(request: ReviewRequest, tasks: Mapping[str, str]) -> str | None:
     if error := _unknown("task", list(tasks), [t.id for t in request.tasks]):
         return error
+    known = {p.slug for p in request.projects}
     for tid, value in tasks.items():
         if value != "none" and value not in known:
             return (
@@ -204,14 +206,12 @@ def _tasks_link(request: ReviewRequest, path: str) -> bool:
 
 
 def check_answer(
-    request: ReviewRequest,
-    raw: Any,
-    known_projects: Collection[str] = (),
+    request: ReviewRequest, raw: Any
 ) -> tuple[ReviewAnswer | None, str | None]:
     """Validate the user's answer. Returns (answer, None) or (None, why not).
 
-    "approve" and "reject" may be sent as plain strings. `known_projects` are the
-    project slugs an "answer" may name.
+    "approve" and "reject" may be sent as plain strings. A task answer may name only
+    the request's `projects`.
     """
     if isinstance(raw, str):
         raw = {"action": raw.strip().lower()}
@@ -248,7 +248,7 @@ def check_answer(
     elif answer.action == "answer":
         error = _unknown("win", list(answer.wins or ()), [w.id for w in request.wins])
         if error is None:
-            error = _check_tasks(request, answer.tasks or {}, known_projects)
+            error = _check_tasks(request, answer.tasks or {})
     else:
         error = None
     return (None, error) if error else (answer, None)
