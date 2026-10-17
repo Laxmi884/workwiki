@@ -140,6 +140,23 @@ def test_chat_box_answers_commands_and_reports_backend_failures(setup, monkeypat
     assert res.status_code == 502 and "ConnectError" in res.json()["error"]
 
 
+def test_a_crash_comes_back_as_a_json_error(setup, monkeypatch):
+    # Before: an exception that wasn't a BackendError (e.g. no API key) gave a
+    # plain-text 500, and the chat showed "Unexpected end of JSON input".
+    client, backend, thread, _ = setup
+
+    def crash(*args, **kwargs):
+        raise RuntimeError("no API key for openrouter")
+
+    monkeypatch.setattr(backend, "pending", crash)
+    monkeypatch.setattr(backend, "answer", crash)
+    chat = client.post("/chat/send", json={"message": "/review", "history": []})
+    page = client.post(f"/review/{thread}/answer", json={"answer": "approve"})
+    for res in (chat, page):
+        assert res.status_code == 500
+        assert "RuntimeError: no API key for openrouter" in res.json()["error"]
+
+
 # R2 (0009): every control is a `ReviewAnswer`; the page reloads with the new diffs.
 
 

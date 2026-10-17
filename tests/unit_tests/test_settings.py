@@ -1,3 +1,5 @@
+import os
+
 import pydantic
 import pytest
 
@@ -80,3 +82,43 @@ def test_state_dir_default_and_outside_the_vault(monkeypatch, tmp_path):
     assert settings.state_dir == tmp_path / ".llm-wiki"
     with pytest.raises(pydantic.ValidationError, match="outside the vault"):
         Settings(_env_file=None, vault_path=vault, state_dir=vault / ".state")
+
+
+# `.env` for the commands we start ourselves: `langgraph dev` loads it ("env" in
+# langgraph.json); `python -m llm_wiki.review_web` and `llm_wiki.ask` didn't, so the
+# provider SDKs found no API key (the first real run, 2026-10-16).
+
+
+def test_load_env_file_sets_missing_keys_and_keeps_existing(monkeypatch, tmp_path):
+    from llm_wiki.config import load_env_file
+
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.setenv("WIKI_MODEL", "from-the-shell")
+    env_file = tmp_path / ".env"
+    env_file.write_text("OPENROUTER_API_KEY=sk-test\nWIKI_MODEL=from-the-file\n")
+    assert load_env_file(env_file) is True
+    assert os.environ["OPENROUTER_API_KEY"] == "sk-test"
+    assert os.environ["WIKI_MODEL"] == "from-the-shell"  # the shell wins
+    assert load_env_file(tmp_path / "missing.env") is False
+
+
+def test_review_page_and_ask_commands_load_dotenv(monkeypatch, tmp_path):
+    import uvicorn
+
+    from llm_wiki import ask
+    from llm_wiki.review_web import __main__ as review_main
+
+    (tmp_path / ".env").write_text("OPENROUTER_API_KEY=sk-test\n")
+    monkeypatch.chdir(tmp_path)
+    seen = []
+    monkeypatch.setattr(
+        uvicorn, "run", lambda *a, **k: seen.append(os.getenv("OPENROUTER_API_KEY"))
+    )
+    monkeypatch.setattr(
+        ask, "ask", lambda *a, **k: seen.append(os.getenv("OPENROUTER_API_KEY")) or ""
+    )
+    monkeypatch.setattr("sys.argv", ["review_web"])
+    for command in (review_main.main, lambda: ask.main(["What's open?"])):
+        monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+        command()
+    assert seen == ["sk-test", "sk-test"]

@@ -336,7 +336,7 @@ async function send(answer, busy) {
     const res = await fetch(location.pathname + "/answer", {
       method: "POST", headers: {"content-type": "application/json"}, body: JSON.stringify({answer}),
     });
-    body = await res.json(); ok = res.ok;
+    body = await res.json().catch(() => ({error: `The server answered ${res.status} ${res.statusText}.`})); ok = res.ok;
   } catch (e) {}
   if (!ok || body.error) {
     was.forEach(([c, d]) => c.disabled = d);

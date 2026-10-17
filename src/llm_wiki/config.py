@@ -1,4 +1,10 @@
-"""Process settings read from the environment and `.env` (prefix `WIKI_`)."""
+"""Process settings read from the environment and `.env` (prefix `WIKI_`).
+
+`Settings` reads only `WIKI_*` names and keeps them to itself. Provider SDKs read their
+keys (`OPENROUTER_API_KEY`, ...) from the process environment, so a command we start
+ourselves calls `load_env_file()` first; `langgraph dev` loads `.env` on its own
+(`"env"` in `langgraph.json`).
+"""
 
 from __future__ import annotations
 
@@ -7,6 +13,7 @@ from functools import cache
 from pathlib import Path
 from typing import Annotated, Literal
 
+from dotenv import load_dotenv
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
@@ -99,3 +106,12 @@ class Settings(BaseSettings):
 def get_settings() -> Settings:
     """Return the process settings, read once from the environment and `.env`."""
     return Settings()
+
+
+def load_env_file(path: str | Path = ".env") -> bool:
+    """Copy `path` into the process environment; variables already set win.
+
+    Returns whether the file existed. The default is the same `.env` (relative to the
+    working directory) that `Settings` reads.
+    """
+    return load_dotenv(path, override=False)

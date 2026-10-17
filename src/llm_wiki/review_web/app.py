@@ -7,7 +7,7 @@
     POST /chat/send                    {"message": str, "history": [[role, text], ...]}
 
 Mounted on the LangGraph server through `langgraph.json` `"http": {"app": ...}`, or
-standalone: `uv run --env-file .env python -m llm_wiki.review_web`. Every call goes
+standalone: `uv run python -m llm_wiki.review_web` (loads `.env`). Every call goes
 through `get_backend()` (`WIKI_BACKEND`: local runner or the Agent Server), which
 checks answers (ids, digests, revise limit) and serves one vault (`WIKI_VAULT_PATH`).
 """
@@ -15,6 +15,7 @@ checks answers (ids, digests, revise limit) and serves one vault (`WIKI_VAULT_PA
 from __future__ import annotations
 
 import functools
+import logging
 from typing import Any
 
 from jinja2 import Environment, PackageLoader, select_autoescape
@@ -34,6 +35,8 @@ from llm_wiki.backend import (
 )
 from llm_wiki.chat import session
 from llm_wiki.review_web.view import book_note, build_view
+
+log = logging.getLogger(__name__)
 
 env = Environment(
     loader=PackageLoader("llm_wiki.review_web", "templates"),
@@ -97,6 +100,18 @@ def review_page(request: Request) -> HTMLResponse:
     )
 
 
+def _crashed(exc: Exception) -> JSONResponse:
+    """Return an unexpected failure (e.g. a missing API key in a local run) as JSON.
+
+    Without this Starlette answers a plain-text 500 that the page's script can't read.
+    """
+    log.exception("request failed")
+    return JSONResponse(
+        {"error": f"{type(exc).__name__}: {exc} (details in the server log)"},
+        status_code=500,
+    )
+
+
 def _answer(thread: str, answer: Any) -> JSONResponse:
     try:
         result = backend().answer(thread, answer)
@@ -106,6 +121,8 @@ def _answer(thread: str, answer: Any) -> JSONResponse:
         return JSONResponse({"error": str(exc)}, status_code=409)
     except BackendError as exc:  # e.g. the Agent Server is down or the run failed
         return JSONResponse({"error": str(exc)}, status_code=502)
+    except Exception as exc:  # noqa: BLE001  (the page shows it; the log has the trace)
+        return _crashed(exc)
     error = result.review.error if result.review else None
     return JSONResponse({"status": result.status, "error": error})
 
@@ -132,6 +149,8 @@ def _chat_reply(message: str, history: list[ChatTurn]) -> JSONResponse:
         return JSONResponse({"reply": session.reply(backend(), message, history)})
     except BackendError as exc:  # e.g. the Agent Server is down or the run failed
         return JSONResponse({"error": str(exc)}, status_code=502)
+    except Exception as exc:  # noqa: BLE001  (the chat shows it; the log has the trace)
+        return _crashed(exc)
 
 
 async def chat_send(request: Request) -> JSONResponse:

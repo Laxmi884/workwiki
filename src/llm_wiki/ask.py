@@ -1,8 +1,10 @@
 # ruff: noqa: T201  (a CLI prints its answer)
 """Ask the assistant one question from the terminal (decision 0008; the CLI is phase 7).
 
-uv run --env-file .env python -m llm_wiki.ask "What's open on Atlas?"
-uv run --env-file .env python -m llm_wiki.ask --vault ~/WorkDev "Q4 brag sheet"
+uv run python -m llm_wiki.ask "What's open on Atlas?"
+uv run python -m llm_wiki.ask --vault ~/WorkDev "Q4 brag sheet"
+
+Loads `.env` from the working directory first (provider keys, `WIKI_*`).
 """
 
 from __future__ import annotations
@@ -12,6 +14,7 @@ import sys
 
 from llm_wiki.assistant.agent import build_assistant
 from llm_wiki.assistant.graph import run_choice
+from llm_wiki.config import load_env_file
 from llm_wiki.model_setup import configured_fallbacks, configured_model
 
 
@@ -33,6 +36,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--vault", help="vault folder (default: WIKI_VAULT_PATH)")
     parser.add_argument("--model", help='"provider:model" (default: WIKI_MODEL)')
     args = parser.parse_args(argv)
+    load_env_file()
     print(ask(args.question, args.vault, args.model))
     return 0
 

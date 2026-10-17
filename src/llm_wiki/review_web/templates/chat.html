@@ -124,7 +124,7 @@ async function submit() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ message, history }),
     });
-    const body = await res.json();
+    const body = await res.json().catch(() => ({ error: `the server answered ${res.status} ${res.statusText}` }));
     wait.remove();
     if (!res.ok) throw new Error(body.error || res.statusText);
     show("assistant", body.reply);
