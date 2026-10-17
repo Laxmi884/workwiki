@@ -30,7 +30,7 @@ back only what it can't.
 returns typed data as **tool arguments**, one `file_fact` call per fact (`ingest/agent.py`), and code checks each
 call in `ingest/staging.py` (`citable_lines`, `_check_line`, `stage_fact`); a refusal is the tool's reply, so the
 model corrects itself instead of getting one retry. One structured final answer is still used where one object is
-the goal: the review-writer's `response_format=BragDraft`. Notebook 02 teaches this version.
+the goal: the review-writer's `response_format=BragDraft`. Notebook 07 teaches this version (it was 02 before the 2026-10-16 renumbering).
 
 ## Paid-media reference
 
