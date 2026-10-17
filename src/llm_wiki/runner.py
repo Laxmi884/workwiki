@@ -11,10 +11,6 @@ the runner or the graph directly. The runner owns the checkpointer and the threa
 
 from __future__ import annotations
 
-import enum
-import importlib
-import inspect
-import pkgutil
 import sqlite3
 import uuid
 from pathlib import Path
@@ -26,9 +22,7 @@ from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.graph import StateGraph
 from langgraph.types import Command
-from pydantic import BaseModel
 
-import llm_wiki.domain
 from llm_wiki.backend.base import RunResult, run_result
 from llm_wiki.config import get_settings
 from llm_wiki.domain.review import ReviewAnswer
@@ -36,26 +30,14 @@ from llm_wiki.ingest.graph import builder
 from llm_wiki.ingest.state import IngestContext
 
 
-def checkpoint_types() -> list[tuple[str, str]]:
-    """Return (module, class) for every model and enum in `llm_wiki.domain`.
-
-    State holds these types; the checkpointer only restores types on this list (newer
-    LangGraph versions refuse unlisted ones).
-    """
-    found: list[tuple[str, str]] = []
-    for info in pkgutil.iter_modules(llm_wiki.domain.__path__):
-        module = importlib.import_module(f"llm_wiki.domain.{info.name}")
-        for name, obj in inspect.getmembers(module, inspect.isclass):
-            if obj.__module__ == module.__name__ and issubclass(
-                obj, BaseModel | enum.Enum
-            ):
-                found.append((module.__name__, name))
-    return sorted(found)
-
-
 def checkpoint_serializer() -> JsonPlusSerializer:
-    """Return a serializer that restores our domain types (and the safe built-ins)."""
-    return JsonPlusSerializer(allowed_msgpack_modules=checkpoint_types())
+    """Return a strict serializer: it restores only LangGraph's safe built-in types.
+
+    Ingest state is stored as plain JSON (`ingest/state.py`, `STORED_AS_JSON`), so none
+    of our classes needs restoring; a class that slips into state comes back as a plain
+    dict and fails loudly in tests (`test_state_json.py`) instead of warning in prod.
+    """
+    return JsonPlusSerializer(allowed_msgpack_modules=None)
 
 
 class IngestRunner:

@@ -1,13 +1,15 @@
 """The assistant deep agent (decision 0008): answers from the vault, read only.
 
-    /vault/   the vault (FilesystemBackend, virtual paths); read only
+    /vault/   the vault (ReadOnlyFilesystemBackend, virtual paths); read only
     /skills/  this package's skills/ folder; read only
     /subagent_skills/  the review-writer's own skills; read only
     anything else: in-memory state (where deepagents puts oversized tool results, so
               they never land in the vault: that write skips permission checks)
 
-Filesystem tools are limited to read_file, ls, glob and grep, and permission rules deny
-every write besides; `.git` and `.obsidian` can't be read either. Task questions go
+Writing is refused three ways: the routes are read-only backends (every path, dotfiles
+included), filesystem tools are limited to read_file, ls, glob and grep, and permission
+rules deny writes (their globs skip dot paths, so they are not the guarantee); `.git` and
+`.obsidian` can't be read either. Task questions go
 through `find_tasks` (code reads the task index). Review synthesis goes to the
 `review-writer` subagent, which returns a sourced `BragDraft`. No writes in phase 4: saving a brief
 comes in phase 7 through the reviewed, committed path ingest uses.
@@ -20,7 +22,7 @@ from pathlib import Path
 from typing import Any
 
 from deepagents import FilesystemPermission, create_deep_agent
-from deepagents.backends import CompositeBackend, FilesystemBackend, StateBackend
+from deepagents.backends import CompositeBackend, StateBackend
 from deepagents.middleware import FilesystemMiddleware
 from langchain_core.language_models import BaseChatModel
 from langgraph.checkpoint.base import BaseCheckpointSaver
@@ -29,6 +31,7 @@ from llm_wiki.assistant.tools import make_find_tasks
 from llm_wiki.diffs import vault_reader
 from llm_wiki.domain.brag import BragDraft
 from llm_wiki.ingest.agent import READ_TOOLS, RULES_PATH, model_middleware
+from llm_wiki.readonly_backend import ReadOnlyFilesystemBackend
 
 SKILLS_DIR = Path(__file__).parent / "skills"
 SUBAGENT_SKILLS_DIR = Path(__file__).parent / "subagent_skills"
@@ -115,9 +118,11 @@ def build_assistant(
     backend = CompositeBackend(
         default=StateBackend(),
         routes={
-            "/vault/": FilesystemBackend(root_dir=vault, virtual_mode=True),
-            "/skills/": FilesystemBackend(root_dir=skills_dir, virtual_mode=True),
-            "/subagent_skills/": FilesystemBackend(
+            "/vault/": ReadOnlyFilesystemBackend(root_dir=vault, virtual_mode=True),
+            "/skills/": ReadOnlyFilesystemBackend(
+                root_dir=skills_dir, virtual_mode=True
+            ),
+            "/subagent_skills/": ReadOnlyFilesystemBackend(
                 root_dir=SUBAGENT_SKILLS_DIR, virtual_mode=True
             ),
         },

@@ -50,7 +50,12 @@ from llm_wiki.ingest.staging import (
     task_people_pages,
     with_mappings,
 )
-from llm_wiki.ingest.state import IngestContext, IngestInput, IngestState
+from llm_wiki.ingest.state import (
+    IngestContext,
+    IngestInput,
+    IngestState,
+    models_in_node,
+)
 from llm_wiki.retries import is_transient
 from llm_wiki.routing import win_edits
 
@@ -249,38 +254,46 @@ def after_review(state: AgentIngestState) -> str:
 builder = StateGraph(
     AgentIngestState, context_schema=IngestContext, input_schema=IngestInput
 )
-builder.add_node("load_note", nodes.load_note)
-builder.add_node("assign_ids", nodes.assign_ids)
-builder.add_node("track_tasks", nodes.track_tasks)
-builder.add_node("map_tasks", nodes.track_tasks)
+builder.add_node("load_note", models_in_node(nodes.load_note))
+builder.add_node("assign_ids", models_in_node(nodes.assign_ids))
+builder.add_node("track_tasks", models_in_node(nodes.track_tasks))
+builder.add_node("map_tasks", models_in_node(nodes.track_tasks))
 # A stage retry reruns the whole agent, after the model middleware's own retries and
 # fallbacks gave up: only for failures that may pass (network, 429, 5xx), not for a bad
 # key, no credits or our own bugs. The wait gives a struggling provider a moment.
 builder.add_node(
     "stage",
-    stage,
+    models_in_node(stage),
     retry_policy=RetryPolicy(
         max_attempts=2, initial_interval=10.0, retry_on=is_transient
     ),
 )
-builder.add_node("pick_wins", pick_wins)
-builder.add_node("render", nodes.render)
+builder.add_node("pick_wins", models_in_node(pick_wins))
+builder.add_node("render", models_in_node(nodes.render))
 # The review shows the agent's filed facts: without `input_schema` the node would get
 # only its annotated `IngestState` keys, and `agent_filed` would be dropped.
-builder.add_node("review", nodes.review_changes, input_schema=AgentIngestState)
-builder.add_node("apply", nodes.apply)
+builder.add_node(
+    "review", models_in_node(nodes.review_changes), input_schema=AgentIngestState
+)
+builder.add_node("apply", models_in_node(nodes.apply))
 
 builder.add_edge(START, "load_note")
-builder.add_conditional_edges("load_note", nodes.after_load, ["assign_ids", END])
+builder.add_conditional_edges(
+    "load_note", models_in_node(nodes.after_load), ["assign_ids", END]
+)
 builder.add_edge("assign_ids", "track_tasks")
 builder.add_edge("track_tasks", "stage")
 builder.add_edge("stage", "map_tasks")
 builder.add_edge("map_tasks", "render")
 builder.add_edge("render", "review")
 builder.add_conditional_edges(
-    "review", after_review, ["stage", "pick_wins", "render", "apply", END]
+    "review",
+    models_in_node(after_review),
+    ["stage", "pick_wins", "render", "apply", END],
 )
 builder.add_edge("pick_wins", "map_tasks")
-builder.add_conditional_edges("apply", nodes.after_apply, ["render", END])
+builder.add_conditional_edges(
+    "apply", models_in_node(nodes.after_apply), ["render", END]
+)
 
 graph = builder.compile(name="ingest")

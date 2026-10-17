@@ -1,0 +1,11 @@
+# Allow-list: the image gets only what the server needs (langgraph build / up copy the project
+# root through this file). Secrets (.env), dev-server state (.langgraph_api), tests, notebooks
+# and docs stay out; `langgraph up` passes .env to the container at run time instead.
+*
+!src/
+!pyproject.toml
+!uv.lock
+!README.md
+!LICENSE
+!langgraph.json
+**/__pycache__

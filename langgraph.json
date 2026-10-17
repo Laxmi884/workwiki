@@ -1,14 +1,18 @@
 {
   "$schema": "https://langgra.ph/schema.json",
-  "dependencies": [
-    "."
+  "python_version": "3.12",
+  "image_distro": "wolfi",
+  "source": {
+    "kind": "uv"
+  },
+  "dockerfile_lines": [
+    "ENV UV_NO_DEV=1"
   ],
   "graphs": {
-    "assistant": "./src/llm_wiki/assistant/graph.py:make_graph",
-    "ingest": "./src/llm_wiki/ingest/graph.py:graph"
+    "ingest": "./src/llm_wiki/ingest/graph.py:graph",
+    "assistant": "./src/llm_wiki/assistant/graph.py:make_graph"
   },
   "env": ".env",
-  "image_distro": "wolfi",
   "http": {
     "app": "./src/llm_wiki/review_web/app.py:app"
   }

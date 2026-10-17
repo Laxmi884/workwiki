@@ -6,6 +6,11 @@ backend runs against a `langgraph dev` this module starts, opt-in:
 
     WIKI_SERVER_TESTS=1 uv run pytest tests/unit_tests/test_backend_contract.py
 
+or against the production setup: the `langgraph build` image under our `compose.yml`
+(Docker, Postgres, strict serde; the first build takes minutes):
+
+    WIKI_SERVER_TESTS=docker uv run pytest tests/unit_tests/test_backend_contract.py
+
 The server loads `tests/server/graphs.py` (the real graphs, scripted models), so
 neither backend calls a model.
 """
@@ -50,14 +55,26 @@ def _free_port() -> int:
         return s.getsockname()[1]
 
 
-@pytest.fixture(scope="session")
-def server_url(tmp_path_factory):
-    """Start `langgraph dev` on the scripted graphs; stop it after the session."""
-    if not os.environ.get("WIKI_SERVER_TESTS"):
-        pytest.skip("server contract tests are opt-in: set WIKI_SERVER_TESTS=1")
-    work = tmp_path_factory.mktemp(
-        "server"
-    )  # cwd: the server keeps .langgraph_api here
+def _wait_until_up(url: str, alive, deadline_s: float, log_path: Path) -> None:
+    deadline = time.monotonic() + deadline_s
+    while True:
+        try:
+            if httpx.get(f"{url}/ok", timeout=1).status_code == 200:
+                return
+        except httpx.HTTPError:
+            pass
+        if not alive() or time.monotonic() > deadline:
+            pytest.fail(f"server did not start:\n{log_path.read_text()[-3000:]}")
+        time.sleep(0.5)
+
+
+# Strict: the servers restore only LangGraph's safe types, as a future langgraph-api will
+# by default. Ingest state is plain JSON (ingest/state.py), so nothing of ours is needed.
+SERVER_ENV = {"LANGSMITH_TRACING": "false", "LANGGRAPH_STRICT_MSGPACK": "true"}
+
+
+def _dev_server(work: Path):
+    """`langgraph dev` in a subprocess, on a config with absolute paths."""
     config = {
         "dependencies": [str(ROOT)],  # paths are absolute: dev resolves them from cwd
         "graphs": {
@@ -80,26 +97,106 @@ def server_url(tmp_path_factory):
                 "--no-browser",
                 "--no-reload",
             ],
-            cwd=work,
+            cwd=work,  # the server keeps .langgraph_api here
             stdout=log,
             stderr=subprocess.STDOUT,
-            env={**os.environ, "LANGSMITH_TRACING": "false"},
+            env={**os.environ, **SERVER_ENV},
         )
     url = f"http://127.0.0.1:{port}"
-    deadline = time.monotonic() + 90
-    while True:
-        try:
-            if httpx.get(f"{url}/ok", timeout=1).status_code == 200:
+    try:
+        _wait_until_up(url, lambda: server.poll() is None, 90, log_path)
+        yield url
+    finally:
+        server.terminate()
+        server.wait(timeout=10)
+
+
+# Its own compose project and image tag, so `down --volumes` never touches a real stack.
+DOCKER_PROJECT = "llm-wiki-contract"
+DOCKER_IMAGE = "llm-wiki:contract"
+
+
+def _docker_server(work: Path, shared: Path):
+    """Our `compose.yml` on a fresh `langgraph build` image, scripted graphs swapped in.
+
+    An extra compose file overrides the image's graph list (`LANGSERVE_GRAPHS`) and
+    mounts a copy of `tests/` read-only (macOS doesn't let Docker mount from
+    ~/Documents). `WIKI_VAULT_PATH` is `shared`, where the tests' vaults live, so
+    compose.yml mounts it at the same path and the server and the tests see one vault.
+    """
+    tests = shutil.copytree(
+        ROOT / "tests", shared / "tests", ignore=shutil.ignore_patterns("__pycache__")
+    )
+    in_image = "/deps/workspace/tests/server/graphs.py"
+    override = {
+        "services": {
+            "api": {
+                "environment": {
+                    "LANGSERVE_GRAPHS": json.dumps(
+                        {
+                            "ingest": f"{in_image}:ingest",
+                            "assistant": f"{in_image}:assistant",
+                        }
+                    ),
+                    "LANGSMITH_TRACING": "false",
+                },
+                "volumes": [f"{tests}:/deps/workspace/tests:ro"],
+            }
+        }
+    }
+    (work / "compose.override.yml").write_text(json.dumps(override))  # JSON is YAML
+    port = _free_port()
+    log_path = work / "server.log"
+    env = {
+        **os.environ,
+        "WIKI_IMAGE": DOCKER_IMAGE,
+        "WIKI_PORT": str(port),
+        "WIKI_VAULT_PATH": str(shared),
+    }
+    compose = ["docker", "compose", "-p", DOCKER_PROJECT, "-f", ROOT / "compose.yml"]
+    with log_path.open("w") as log:
+        steps = [
+            [Path(sys.executable).parent / "langgraph", "build", "-t", DOCKER_IMAGE],
+            [*compose, "-f", work / "compose.override.yml", "up", "-d", "--wait"],
+        ]
+        for step in steps:
+            done = subprocess.run(
+                step,
+                cwd=ROOT,
+                stdout=log,
+                stderr=subprocess.STDOUT,
+                env=env,
+                timeout=900,
+            )
+            if done.returncode != 0:
                 break
-        except httpx.HTTPError:
-            pass
-        if server.poll() is not None or time.monotonic() > deadline:
-            server.kill()
-            pytest.fail(f"langgraph dev did not start:\n{log_path.read_text()[-3000:]}")
-        time.sleep(0.5)
-    yield url
-    server.terminate()
-    server.wait(timeout=10)
+    url = f"http://127.0.0.1:{port}"
+    try:
+        if done.returncode != 0:
+            pytest.fail(f"docker setup failed:\n{log_path.read_text()[-3000:]}")
+        _wait_until_up(url, lambda: True, 60, log_path)
+        yield url
+    finally:
+        with log_path.open("a") as log:
+            for args in (["logs", "api"], ["down", "--volumes"]):
+                subprocess.run(
+                    [*compose, *args], stdout=log, stderr=subprocess.STDOUT, env=env
+                )
+
+
+@pytest.fixture(scope="session")
+def server_url(tmp_path_factory):
+    """Start `langgraph dev` (or the Docker stack) on the scripted graphs; stop it after."""
+    mode = os.environ.get("WIKI_SERVER_TESTS")
+    if not mode:
+        pytest.skip(
+            "server contract tests are opt-in: set WIKI_SERVER_TESTS=1 (or =docker)"
+        )
+    work = tmp_path_factory.mktemp("server")
+    if mode == "docker":
+        yield from _docker_server(work, tmp_path_factory.getbasetemp().resolve())
+    else:
+        yield from _dev_server(work)
 
 
 @pytest.fixture(params=["local", "server"])

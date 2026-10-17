@@ -33,14 +33,14 @@ dev = ["mypy>=1.11.1", "ruff>=0.6.1"]
 requires = ["setuptools>=83.0.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
-[tool.setuptools]
-packages = ["llm_wiki"]
-[tool.setuptools.package-dir]
-"llm_wiki" = "src/llm_wiki"
-
+[tool.setuptools.packages.find]
+where = ["src"]  # every subpackage (ingest, assistant, backend, ...), not just the top level
 
 [tool.setuptools.package-data]
 "*" = ["py.typed"]
+"llm_wiki.ingest" = ["skills/*/SKILL.md"]
+"llm_wiki.assistant" = ["skills/*/SKILL.md", "subagent_skills/*/SKILL.md"]
+"llm_wiki.review_web" = ["templates/*.html"]
 
 [tool.ruff]
 lint.select = [

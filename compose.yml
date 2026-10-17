@@ -1,0 +1,75 @@
+# The wiki's Agent Server as we run it (decision 0010): our image, our ports.
+#
+#   uv run langgraph build -t llm-wiki:local
+#   WIKI_VAULT_PATH=$HOME/Work docker compose up -d --wait
+#   open http://127.0.0.1:8123/review                  # docker compose down: stop
+#
+# Unlike `langgraph up` (fine for quick experiments), this publishes the API on
+# 127.0.0.1 only and Postgres/Redis not at all: nothing else on the network can reach
+# them, and several stacks can run side by side. Same file on a server later (phase 8),
+# behind Tailscale and auth.
+#
+# The vault is mounted at the same absolute path inside the container, because the
+# server backend sends the client's vault path with every thread. It must be absolute
+# (no "~"), and outside ~/Documents, ~/Desktop and ~/Downloads, which macOS doesn't let
+# Docker mount without a privacy grant.
+name: llm-wiki-server
+
+services:
+  api:
+    image: ${WIKI_IMAGE:-llm-wiki:local}
+    ports:
+      - "127.0.0.1:${WIKI_PORT:-8123}:8000"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URI: postgres://postgres:postgres@postgres:5432/postgres?sslmode=disable
+      REDIS_URI: redis://redis:6379
+      # Restore only LangGraph's safe types: ingest state is plain JSON (ingest/state.py).
+      LANGGRAPH_STRICT_MSGPACK: "true"
+      WIKI_VAULT_PATH: ${WIKI_VAULT_PATH:?set WIKI_VAULT_PATH to the vault's absolute path}
+      # The review page runs inside this server, so it talks to it (port 8000 inside).
+      WIKI_BACKEND: server
+      WIKI_SERVER_URL: http://127.0.0.1:8000
+    volumes:
+      - ${WIKI_VAULT_PATH}:${WIKI_VAULT_PATH}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: python /api/healthcheck.py
+      interval: 60s
+      start_interval: 1s
+      start_period: 10s
+    restart: unless-stopped
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres  # reachable only from the api container
+    command: ["postgres", "-c", "shared_preload_libraries=vector"]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: pg_isready -U postgres
+      interval: 60s
+      start_interval: 1s
+      start_period: 10s
+    restart: unless-stopped
+
+  redis:
+    image: redis:6
+    healthcheck:
+      test: redis-cli ping
+      interval: 5s
+      timeout: 1s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  pgdata:

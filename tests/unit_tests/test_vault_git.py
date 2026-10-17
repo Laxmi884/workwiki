@@ -14,13 +14,18 @@ NOTE = "00_raw/daily/2026-10-12.md"
 
 
 @pytest.fixture(autouse=True)
-def _git_identity(monkeypatch):
-    """Isolate git from the developer's config; give commits an identity."""
+def _no_git_identity(monkeypatch):
+    """Git as in a server container: no user config, no identity in the environment."""
     monkeypatch.setenv("GIT_CONFIG_GLOBAL", "/dev/null")
     monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
+    # git would otherwise guess "you@host.local" on a Mac; a container can't guess
+    monkeypatch.setenv("GIT_CONFIG_COUNT", "1")
+    monkeypatch.setenv("GIT_CONFIG_KEY_0", "user.useConfigOnly")
+    monkeypatch.setenv("GIT_CONFIG_VALUE_0", "true")
     for who in ("AUTHOR", "COMMITTER"):
-        monkeypatch.setenv(f"GIT_{who}_NAME", "Test")
-        monkeypatch.setenv(f"GIT_{who}_EMAIL", "test@example.com")
+        monkeypatch.delenv(f"GIT_{who}_NAME", raising=False)
+        monkeypatch.delenv(f"GIT_{who}_EMAIL", raising=False)
+    monkeypatch.delenv("WIKI_GIT_AUTHOR", raising=False)
 
 
 def git(repo, *args):
@@ -32,7 +37,17 @@ def git(repo, *args):
 def make_repo(path):
     git(path, "init", "-q")
     git(path, "add", "-A")
-    git(path, "commit", "-q", "-m", "start")
+    git(
+        path,
+        "-c",
+        "user.name=Me",
+        "-c",
+        "user.email=me@example.com",
+        "commit",
+        "-q",
+        "-m",
+        "start",
+    )
     return path
 
 
@@ -58,6 +73,41 @@ def test_commits_only_the_given_paths(repo):
         "new.md",
     ]
     assert "mine.md" in git(repo, "status", "--porcelain"), "user's edit stays out"
+
+
+def test_commits_carry_the_agent_identity_without_any_git_config(repo):
+    (repo / "a.md").write_text("a2\n")
+    sha, warnings = commit_paths(repo, ["a.md"], "ingest")
+    assert warnings == [] and sha is not None
+    who = git(repo, "show", "-s", "--format=%an <%ae>|%cn <%ce>", "HEAD").strip()
+    assert who == "llm-wiki <llm-wiki@localhost>|llm-wiki <llm-wiki@localhost>"
+
+
+def test_the_identity_comes_from_wiki_git_author(repo, monkeypatch):
+    monkeypatch.setenv("WIKI_GIT_AUTHOR", "Laxmi M <laxmi@example.com>")
+    (repo / "a.md").write_text("a2\n")
+    commit_paths(repo, ["a.md"], "ingest")
+    assert git(repo, "show", "-s", "--format=%an <%ae>", "HEAD").strip() == (
+        "Laxmi M <laxmi@example.com>"
+    )
+    monkeypatch.setenv("WIKI_GIT_AUTHOR", "just a name")
+    (repo / "a.md").write_text("a3\n")
+    sha, warnings = commit_paths(repo, ["a.md"], "ingest")
+    assert sha is None and "Name <email>" in warnings[0]
+    assert git(repo, "diff", "--cached", "--name-only") == "", "nothing staged"
+
+
+def test_a_failed_commit_unstages_what_it_staged(repo):
+    hook = repo / ".git" / "hooks" / "pre-commit"
+    hook.write_text("#!/bin/sh\nexit 1\n")
+    hook.chmod(0o755)
+    (repo / "mine.md").write_text("staged by me\n")
+    git(repo, "add", "mine.md")
+    (repo / "a.md").write_text("a2\n")
+    sha, warnings = commit_paths(repo, ["a.md"], "ingest")
+    assert sha is None and "git commit failed" in warnings[0]
+    assert git(repo, "diff", "--cached", "--name-only").split() == ["mine.md"]
+    assert "a.md" in git(repo, "diff", "--name-only"), "the file stays written"
 
 
 def test_user_staged_changes_stay_staged_and_uncommitted(repo):

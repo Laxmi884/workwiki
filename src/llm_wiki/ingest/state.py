@@ -1,10 +1,23 @@
-"""Ingest graph state and per-run context (decisions 0004, 0006)."""
+"""Ingest graph state and per-run context (decisions 0004, 0006).
+
+Checkpoints hold plain JSON; nodes see models. The fields in `STORED_AS_JSON` are
+domain models in the state schema (what nodes read and return) but are stored as their
+JSON form: `models_in_node` wraps every node and router, turning the stored JSON back
+into models on the way in and models into JSON on the way out. So a checkpoint never
+names one of our classes, and any checkpointer can restore it, including strict ones
+that refuse unlisted types (the local runner's, and the Agent Server's once it applies
+`LANGGRAPH_STRICT_MSGPACK`). A new model-typed field needs one line in the table;
+`tests/unit_tests/test_state_json.py` fails until it has one.
+"""
 
 from __future__ import annotations
 
+import functools
 import operator
-from typing import Annotated
+from collections.abc import Callable, Mapping
+from typing import Annotated, Any
 
+from pydantic import TypeAdapter
 from typing_extensions import TypedDict
 
 from llm_wiki.domain.changes import Edit, FileDiff
@@ -102,3 +115,51 @@ class IngestInput(TypedDict):
     """
 
     note_path: str
+
+
+# Field → how its models are stored as JSON (fields of IngestState and AgentIngestState).
+STORED_AS_JSON: dict[str, TypeAdapter[Any]] = {
+    "note": TypeAdapter(DailyNote),
+    "task_edits": TypeAdapter(list[Edit]),
+    "fact_edits": TypeAdapter(list[Edit]),
+    "agent_edits": TypeAdapter(list[Edit]),
+    "task_proposals": TypeAdapter(list[TaskProposal]),
+    "done_tasks": TypeAdapter(list[DoneTask]),
+    "diffs": TypeAdapter(list[FileDiff]),
+}
+
+
+def decoded(state: Mapping[str, Any]) -> dict[str, Any]:
+    """Return `state` with stored JSON turned back into models."""
+    return {
+        key: STORED_AS_JSON[key].validate_python(value)
+        if key in STORED_AS_JSON
+        else value
+        for key, value in state.items()
+    }
+
+
+def encoded(update: Any) -> Any:
+    """Return a node's update with models turned into JSON (other returns unchanged)."""
+    if not isinstance(update, dict):
+        return update  # a router's choice, a Command, ...
+    return {
+        key: STORED_AS_JSON[key].dump_python(value, mode="json")
+        if key in STORED_AS_JSON
+        else value
+        for key, value in update.items()
+    }
+
+
+def models_in_node(fn: Callable[..., Any]) -> Callable[..., Any]:
+    """Wrap a node or router: it reads and returns models, the state stores JSON.
+
+    `functools.wraps` keeps `fn`'s signature and annotations, which LangGraph reads to
+    pass `runtime` and to pick the node's input schema.
+    """
+
+    @functools.wraps(fn)
+    def wrapper(state: Mapping[str, Any], *args: Any, **kwargs: Any) -> Any:
+        return encoded(fn(decoded(state), *args, **kwargs))
+
+    return wrapper

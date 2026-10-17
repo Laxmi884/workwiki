@@ -1,12 +1,13 @@
 """The ingest deep agent (decision 0006 spike): reads the wiki, stages checked edits.
 
-    /vault/   the vault, read only (FilesystemBackend, virtual paths)
+    /vault/   the vault, read only (ReadOnlyFilesystemBackend, virtual paths)
     /skills/  this package's skills/ folder, read only
     anything else: in-memory state (where deepagents puts oversized tool results, so
               they never land in the vault: that write skips permission checks)
 
-Write tools are hidden (read_file, ls, glob, grep only) and every write is also denied
-by permission rules. The agent's only way to change the wiki is the staging tools;
+The routes are read-only backends (every write refused, dot paths included), write tools
+are hidden (read_file, ls, glob, grep only), and permission rules deny writes too (their
+globs skip dot paths, so they are not the guarantee). The agent's only way to change the wiki is the staging tools;
 each call is checked by `staging` and becomes an edit in the agent's state, or a refusal
 the agent reads and can fix.
 """
@@ -20,7 +21,7 @@ from pathlib import Path
 from typing import Annotated, Any
 
 from deepagents import DeepAgentState, FilesystemPermission, create_deep_agent
-from deepagents.backends import CompositeBackend, FilesystemBackend, StateBackend
+from deepagents.backends import CompositeBackend, StateBackend
 from deepagents.middleware import FilesystemMiddleware
 from langchain.agents.middleware import ModelFallbackMiddleware, ModelRetryMiddleware
 from langchain.tools import ToolRuntime, tool
@@ -39,6 +40,7 @@ from llm_wiki.ingest.staging import (
     StagingContext,
     StagingError,
 )
+from llm_wiki.readonly_backend import ReadOnlyFilesystemBackend
 from llm_wiki.retries import is_transient
 from llm_wiki.routing import decision_log_path, impact_path
 
@@ -344,8 +346,10 @@ def build_ingest_agent(
     backend = CompositeBackend(
         default=StateBackend(),
         routes={
-            "/vault/": FilesystemBackend(root_dir=vault, virtual_mode=True),
-            "/skills/": FilesystemBackend(root_dir=skills_dir, virtual_mode=True),
+            "/vault/": ReadOnlyFilesystemBackend(root_dir=vault, virtual_mode=True),
+            "/skills/": ReadOnlyFilesystemBackend(
+                root_dir=skills_dir, virtual_mode=True
+            ),
         },
     )
     permissions = [
