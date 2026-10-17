@@ -111,11 +111,16 @@ def _live(runtime: ToolRuntime) -> tuple[list[Edit], list[Filed]]:
     """Return the staging as it stands: withdrawn facts and their lines removed.
 
     Checks run against this view, so a withdrawn fact can be filed again elsewhere
-    (or in another section of the same page).
+    (or in another section of the same page). New pages stay in it while still
+    empty: dropping them is for the end of the run, and mid-run it hid a page
+    proposed one turn earlier ("call propose_page first", then a second proposal).
     """
     state = runtime.state
     edits, filed, _ = staging.finalize(
-        state.get("staged", []), state.get("filed", []), state.get("withdrawn", [])
+        state.get("staged", []),
+        state.get("filed", []),
+        state.get("withdrawn", []),
+        drop_empty=False,
     )
     return edits, filed
 

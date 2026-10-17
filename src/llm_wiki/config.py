@@ -31,9 +31,12 @@ class Settings(BaseSettings):
             overload). Empty: no fallback.
         review_url: `WIKI_REVIEW_URL`. Where the review page is served, for links in
             chat messages. Default "http://127.0.0.1:2024" (`langgraph dev`).
-        model_timeout: `WIKI_MODEL_TIMEOUT`. Seconds one model request may take before
-            it fails (and is retried); a provider that never answers would otherwise
-            stall the run. Not applied to local Ollama models. Default 180.
+        model_timeout: `WIKI_MODEL_TIMEOUT`. The request timeout passed to the
+            provider, so a provider that never answers fails (and is retried) instead
+            of stalling the run. It does not cap a call's total time: on 2026-10-16
+            OpenRouter calls that were still reasoning ran 206 s and over 460 s with
+            the default (likely the connection stays active while the model works).
+            Not applied to local Ollama models. Default 180.
         backend: `WIKI_BACKEND`. How surfaces reach the agents (decision 0010):
             "local" (this process, our SQLite) or "server" (an Agent Server at
             `server_url`). Default "local".

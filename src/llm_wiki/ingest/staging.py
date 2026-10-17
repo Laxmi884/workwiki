@@ -632,6 +632,7 @@ def finalize(
     withdrawn: Collection[tuple[int, str, int]] = (),
     ctx: StagingContext | None = None,
     keep: Collection[str] = (),
+    drop_empty: bool = True,
 ) -> tuple[list[Edit], list[Filed], list[str]]:
     """Re-check the whole staging once the agent is done.
 
@@ -642,7 +643,9 @@ def finalize(
     `(line, path, n)` removes that line's facts on that page among the first `n`
     filings (those made before it), with their appended lines; a fact filed again
     after the withdrawal stays. A new page left with nothing on it is dropped, unless
-    it is in `keep` (a task is mapped to it, or a task names that person). With
+    it is in `keep` (a task is mapped to it, or a task names that person), or
+    `drop_empty` is False (the tools' live view mid-run, where a page proposed in an
+    earlier turn must stay visible until something lands on it). With
     `ctx`, facts filed in the same turn as their page's propose_page are checked now:
     dropped if no page came, or if their line doesn't name it.
 
@@ -699,7 +702,7 @@ def finalize(
         edits.append(edit)
     has_content = {e.path for e in edits if not isinstance(e, CreateFile)}
     empty = [e.path for e in edits if isinstance(e, CreateFile)]
-    empty = [p for p in empty if p not in has_content and p not in keep]
+    empty = [p for p in empty if drop_empty and p not in has_content and p not in keep]
     problems += [f"finalize: dropped {p}: a new page with nothing on it" for p in empty]
     edits = [e for e in edits if not (isinstance(e, CreateFile) and e.path in empty)]
     return edits, kept, problems

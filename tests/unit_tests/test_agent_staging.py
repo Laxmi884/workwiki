@@ -704,3 +704,36 @@ def test_the_inner_agent_streams_its_steps_but_stores_no_checkpoints(
     assert graph.get_state(config).next == ("review",)
     stored = {i.config["configurable"]["checkpoint_ns"] for i in saver.list(None)}
     assert stored == {""}, f"only the ingest graph's checkpoints, got {stored}"
+
+
+def test_a_page_proposed_in_an_earlier_turn_stays_visible(vault_copy, monkeypatch):
+    # Found in the 2026-10-16 real run: the tools' live view ran the end-of-run
+    # "drop empty new pages" rule, so a page proposed one turn earlier (still empty)
+    # was invisible. update_summary refused it ("call propose_page first"), a second
+    # propose_page was accepted, and the model looped through extra turns.
+    slug = "concept-cookie-domain"
+    script = ToolScript(
+        messages=iter(
+            [
+                call("propose_page", slug=slug, title="Cookie Domain", line=47),
+                call(
+                    "update_summary",
+                    target=slug,
+                    lines=["Must match the subdomain for SSO redirects."],
+                    cites=[47],
+                ),
+                call("propose_page", slug=slug, title="Cookie Domain", line=47),
+                AIMessage("Done."),
+            ]
+        )
+    )
+    monkeypatch.setattr(nodes, "chat_model", lambda runtime: script)
+    runner = IngestRunner.in_memory(
+        context={"vault_path": str(vault_copy)}, graph_builder=agent_builder
+    )
+    result = runner.start(NOTE)
+    values = runner.graph.get_state(runner._config(result.thread_id)).values
+    page = next(f for f in result.review.files if f.path.endswith(f"{slug}.md"))
+    assert "Must match the subdomain for SSO redirects." in page.after_text
+    assert page.after_text.count("# Cookie Domain") == 1
+    assert values["agent_stats"]["refusals"] == 1  # only the second propose_page

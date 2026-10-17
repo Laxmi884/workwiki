@@ -212,7 +212,7 @@ select.task-pick { font: 600 16px/1.3 var(--serif); color: var(--ink); backgroun
 {% if review.can_revise %}
 <h2>Ask the agent again</h2>
 {% if review.revisions_left %}
-<p class="h2-note">Say what it got wrong or missed. It re-reads your note and you get a fresh review (about a minute; uses the model). {{ review.revisions_left }} {{ "revision" if review.revisions_left == 1 else "revisions" }} left.</p>
+<p class="h2-note">Say what it got wrong or missed. It re-reads your note and you get a fresh review (this can take several minutes; uses the model). {{ review.revisions_left }} {{ "revision" if review.revisions_left == 1 else "revisions" }} left.</p>
 <form class="revise" id="revise">
   <textarea name="feedback" aria-label="What the agent should change" placeholder="e.g. The beta date belongs on Atlas's current state, not under Updates."></textarea>
   <div class="editor-bar">
