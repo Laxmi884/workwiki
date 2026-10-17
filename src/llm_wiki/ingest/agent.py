@@ -39,6 +39,7 @@ from llm_wiki.ingest.staging import (
     StagingContext,
     StagingError,
 )
+from llm_wiki.retries import is_transient
 from llm_wiki.routing import decision_log_path, impact_path
 
 SKILLS_DIR = Path(__file__).parent / "skills"
@@ -309,17 +310,20 @@ def ask_user(question: str, line: int, runtime: ToolRuntime[AgentContext]) -> Co
 def model_middleware(
     fallbacks: Sequence[BaseChatModel] = (), initial_delay: float = 5.0
 ) -> list[Any]:
-    """Retry each failed model call, then try the fallback models in order.
+    """Retry each failed model call that may pass, then try the fallback models in order.
 
-    Free providers often answer "overloaded" (OpenRouter raises it as a ValueError,
-    which the graph's RetryPolicy rightly won't retry). Retrying here repeats one call
-    and keeps the agent's progress. The fallback middleware comes first so it wraps
-    the retry: every model, fallbacks too, gets its retries. `on_failure="error"`
-    matters: the default ("continue") would hand the agent the error as if the model
-    had answered, ending the run quietly with half the work.
+    Free providers often answer "overloaded" (OpenRouter raises it as a ValueError).
+    Retrying here repeats one call and keeps the agent's progress. Only transient
+    failures are retried (`retries.is_transient`: network, 429, 5xx); a bad key or no
+    credits (401, 402) goes straight to the fallbacks instead of waiting out the
+    backoff. The fallback middleware comes first so it wraps the retry: every model,
+    fallbacks too, gets its retries. `on_failure="error"` matters: the default
+    ("continue") would hand the agent the error as if the model had answered, ending
+    the run quietly with half the work.
     """
     retry = ModelRetryMiddleware(
         max_retries=3,
+        retry_on=is_transient,
         initial_delay=initial_delay,
         backoff_factor=2.0,
         on_failure="error",

@@ -51,6 +51,7 @@ from llm_wiki.ingest.staging import (
     with_mappings,
 )
 from llm_wiki.ingest.state import IngestContext, IngestInput, IngestState
+from llm_wiki.retries import is_transient
 from llm_wiki.routing import win_edits
 
 RECURSION_LIMIT = 120  # agent steps: ~2 per tool call
@@ -252,7 +253,16 @@ builder.add_node("load_note", nodes.load_note)
 builder.add_node("assign_ids", nodes.assign_ids)
 builder.add_node("track_tasks", nodes.track_tasks)
 builder.add_node("map_tasks", nodes.track_tasks)
-builder.add_node("stage", stage, retry_policy=RetryPolicy(max_attempts=2))
+# A stage retry reruns the whole agent, after the model middleware's own retries and
+# fallbacks gave up: only for failures that may pass (network, 429, 5xx), not for a bad
+# key, no credits or our own bugs. The wait gives a struggling provider a moment.
+builder.add_node(
+    "stage",
+    stage,
+    retry_policy=RetryPolicy(
+        max_attempts=2, initial_interval=10.0, retry_on=is_transient
+    ),
+)
 builder.add_node("pick_wins", pick_wins)
 builder.add_node("render", nodes.render)
 # The review shows the agent's filed facts: without `input_schema` the node would get
