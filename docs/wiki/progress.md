@@ -97,7 +97,8 @@ Model: `openrouter:deepseek/deepseek-v4.1-flash` (~$0.001 per ingest, ~$0.002 pe
   - [x] Review questions section (2026-10-17, `d6fcb0e`): `ReviewQuestion`s with the quoted line, answered as one revise (`answers`), chat `/answer`; notebook 18
   - [x] Open-tasks page per [[decisions/0012-open-tasks-page|0012]] (2026-10-17, `d6fcb0e`): `open_tasks.py`, `ReplaceFile` for that path, not editable, under Bookkeeping; notebook 18
   - [x] Bookkeeping all or nothing per [[decisions/0013-bookkeeping-all-or-nothing|0013]] (2026-10-17, committed): `ReviewFile.required`, `check_answer` refuses leaving one out, fixed list on the page, "always written" in chat; notebook 18 section 3
-  - [ ] Real-run follow-ups: `review_web`/`ask` load `.env`; chat route returns a JSON error when a run crashes; lower reasoning effort for the ingest model (81 s / 175 s calls); same-turn `map_task` visible to `file_fact`
+  - [x] Real-run follow-up: `review_web`/`ask` load `.env` (`config.load_env_file`, shell values win) and both POST routes return a JSON error on an unexpected crash (`_crashed`, trace in the server log); the page scripts also cope with a non-JSON reply (2026-10-17, `d50987e`)
+  - [ ] Real-run follow-ups: lower reasoning effort for the ingest model (81 s / 175 s calls); same-turn `map_task` visible to `file_fact`
   - [x] `AddAlias` changes only the aliases lines (Claude, 2026-10-16; awaiting review with R3): text edit + parse-back check, refuses shapes it can't edit safely; all 5 `~/WorkDev` entity pages take an alias as a one-line change (dry run, nothing written)
   - [ ] Follow-up from R3: `WritablePath` refuses `90_meta/*.md` for agent edits (remember gets its own path type); before phase 5's write guard
   - [ ] Telegram/Slack adapters: summary + Approve all / Reject + link to the review page
