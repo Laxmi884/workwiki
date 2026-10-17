@@ -258,3 +258,33 @@ def test_answers_become_the_feedback_the_agent_reads():
 )
 def test_bad_question_answers(raw, error):
     assert error in check_answer(ASKED, raw)[1]
+
+
+# --- bookkeeping is all or nothing (decision 0013) ---------------------------------
+
+BOOKS = [
+    "00_raw/daily/2026-10-12.md",
+    "05_generated/open-tasks.md",
+    "90_meta/ingest-ledger.json",
+    "90_meta/tasks.json",
+]
+WITH_BOOKS = build_request(
+    "00_raw/daily/2026-10-12.md",
+    [_diff(p, None) for p in [*BOOKS, "30_decisions/2026/decisions-2026-q4.md"]],
+    [],
+)
+
+
+@pytest.mark.parametrize("path", BOOKS)
+def test_bookkeeping_cannot_be_left_out(path):
+    (f,) = [f for f in WITH_BOOKS.files if f.path == path]
+    assert f.required and not f.editable
+    error = check_answer(WITH_BOOKS, {"action": "approve", "reject": [f.id]})[1]
+    assert f"{f.id} is {path}" in error and "go together" in error
+
+
+def test_wiki_pages_can_still_be_left_out_and_bookkeeping_alone_is_fine():
+    (log,) = [f for f in WITH_BOOKS.files if not f.required]
+    answer, error = check_answer(WITH_BOOKS, {"action": "approve", "reject": [log.id]})
+    assert error is None
+    assert len(approved_digests(WITH_BOOKS, answer)) == len(BOOKS)

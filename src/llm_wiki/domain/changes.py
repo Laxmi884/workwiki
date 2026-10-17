@@ -191,6 +191,20 @@ def is_wiki_page(path: str) -> bool:
     return True
 
 
+def is_bookkeeping(path: str) -> bool:
+    """Return whether `path` is one of an ingest's bookkeeping files (decision 0013).
+
+    The raw note (task IDs), the task index, the open-tasks page and the ingest
+    ledger describe one fact, "this note was ingested": they are written together
+    with every approval, never left out one by one.
+    """
+    return (
+        path.startswith(RAW_DAILY_FOLDER)
+        or (path.startswith(META_FOLDER) and path.endswith(".json"))
+        or path == OPEN_TASKS_PATH
+    )
+
+
 class ReplaceFile(BaseModel):
     """Write a whole code-owned file (create or overwrite), e.g. `90_meta/tasks.json`.
 

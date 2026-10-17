@@ -145,9 +145,12 @@ def runner(vault_copy, monkeypatch):
 
 def test_approve_writes_and_the_note_is_then_skipped(runner, vault_copy):
     started = runner.start(NOTE)
-    done = runner.resume(started.thread_id, {"action": "approve", "reject": ["f2"]})
+    # leave out the wiki page; bookkeeping can't be left out (0013). By path: ids
+    # follow the sorted paths, so "f2" became the open-tasks page when it arrived.
+    (log,) = [f for f in started.review.files if f.path.startswith("30_decisions/")]
+    done = runner.resume(started.thread_id, {"action": "approve", "reject": [log.id]})
     assert done.status == "done"
-    rejected = next(f.path for f in started.review.files if f.id == "f2")
+    rejected = log.path
     assert rejected not in done.written and not (vault_copy / rejected).exists()
     assert "90_meta/ingest-ledger.json" in done.written
     assert "^t-" in (vault_copy / NOTE).read_text()

@@ -24,6 +24,8 @@ class ReviewFile(BaseModel):
         editable: Whether an "edit" answer may replace its text (wiki pages only; not
             the raw note or code-owned `90_meta/*.json`).
         after_text: The proposed full text, the starting point for an edit.
+        required: Bookkeeping (note task IDs, task index, open-tasks page, ingest
+            ledger): written with every approval, never left out (decision 0013).
     """
 
     model_config = ConfigDict(frozen=True)
@@ -35,6 +37,7 @@ class ReviewFile(BaseModel):
     diff: str
     editable: bool = False
     after_text: str = ""
+    required: bool = False
 
 
 class ReviewFact(BaseModel):
@@ -241,7 +244,8 @@ class ReviewAnswer(BaseModel):
 
     Attributes:
         action: What to do.
-        reject: approve: file IDs to leave out.
+        reject: approve: file IDs to leave out (wiki pages only: bookkeeping files
+            are written with every approval, decision 0013).
         feedback: revise: what the model got wrong or missed.
         file: edit: the file ID.
         text: edit: the file's complete new text.

@@ -37,8 +37,11 @@ def test_page_shows_files_diffs_and_checkboxes(setup):
     client, backend, thread, _ = setup
     page = client.get(f"/review/{thread}").text
     review = backend.review(thread).review
-    for f in review.files:
-        assert f'value="{f.id}" data-path="{f.path}" checked' in page
+    for f in review.files:  # a checkbox per wiki page; bookkeeping is fixed (0013)
+        box = f'value="{f.id}" data-path="{f.path}" checked'
+        assert (box in page) is (not f.required), f.path
+    assert "Always written with this review" in page
+    assert "const fixed = 4;" in page  # note, open tasks, ledger, task index
     # the decision log card: the filed text next to the note line it cites
     assert "Decided to keep the old BI tool until Q1 #decision</mark>" in page
     assert "Not recorded in the note." in page and "Show the exact change" in page

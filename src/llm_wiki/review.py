@@ -13,7 +13,7 @@ from typing import Any
 import pydantic
 
 from llm_wiki import remember
-from llm_wiki.domain.changes import FileDiff, is_wiki_page
+from llm_wiki.domain.changes import FileDiff, is_bookkeeping, is_wiki_page
 from llm_wiki.domain.daily import DailyNote
 from llm_wiki.domain.review import (
     ReviewAlias,
@@ -156,6 +156,7 @@ def build_request(
             diff=d.unified_diff,
             editable=is_wiki_page(d.path),
             after_text=d.after_text if is_wiki_page(d.path) else "",
+            required=is_bookkeeping(d.path),
         )
         for i, d in enumerate(diffs, start=1)
     )
@@ -222,6 +223,22 @@ def _check_tasks(request: ReviewRequest, tasks: Mapping[str, str]) -> str | None
     return None
 
 
+def _check_required(request: ReviewRequest, reject: Collection[str]) -> str | None:
+    """Refuse leaving out a bookkeeping file (decision 0013): they go together.
+
+    Any one left out breaks the others: task IDs the index points at, an index the
+    open-tasks page describes, a ledger that would skip (or re-file) the note.
+    """
+    for f in request.files:
+        if f.id in reject and f.required:
+            return (
+                f"{f.id} is {f.path}, bookkeeping that is written with every approval: "
+                "the note's task IDs, the task index, the open-tasks page and the "
+                "ingest log go together. Leave out wiki pages, or reject the review"
+            )
+    return None
+
+
 def _check_rejected_projects(
     request: ReviewRequest, reject: Collection[str]
 ) -> str | None:
@@ -282,6 +299,8 @@ def check_answer(
     file_ids = [f.id for f in request.files]
     if answer.action == "approve":
         error = _unknown("file", answer.reject, file_ids)
+        if error is None:
+            error = _check_required(request, answer.reject)
         if error is None:
             error = _check_rejected_projects(request, answer.reject)
     elif answer.action == "revise":

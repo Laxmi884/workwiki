@@ -80,7 +80,7 @@ def build_view(review: ReviewRequest) -> ReviewView:
     pages: list[PageCard] = []
     bookkeeping: list[ReviewFile] = []
     for f in review.files:
-        if not f.editable:  # the raw note and code-owned json
+        if f.required:  # bookkeeping: always written with the review (0013)
             bookkeeping.append(f)
             continue
         card = PageCard(f, _title(f), _kind(f.path), edited=f.path in review.edited)

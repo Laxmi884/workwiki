@@ -42,7 +42,8 @@ def render_review(review: ReviewRequest, link: str | None = None) -> str:
     out.append("**Files** (approval covers exactly these changes):")
     for f in review.files:
         mine = " (your edit)" if f.path in review.edited else ""
-        out.append(f"- `{f.id}` {f.path}: {f.change}{mine}")
+        always = " (always written)" if f.required else ""
+        out.append(f"- `{f.id}` {f.path}: {f.change}{mine}{always}")
     for f in review.files:
         if _is_code_owned(f.path):
             continue  # task index and ledger: summarised by the lists below
