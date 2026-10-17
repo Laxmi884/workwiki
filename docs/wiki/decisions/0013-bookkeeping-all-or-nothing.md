@@ -8,7 +8,7 @@ status: accepted
 
 ## Context
 
-Writing the key for notebook 18 showed that leaving out `90_meta/tasks.json` in a review, while
+Writing the key for notebook 5.3 (then 18) showed that leaving out `90_meta/tasks.json` in a review, while
 keeping the open-tasks page or the ingest ledger, leaves the vault inconsistent; the ledger then
 skips the note, so its task changes are lost until it is edited. The same holds for each of the four
 files that describe one ingest:

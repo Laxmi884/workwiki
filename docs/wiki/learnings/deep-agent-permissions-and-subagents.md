@@ -36,9 +36,9 @@ one workspace folder, deny everything else: the same ordered rules.
 - With a scripted model, the structured answer is a tool call named after the schema (`BragDraft`).
 - Rule globs use wcmatch `BRACE | GLOBSTAR` without `DOTGLOB`: `*`/`**` never match a dot segment, so
   `write /** deny` doesn't cover `/vault/.trash/x.md` or `/vault/.gitignore`; only patterns that spell the dot
-  (`/vault/.git/**`) do (found 2026-10-16, notebook 12). Fixed in the backend instead: every agent route is a
+  (`/vault/.git/**`) do (found 2026-10-16, notebook 4.1). Fixed in the backend instead: every agent route is a
   `ReadOnlyFilesystemBackend` whose writes always fail (0011).
-- Checked in notebook 12 (deepagents 0.7.25): a declarative subagent **inherits the parent's tools** unless its
+- Checked in notebook 4.1 (deepagents 0.7.25): a declarative subagent **inherits the parent's tools** unless its
   spec sets `tools`; its base stack has a `FilesystemMiddleware` with all file tools, replaced by a spec
   middleware of the same name; a schema error in the structured answer goes back to the subagent as the tool's
   reply, so it can retry.

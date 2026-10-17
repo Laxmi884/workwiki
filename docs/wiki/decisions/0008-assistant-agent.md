@@ -43,7 +43,7 @@ parent's; custom subagents don't inherit skills; `response_format` gives the par
   (`make_graph(runtime: ServerRuntime)`), so a run's context can set `vault_path` and `model`; it
   replaces the template's toy `agent` graph. Model setup shared with ingest in `model_setup.py`.
 - Built in steps 4a (agent, tools, skills, tests), 4b (review-writer), 4c (`ask`, `langgraph.json`);
-  notebook 12 after.
+  notebook 4.1 after.
 
 - **Step 4d, one chat for both agents (user asked, 2026-10-16; chose runner-backed commands, built
   now):** graph `wiki` (`chat/graph.py`) routes by code: a leading `/` is a command (`/ingest
