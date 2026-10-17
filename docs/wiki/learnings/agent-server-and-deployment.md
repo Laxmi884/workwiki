@@ -70,6 +70,26 @@ checkpointer=InMemorySaver())`, and Managed Deep Agents compiles them in product
 - Found in S3 (2026-10-16): the SDK's sync client builds its transport with `retries=5`, so a stopped server makes each call hang ~7.5 s before `httpx.ConnectError` (tests pass their own `SyncLangGraphClient(httpx.Client(...))`). Every SDK error (`NotFoundError`, …) subclasses `httpx.HTTPError`; `ServerBackend` turns whatever escapes into `BackendError` (`_reachable`), so surfaces catch one error type.
 - Found in S4 (2026-10-16): a compiled graph invoked inside a node is a subgraph. Its `checkpointer` decides what it stores: `None` (default) writes per-invocation checkpoints into the parent's store, `True` keeps per-thread memory, `False` stores nothing (no interrupts inside). Config (callbacks, streaming) reaches it either way without being passed. Our ingest agent is `False`.
 
+- Found in S5 (2026-10-16), `langgraph up` / `build` (notebook 15):
+  - The CLI writes the Dockerfile **file by file** from the project root, filtered only by `.dockerignore`
+    (and `.venv`, `.git`, caches). Without one, `.env` (API keys), `.langgraph_api/`, notebooks and tests
+    went into the image. Ours is an allow-list (`*`, then `!src/`, `!pyproject.toml`, ...).
+  - `source: {"kind": "uv"}` installs from `uv.lock` with `uv export --frozen`, which **includes the `dev`
+    group**; no CLI flag drops it, `dockerfile_lines: ["ENV UV_NO_DEV=1"]` does (the line lands right after `FROM`).
+  - The image installs the project **editable** (`uv pip install -e .`), so it reads `src/` and hid that our
+    wheel had no subpackages and no skills (`packages = ["llm_wiki"]`). Fixed with `packages.find` + `package-data`.
+  - `checkpointer.serde.allowed_msgpack_modules` is in the CLI schema but `langgraph-api` 0.16.1's
+    `Serializer` passes on only `allowed_json_modules`. Unlisted types restore with a warning by default; under
+    `LANGGRAPH_STRICT_MSGPACK=true` they come back as **plain dicts** (an `AttributeError` far from the cause).
+    Fixed by storing ingest state as plain JSON (`ingest/state.py`), with strict serde everywhere (0011).
+  - `up` rebuilds every time (`pull_policy: build`); an extra compose file (`-d`) is merged **before** the
+    generated one, so it can add env and volumes but can't remove the generated ports (API and Postgres on all
+    interfaces). Two `up` stacks collide on host port 5433. So the real stack is our `compose.yml` on the
+    `langgraph build` image (0011). `COMPOSE_PROJECT_NAME` keeps a test stack's `down --volumes` away from a real one.
+  - Docker Desktop can't mount from `~/Documents`, `~/Desktop`, `~/Downloads` without a macOS privacy grant.
+  - The vault must be mounted at the **same absolute path** (the server backend sends the client's path), and
+    the review page inside the server needs `WIKI_BACKEND=server` (default `local` = its own SQLite threads).
+
 ## In my words
 
 (for the user)

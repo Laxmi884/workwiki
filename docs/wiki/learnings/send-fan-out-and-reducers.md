@@ -25,6 +25,14 @@ combine.
 - Test: `tests/unit_tests/test_ingest_graph.py` runs the compiled graph with a fake model that
   answers by section heading.
 
+## Since 0006 (checked 2026-10-16)
+
+The `Send` fan-out (`nodes.fan_out`) and the merge-by-key reducers were removed in the cut-over (`b30f52b`); the
+project has no `Send` today. Parallel writes now come from **parallel tool calls**: `ToolNode` runs a turn's calls
+in one step, so every list the staging tools write in `IngestAgentState` (`ingest/agent.py`) is
+`Annotated[list, operator.add]` (without it: `InvalidUpdateError ... Can receive only one value per step`). Notebook
+03 shows both.
+
 ## Paid-media reference
 
 Paid-media doesn't use `Send` (checked 2026-10-13: no `Send(` in `src/`). The closest idea is

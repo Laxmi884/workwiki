@@ -24,6 +24,14 @@ back only what it can't.
 - `tests/unit_tests/scripted_model.py`: replays scripted answers and records every prompt, so tests
   check both what the model was told and what code did with the answer.
 
+## Since 0006 (checked 2026-10-16)
+
+`extraction.py`, `domain/facts.py` and `nodes.extract` were removed in the cut-over (`b30f52b`). The model now
+returns typed data as **tool arguments**, one `file_fact` call per fact (`ingest/agent.py`), and code checks each
+call in `ingest/staging.py` (`citable_lines`, `_check_line`, `stage_fact`); a refusal is the tool's reply, so the
+model corrects itself instead of getting one retry. One structured final answer is still used where one object is
+the goal: the review-writer's `response_format=BragDraft`. Notebook 02 teaches this version.
+
 ## Paid-media reference
 
 `src/paid_media_agent/testing/scripted_model.py` is a full `BaseChatModel` that scripts tool calls.

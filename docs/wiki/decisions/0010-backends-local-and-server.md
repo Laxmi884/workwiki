@@ -86,6 +86,8 @@ Target `langgraph.json` (S5):
 }
 ```
 
+S5 finding (2026-10-16): built as above plus `"dockerfile_lines": ["ENV UV_NO_DEV=1"]` (the CLI's `uv export` otherwise installs the dev group). The serde allow-list didn't work (`langgraph-api` 0.16.1 ignores it); fixed instead by storing state as JSON, and the server runs from our own `compose.yml`: see [[decisions/0011-guarantees-not-conventions|0011]].
+
 Add `checkpointer.serde` only if the `up` smoke test shows our types failing; add `auth` and
 `http.enable_custom_route_auth` before the server is reachable beyond localhost/Tailscale.
 

@@ -41,3 +41,4 @@ Numbered, one per decision. Template: `decisions/_template.md`.
 - [[decisions/0008-assistant-agent|0008]]: assistant deep agent: read-only vault, `find_tasks`, skills, review-writer subagent with a sourced draft, Studio + `ask`
 - [[decisions/0009-review-page-and-remember|0009]]: HTML review page over the same runner (one review, many windows); remember proposed in the review; reviews tied to their vault
 - [[decisions/0010-backends-local-and-server|0010]]: one `Backend` interface, two backends (local runner, Agent Server); surfaces route `/…` themselves; amends 0005
+- [[decisions/0011-guarantees-not-conventions|0011]]: guarantees in code: JSON-only state (strict serde), read-only backends, our own `compose.yml`, explicit git identity
