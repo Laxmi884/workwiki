@@ -13,11 +13,16 @@ rules deny writes (their globs skip dot paths, so they are not the guarantee); `
 through `find_tasks` (code reads the task index). Review synthesis goes to the
 `review-writer` subagent, which returns a sourced `BragDraft`. No writes in phase 4: saving a brief
 comes in phase 7 through the reviewed, committed path ingest uses.
+
+Both agents get today's date on every model call (`CurrentDateMiddleware`). Deep Agents'
+built-in general-purpose subagent doesn't: it inherits only middleware that replaces one
+of its default slots, so the prompt asks for absolute dates when handing work over.
 """
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+import datetime
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -31,6 +36,7 @@ from llm_wiki.assistant.tools import make_find_tasks
 from llm_wiki.diffs import vault_reader
 from llm_wiki.domain.brag import BragDraft
 from llm_wiki.ingest.agent import READ_TOOLS, RULES_PATH, model_middleware
+from llm_wiki.middleware.current_date import CurrentDateMiddleware
 from llm_wiki.readonly_backend import ReadOnlyFilesystemBackend
 
 SKILLS_DIR = Path(__file__).parent / "skills"
@@ -66,6 +72,8 @@ Rules:
 - Use only what the vault says. Never invent dates, numbers, names or outcomes.
 - If the vault doesn't say, answer "The notes don't say." and what you did find.
 - The user's rules (90_meta/rules.md, in your context if present) beat the skills.
+- When you hand work to a subagent, give periods as dates (2026-10-01 to 2026-12-31), \
+not "last month": a subagent may not know today's date.
 - Do not use write_todos.
 """
 
@@ -82,11 +90,14 @@ def permissions() -> list[FilesystemPermission]:
     ]
 
 
-def review_writer(backend: Any, rules: list[FilesystemPermission]) -> dict[str, Any]:
+def review_writer(
+    backend: Any, rules: list[FilesystemPermission], date: CurrentDateMiddleware
+) -> dict[str, Any]:
     """Return the review-writer subagent spec: read-only, its own skill, a BragDraft.
 
     Custom subagents inherit neither skills nor middleware, so it gets its own skill
-    folder and the same read-only filesystem tools; permissions are set explicitly too.
+    folder, the same read-only filesystem tools and today's date ("since July" needs
+    the year); permissions are set explicitly too.
     """
     return {
         "name": "review-writer",
@@ -98,7 +109,8 @@ def review_writer(backend: Any, rules: list[FilesystemPermission]) -> dict[str, 
         "system_prompt": REVIEW_WRITER_PROMPT,
         "skills": ["/subagent_skills/"],
         "middleware": [
-            FilesystemMiddleware(backend=backend, tools=READ_TOOLS, _permissions=rules)
+            date,
+            FilesystemMiddleware(backend=backend, tools=READ_TOOLS, _permissions=rules),
         ],
         "permissions": rules,
         "response_format": BragDraft,
@@ -113,8 +125,12 @@ def build_assistant(
     fallbacks: Sequence[BaseChatModel] = (),
     checkpointer: BaseCheckpointSaver | None = None,
     context_schema: type | None = None,
+    today: Callable[[], datetime.date] = datetime.date.today,
 ) -> Any:
-    """Return the compiled assistant over `vault` (read only)."""
+    """Return the compiled assistant over `vault` (read only).
+
+    `today` is the clock the date middleware reads on each model call (tests pass one).
+    """
     backend = CompositeBackend(
         default=StateBackend(),
         routes={
@@ -128,6 +144,7 @@ def build_assistant(
         },
     )
     rules = permissions()
+    date = CurrentDateMiddleware(today)
     return create_deep_agent(
         model=model,
         tools=[make_find_tasks(vault_reader(vault))],
@@ -138,9 +155,10 @@ def build_assistant(
         permissions=rules,
         middleware=[
             *model_middleware(fallbacks),
+            date,
             FilesystemMiddleware(backend=backend, tools=READ_TOOLS, _permissions=rules),
         ],
-        subagents=[review_writer(backend, rules)],
+        subagents=[review_writer(backend, rules, date)],
         checkpointer=checkpointer,
         context_schema=context_schema,
         name="assistant",
