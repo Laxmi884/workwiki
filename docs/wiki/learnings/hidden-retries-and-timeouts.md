@@ -31,6 +31,7 @@ None specific; the lesson is general: keep retries in the one layer you can see.
 - Read the installed SDK source when docs are thin; the default was only visible there.
 - Free providers also return plain 400 "Provider returned error" when overloaded; that's not our bug.
 - Which errors to retry (2026-10-16, `src/llm_wiki/retries.py:is_transient`): LangGraph's default `retry_on` retries every error type it doesn't list (so OpenRouter 401/402) and no `OSError` (so not Python's `TimeoutError`); `ModelRetryMiddleware`'s default retries every `Exception`. Ours retries network errors, 408/429/5xx (status on the error, or OpenRouter's `ValueError` "... (code: 503)"), "no choices" and "overloaded"; nothing else. Used by the model middleware (a 402 now goes straight to the fallback) and the `stage` node (one rerun of the agent, after 10 s).
+- A request timeout is not a deadline (2026-10-16 real run, seen in LangSmith): with `WIKI_MODEL_TIMEOUT=180`, DeepSeek Flash calls on OpenRouter ran 206 s and 460 s+ while reasoning (one returned 13.8k output tokens). Likely the connection stays active, so the timeout only catches a silent provider. Slowness there came from extra turns (a staging bug made the agent loop) and long reasoning, not from a hang: read the trace before blaming the provider.
 
 ## In my words
 
