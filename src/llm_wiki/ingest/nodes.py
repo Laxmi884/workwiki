@@ -17,7 +17,7 @@ from langgraph.graph import END
 from langgraph.runtime import Runtime
 from langgraph.types import interrupt
 
-from llm_wiki import ledger, note_lines, review, task_tracking, vault_git
+from llm_wiki import ledger, note_lines, remember, review, task_tracking, vault_git
 from llm_wiki.apply import ApplyConflict, apply_diffs
 from llm_wiki.config import get_settings
 from llm_wiki.daily_syntax import parse_daily_note
@@ -30,10 +30,20 @@ from llm_wiki.domain.changes import (
 )
 from llm_wiki.domain.daily import DailyNote
 from llm_wiki.domain.entities import EntityKind
-from llm_wiki.domain.review import ReviewAnswer, ReviewProject, ReviewRequest
+from llm_wiki.domain.review import (
+    ReviewAnswer,
+    ReviewPage,
+    ReviewProject,
+    ReviewRequest,
+)
 from llm_wiki.domain.task_index import DoneTask, MappedBy
 from llm_wiki.domain.tasks import TaskStatus
-from llm_wiki.entity_index import EntityIndex, load_index, with_created
+from llm_wiki.entity_index import (
+    EntityIndex,
+    load_index,
+    with_created,
+    with_proposed,
+)
 from llm_wiki.ingest.state import IngestContext, IngestState
 from llm_wiki.model_setup import configured_fallbacks, configured_model
 
@@ -67,12 +77,22 @@ def _daily_notes(vault: Path, read: VaultReader) -> list[DailyNote]:
     return notes
 
 
-def _entities(state: IngestState, runtime: Runtime[IngestContext]) -> EntityIndex:
+def _entities(
+    state: IngestState, runtime: Runtime[IngestContext], *, remembered: bool = True
+) -> EntityIndex:
     """Return the vault's entity index plus the entity pages this run's edits create.
 
     So tasks link to pages proposed in the same run, e.g. "### 1:1 with Joanna".
+    With `remembered`, also the aliases the user asked to remember in the review
+    (0009 R3), so a task naming one links in the same review.
     """
-    return with_created(load_index(vault_path(runtime)), state.get("fact_edits", []))
+    index = with_created(load_index(vault_path(runtime)), state.get("fact_edits", []))
+    if not remembered:
+        return index
+    by_slug: dict[str, list[str]] = {}
+    for name, slug in state.get("remembered_aliases", {}).items():
+        by_slug.setdefault(slug, []).append(name)
+    return with_proposed(index, (), by_slug)
 
 
 def load_note(state: IngestState, runtime: Runtime[IngestContext]) -> dict[str, Any]:
@@ -199,18 +219,30 @@ def track_tasks(state: IngestState, runtime: Runtime[IngestContext]) -> dict[str
 def render(state: IngestState, runtime: Runtime[IngestContext]) -> dict[str, Any]:
     """Render task, fact, user-text and ledger edits into one diff per file.
 
-    Nothing is written. The user's own text (review "edit") is applied last, so it
-    replaces what the other edits produced for that page. The ledger records the note's
+    Nothing is written. Remembered rules and aliases (0009 R3) come after the agent's
+    edits, so an alias lands on a page proposed in this run. The user's own text
+    (review "edit") is applied last, so it replaces what the other edits produced for
+    that page. The ledger records the note's
     hash *after* its task IDs are added, so once the diffs are applied the next run
     sees the note as unchanged.
     """
     read = vault_reader(vault_path(runtime))
+    pages = _entities(state, runtime, remembered=False).entities
+    aliases = state.get("remembered_aliases", {})
+    gone = [
+        f"alias {n!r} not added: {s} is no longer proposed"
+        for n, s in aliases.items()
+        if s not in pages
+    ]
+    kept = {n: s for n, s in aliases.items() if s in pages}
     edits = [
         *state.get("task_edits", []),
         *state.get("fact_edits", []),
+        *remember.remember_edits(state.get("remembered_rules", []), kept, read),
         *(UserText(path=p, text=t) for p, t in state.get("overrides", {}).items()),
     ]
     diffs, warnings = render_diffs(edits, read)
+    warnings = gone + warnings
 
     note = state["note"]
     note_after = [d.after_text for d in diffs if d.path == note.path]
@@ -242,12 +274,21 @@ def review_changes(
     (`after_review` routes on it).
     """
     overrides = state.get("overrides", {})
-    entities = _entities(state, runtime)  # with the pages this run proposes
+    # The pages this run proposes, without the remembered aliases: those are the
+    # answer being given, not names a new alias could clash with.
+    entities = _entities(state, runtime, remembered=False)
     projects = sorted(
         (
             ReviewProject(slug=e.slug, title=e.title)
             for e in entities.entities.values()
             if e.kind is EntityKind.PROJECT
+        ),
+        key=lambda p: p.title.lower(),
+    )
+    pages = sorted(
+        (
+            ReviewPage(slug=e.slug, title=e.title, names=(e.slug, e.title, *e.aliases))
+            for e in entities.entities.values()
         ),
         key=lambda p: p.title.lower(),
     )
@@ -268,6 +309,9 @@ def review_changes(
         ),
         projects=projects,
         facts=review.filed_facts(state["note"], state.get("agent_filed", [])),
+        rules=state.get("remembered_rules", []),
+        aliases=state.get("remembered_aliases", {}),
+        pages=pages,
         note_date=state["note"].date,
         task_ids_added=len(state.get("task_ids", {})),
     )
@@ -290,6 +334,11 @@ def review_changes(
             "overrides": {},
             "warnings": dropped,
         }
+        if answer.remember:
+            rules = state.get("remembered_rules", [])
+            update["remembered_rules"] = list(
+                dict.fromkeys([*rules, remember.clean(answer.feedback)])
+            )
     elif answer.action == "answer":
         update |= _answered(state, request, answer)
         update |= {"overrides": {}, "warnings": dropped}
@@ -303,7 +352,10 @@ def review_changes(
 def _answered(
     state: IngestState, request: ReviewRequest, answer: ReviewAnswer
 ) -> dict[str, Any]:
-    """Turn an "answer" into state: picked wins and task → project answers."""
+    """Turn an "answer" into state: picked wins, task projects, what to remember.
+
+    Wins, rules and aliases each replace the earlier list; task answers add up.
+    """
     update: dict[str, Any] = {}
     if answer.wins is not None:
         picked = set(answer.wins)
@@ -316,6 +368,14 @@ def _answered(
                 line_of[tid]: None if value == "none" else value
                 for tid, value in answer.tasks.items()
             },
+        }
+    if answer.rules is not None:
+        update["remembered_rules"] = list(
+            dict.fromkeys(remember.clean(r) for r in answer.rules)
+        )
+    if answer.aliases is not None:
+        update["remembered_aliases"] = {
+            remember.clean(name): slug for name, slug in answer.aliases.items()
         }
     return update
 

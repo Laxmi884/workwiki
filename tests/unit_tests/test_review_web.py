@@ -1,5 +1,7 @@
 """The review page (0009 R1) and chat box (0010 S3) on a `Backend`."""
 
+import json
+
 import pytest
 from starlette.testclient import TestClient
 
@@ -150,8 +152,9 @@ def test_page_offers_task_win_edit_and_revise_controls(setup):
     assert [(p.slug, p.title) for p in review.projects] == [("project-atlas", "Atlas")]
     for t in review.tasks:
         assert f'data-task="{t.id}"' in page
-    assert page.count('<option value="project-atlas">Atlas</option>') == len(
-        review.tasks
+    # one per task dropdown, plus the page list of "Remember a name"
+    assert page.count('<option value="project-atlas">Atlas</option>') == (
+        len(review.tasks) + 1
     )
     for w in review.wins:  # enabled now
         assert f'class="win" value="{w.id}" >' in page
@@ -221,3 +224,88 @@ def test_revise_from_the_page_runs_another_round(setup):
     review = backend.review(thread).review
     assert review.revisions_left == 2
     assert "2 revisions left" in client.get(f"/review/{thread}").text
+
+
+# --- remember (0009 R3) ------------------------------------------------------------
+
+ATLAS = "10_projects/project-atlas.md"
+RULES = "90_meta/rules.md"
+
+
+def test_remembered_rule_and_alias_are_proposed_then_written_on_approve(setup):
+    client, backend, thread, vault = setup
+    before = backend.review(thread).review
+    timeline = next(t for t in before.tasks if "stakeholders" in t.text)
+    assert "project-atlas" in [p.slug for p in before.pages]
+
+    _answer(
+        client,
+        thread,
+        {
+            "action": "answer",
+            "rules": ["Don't file lunch plans"],
+            "aliases": {"stakeholders": "project-atlas"},
+        },
+    )
+    review = backend.review(thread).review
+    assert review.rules == ("Don't file lunch plans",)
+    files = {f.path: f for f in review.files}
+    assert files[RULES].change == "new"
+    assert files[RULES].after_text.endswith("- Don't file lunch plans\n")
+    # one line changes: the name is added in the page's own list style
+    assert (
+        "+aliases: [Atlas, atlas beta, BI migration, stakeholders]\n"
+        in files[ATLAS].diff
+    )
+    assert files[ATLAS].diff.count("\n+") == 2  # the +++ header and that line
+    # the alias maps the task in this review already (rule 3), so it isn't asked
+    assert timeline.line not in [t.line for t in review.tasks]
+    assert '"project": "project-atlas"' in files["90_meta/tasks.json"].diff
+
+    page = client.get(f"/review/{thread}").text
+    assert "Remember for next time" in page
+    assert "<span>Don&#39;t file lunch plans</span>" in page
+    assert "“stakeholders” means Atlas" in page
+    assert "Also known as <strong>stakeholders</strong>" in page
+    assert "The rules you asked to remember" in page
+
+    res = client.post(f"/review/{thread}/answer", json={"answer": "approve"})
+    assert res.json()["status"] == "done"
+    assert (vault / RULES).read_text().endswith("## Rules\n- Don't file lunch plans\n")
+    assert "aliases: [Atlas, atlas beta, BI migration, stakeholders]" in (
+        (vault / ATLAS).read_text()
+    )
+    index = json.loads((vault / "90_meta/tasks.json").read_text())["tasks"]
+    (record,) = [t for t in index.values() if "stakeholders" in t["text"]]
+    assert (record["project"], record["mapped_by"]) == ("project-atlas", "alias")
+
+
+def test_removing_what_was_remembered_drops_its_files(setup):
+    client, backend, thread, _ = setup
+    _answer(client, thread, {"action": "answer", "rules": ["Skip lunch plans"]})
+    _answer(client, thread, {"action": "answer", "rules": []})
+    review = backend.review(thread).review
+    assert review.rules == () and RULES not in [f.path for f in review.files]
+
+
+def test_an_alias_another_page_has_is_refused(setup):
+    client, _, thread, _ = setup
+    res = client.post(
+        f"/review/{thread}/answer",
+        json={"answer": {"action": "answer", "aliases": {"Sam": "project-atlas"}}},
+    )
+    assert "'Sam' already names person-sam-ortiz" in res.json()["error"]
+
+
+def test_revise_can_also_remember_the_feedback(setup):
+    client, backend, thread, _ = setup
+    page = client.get(f"/review/{thread}").text
+    assert 'name="remember"' in page  # the "also remember" tick
+    _answer(
+        client,
+        thread,
+        {"action": "revise", "feedback": "Skip lunch plans", "remember": True},
+    )
+    review = backend.review(thread).review
+    assert review.rules == ("Skip lunch plans",)
+    assert RULES in [f.path for f in review.files]

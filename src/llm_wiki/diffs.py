@@ -193,20 +193,104 @@ def _replace_section(text: str, edit: ReplaceSection) -> str:
     )
 
 
+_ALIASES_KEY = re.compile(r"^aliases[ \t]*:(?P<rest>.*)$")
+_FLOW_LIST = re.compile(r"^[ \t]*\[(?P<items>.*)\](?P<tail>[ \t]*(?:#.*)?)$")
+_BLOCK_ITEM = re.compile(r"^(?P<indent>[ \t]*)-[ \t]")
+
+
+def _yaml_item(value: str) -> str:
+    """Return `value` as a YAML list item, quoted only if it needs it ("a: b" → 'a: b')."""
+    flow = yaml.safe_dump(
+        [value], default_flow_style=True, allow_unicode=True, width=10**6
+    )
+    return flow.strip()[1:-1]
+
+
+def _alias_lines(front: list[str], alias: str, eol: str) -> list[str]:
+    """Return the frontmatter lines (between the fences) with `alias` added.
+
+    Edits the `aliases` lines as text: a one-line flow list or scalar gets the name
+    appended in place, a block list gets one more item at its indent, and a missing
+    key gets a block list (Obsidian's style). Every other line is kept as is.
+    """
+    item = _yaml_item(alias)
+    for i, line in enumerate(front):
+        m = _ALIASES_KEY.match(line.rstrip("\r\n"))
+        if m is None:
+            continue
+        rest = m.group("rest")
+        if flow := _FLOW_LIST.match(rest):
+            items = flow.group("items").strip()
+            joined = f"{items}, {item}" if items else item
+            return [
+                *front[:i],
+                f"aliases: [{joined}]{flow.group('tail')}{eol}",
+                *front[i + 1 :],
+            ]
+        if rest.strip():  # one scalar
+            return [
+                *front[:i],
+                f"aliases: [{rest.strip()}, {item}]{eol}",
+                *front[i + 1 :],
+            ]
+        last, indent = i, "  "
+        for j in range(i + 1, len(front)):
+            if (block := _BLOCK_ITEM.match(front[j])) is None:
+                break
+            last, indent = j, block.group("indent")
+        return [*front[: last + 1], f"{indent}- {item}{eol}", *front[last + 1 :]]
+    return [*front, f"aliases:{eol}", f"  - {item}{eol}"]
+
+
+def _as_list(value: object) -> list[object]:
+    if value is None:
+        return []
+    return list(value) if isinstance(value, list) else [value]
+
+
 def _add_alias(text: str, edit: AddAlias) -> str:
-    """Add `edit.alias` to the frontmatter `aliases` list; the body is kept as is."""
+    """Add `edit.alias` to the frontmatter `aliases`, changing nothing else.
+
+    Only the aliases lines are rewritten (comments, quoting and key order stay), and
+    the result is parsed back: unless exactly the alias was added, the edit is
+    refused rather than risk changing other frontmatter.
+
+    Raises:
+        RenderError: Broken frontmatter, or a shape this can't edit safely (e.g. a
+            flow list over several lines).
+    """
     split = split_frontmatter(text)
     if split.error is not None:
         raise RenderError(f"can't add alias: {split.error}")
-    meta = dict(split.metadata)
-    aliases = meta.get("aliases") or []
-    aliases = list(aliases) if isinstance(aliases, list) else [aliases]
+    aliases = _as_list(split.metadata.get("aliases"))
     if any(str(a).casefold() == edit.alias.casefold() for a in aliases):
         return text
-    meta["aliases"] = [*aliases, edit.alias]
-    return f"---\n{yaml.safe_dump(meta, sort_keys=False, allow_unicode=True)}---\n" + (
-        split.body
+
+    eol = _eol(text)
+    lines = text.splitlines(keepends=True)
+    close = (
+        next((i for i in range(1, len(lines)) if lines[i].strip() == "---"), None)
+        if lines and lines[0].lstrip("\ufeff").strip() == "---"
+        else None
     )
+    if close is None:  # no frontmatter yet
+        new = f"---{eol}aliases:{eol}  - {_yaml_item(edit.alias)}{eol}---{eol}" + text
+    else:
+        front = _alias_lines(lines[1:close], edit.alias, eol)
+        new = "".join([lines[0], *front, *lines[close:]])
+
+    after = split_frontmatter(new)
+    expected = {**split.metadata, "aliases": [*aliases, edit.alias]}
+    if (
+        after.error is not None
+        or after.metadata != expected
+        or after.body != split.body
+    ):
+        raise RenderError(
+            f"can't add alias {edit.alias!r} without changing other frontmatter; "
+            "add it to the page by hand"
+        )
+    return new
 
 
 # --- one file --------------------------------------------------------------------

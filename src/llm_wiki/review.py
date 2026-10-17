@@ -12,12 +12,15 @@ from typing import Any
 
 import pydantic
 
+from llm_wiki import remember
 from llm_wiki.domain.changes import FileDiff, is_wiki_page
 from llm_wiki.domain.daily import DailyNote
 from llm_wiki.domain.review import (
+    ReviewAlias,
     ReviewAnswer,
     ReviewFact,
     ReviewFile,
+    ReviewPage,
     ReviewProject,
     ReviewRequest,
     ReviewTask,
@@ -101,6 +104,9 @@ def build_request(
     tasks: Sequence[ReviewTask] = (),
     projects: Sequence[ReviewProject] = (),
     facts: Sequence[ReviewFact] = (),
+    rules: Sequence[str] = (),
+    aliases: Mapping[str, str] | None = None,
+    pages: Sequence[ReviewPage] = (),
     note_date: datetime.date | None = None,
     task_ids_added: int = 0,
 ) -> ReviewRequest:
@@ -143,6 +149,9 @@ def build_request(
         tasks=tuple(tasks),
         projects=tuple(projects),
         facts=tuple(f for f in facts if f.path in {d.path for d in diffs}),
+        rules=tuple(rules),
+        aliases=tuple(ReviewAlias(name=n, slug=s) for n, s in (aliases or {}).items()),
+        pages=tuple(pages),
         note_date=note_date,
         task_ids_added=task_ids_added,
     )
@@ -211,7 +220,8 @@ def check_answer(
     """Validate the user's answer. Returns (answer, None) or (None, why not).
 
     "approve" and "reject" may be sent as plain strings. A task answer may name only
-    the request's `projects`.
+    the request's `projects`; a remembered alias only its `pages`, and no name another
+    page already has.
     """
     if isinstance(raw, str):
         raw = {"action": raw.strip().lower()}
@@ -234,6 +244,8 @@ def check_answer(
             error = "nothing to revise: the note has no prose for the model to read"
         elif request.revisions_left == 0:
             error = f"revise limit reached ({MAX_REVISIONS}); approve, edit or reject"
+        elif answer.remember:
+            error = remember.check_rules([answer.feedback or ""])
         else:
             error = None
     elif answer.action == "edit":
@@ -249,6 +261,11 @@ def check_answer(
         error = _unknown("win", list(answer.wins or ()), [w.id for w in request.wins])
         if error is None:
             error = _check_tasks(request, answer.tasks or {})
+        if error is None:
+            error = remember.check_rules(answer.rules or ())
+        if error is None:
+            names_of = {p.slug: p.names for p in request.pages}
+            error = remember.check_aliases(answer.aliases or {}, names_of)
     else:
         error = None
     return (None, error) if error else (answer, None)

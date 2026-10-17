@@ -74,6 +74,18 @@ select.task-pick { font: 600 16px/1.3 var(--serif); color: var(--ink); backgroun
   background: var(--amber-wash); color: var(--amber); border-radius: 10px; padding: 10px 12px; font-size: 14px; }
 .confirm.on { display: flex; }
 .confirm span { flex: 1; min-width: 200px; }
+.remember { background: var(--card); border: 1px solid var(--rule); border-radius: 14px; padding: 6px 18px 16px; }
+.remember .list { border-top: 0; }
+.remember .list li { display: flex; gap: 12px; align-items: baseline; }
+.remember .list li span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.remember-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
+.remember-row label { font-weight: 600; font-size: 15px; min-width: 64px; }
+.remember-row input { flex: 1; min-width: 160px; font: 400 16px/1.4 var(--sans); color: var(--ink);
+  background: var(--paper); border: 1px solid var(--rule); border-radius: 8px; padding: 8px 10px; }
+.remember-row select { max-width: 100%; font: 400 16px/1.4 var(--sans); color: var(--ink);
+  background: var(--card); border: 1px solid var(--rule); border-radius: 8px; padding: 7px 8px; }
+.also { display: flex; gap: 8px; align-items: center; font-size: 15px; color: var(--soft); margin-right: auto; cursor: pointer; }
+.also input { width: 18px; height: 18px; accent-color: var(--teal); margin: 0; }
 .done-files { list-style: none; padding: 0; margin: 12px 0 0; }
 .done-files li { padding: 8px 0; border-top: 1px solid var(--rule); font-size: 15px; }
 @media (max-width: 560px) {
@@ -107,6 +119,9 @@ select.task-pick { font: 600 16px/1.3 var(--serif); color: var(--ink); backgroun
     <span class="tag {{ card.file.change }}">{{ ("new " if card.file.change == "new" else "") ~ card.kind }}{% if card.edited %}, your edit{% endif %}</span>
     <label class="include"><input type="checkbox" class="pick" value="{{ card.file.id }}" data-path="{{ card.file.path }}" checked><span>Include</span></label>
   </div>
+  {% if card.aliases %}
+  <div class="plain-page">Also known as <strong>{{ card.aliases|join(", ") }}</strong>, as you asked to remember.</div>
+  {% endif %}
   {% for section, rows in card.sections %}
   <div class="section-name">{{ section }}</div>
   {% for row in rows %}
@@ -117,9 +132,13 @@ select.task-pick { font: 600 16px/1.3 var(--serif); color: var(--ink); backgroun
   </div>
   {% endfor %}
   {% else %}
+  {% if card.kind == "rules" %}
+  <div class="plain-page">The rules you asked to remember (below). Both agents follow this file from the next ingest.</div>
+  {% elif not card.aliases %}
   <div class="plain-page">
     {% if card.file.change == "new" %}Nothing filed on it yet. It's here because tasks in this note {{ "name this person" if card.kind == "person" else "belong to it" }}, so your task index can link them.{% else %}Changed without a filed fact, e.g. its current state was rewritten.{% endif %}
   </div>
+  {% endif %}
   {% endfor %}
   <div class="card-tools">
     <details class="exact">
@@ -166,13 +185,40 @@ select.task-pick { font: 600 16px/1.3 var(--serif); color: var(--ink); backgroun
 </ul>
 {% endif %}
 
+<h2>Remember for next time</h2>
+<p class="h2-note">Saved only if you approve, like every other change here. A rule goes in your rules file, which both agents follow from the next ingest. A name goes on its page, and tasks that use it link there in this review already.</p>
+<div class="remember">
+  {% if review.rules or view.aliases %}
+  <ul class="list">
+    {% for r in review.rules %}<li><span>{{ r }}</span><button type="button" class="linkish forget-rule" data-i="{{ loop.index0 }}">Remove</button></li>{% endfor %}
+    {% for name, title in view.aliases %}<li><span>“{{ name }}” means {{ title }}</span><button type="button" class="linkish forget-alias" data-name="{{ name }}">Remove</button></li>{% endfor %}
+  </ul>
+  {% endif %}
+  <form class="remember-row" id="remember-rule">
+    <label for="rule">A rule</label>
+    <input id="rule" name="rule" maxlength="300" autocomplete="off" placeholder="e.g. Don't file lunch plans">
+    <button type="submit">Remember</button>
+  </form>
+  {% if review.pages %}
+  <form class="remember-row" id="remember-alias">
+    <label for="alias-name">A name</label>
+    <input id="alias-name" name="alias" maxlength="80" autocomplete="off" placeholder="e.g. Sammy">
+    <select name="slug" aria-label="The page it means">{% for p in review.pages %}<option value="{{ p.slug }}">{{ p.title }}</option>{% endfor %}</select>
+    <button type="submit">Remember</button>
+  </form>
+  {% endif %}
+</div>
+
 {% if review.can_revise %}
 <h2>Ask the agent again</h2>
 {% if review.revisions_left %}
 <p class="h2-note">Say what it got wrong or missed. It re-reads your note and you get a fresh review (about a minute; uses the model). {{ review.revisions_left }} {{ "revision" if review.revisions_left == 1 else "revisions" }} left.</p>
 <form class="revise" id="revise">
   <textarea name="feedback" aria-label="What the agent should change" placeholder="e.g. The beta date belongs on Atlas's current state, not under Updates."></textarea>
-  <div class="editor-bar"><button type="submit" class="go">Revise</button></div>
+  <div class="editor-bar">
+    <label class="also"><input type="checkbox" name="remember"> Also remember this for next time</label>
+    <button type="submit" class="go">Revise</button>
+  </div>
 </form>
 {% else %}
 <p class="h2-note">No revisions left. Edit a page, approve what's right, or reject.</p>
@@ -216,6 +262,8 @@ select.task-pick { font: 600 16px/1.3 var(--serif); color: var(--ink); backgroun
 </div></div>
 <script>
 const edited = {{ view.edited|tojson }};
+const rules = {{ review.rules|tojson }};
+const aliases = {{ view.alias_map|tojson }};
 const picks = [...document.querySelectorAll("input.pick")];
 const wins = [...document.querySelectorAll("input.win")];
 const status = document.getElementById("status");
@@ -260,7 +308,7 @@ async function send(answer, busy) {
   }
   location.reload();
 }
-// Tasks, wins and revise re-render every page, so your own text is dropped (0009 R2).
+// Tasks, wins, remember and revise re-render every page, so your own text is dropped (0009 R2).
 function dropsEdits(answer, busy) {
   if (!edited.length) { send(answer, busy); return; }
   document.getElementById("confirm-text").textContent =
@@ -278,8 +326,33 @@ if (revise) revise.addEventListener("submit", e => {
   e.preventDefault();
   const feedback = revise.feedback.value.trim();
   if (!feedback) { status.textContent = "Say what to change first."; status.classList.add("err"); revise.feedback.focus(); return; }
-  dropsEdits({action: "revise", feedback}, "The agent is re-reading your note…");
+  const answer = {action: "revise", feedback};
+  if (revise.remember.checked) answer.remember = true;
+  dropsEdits(answer, "The agent is re-reading your note…");
 });
+// Remember: each answer sends the whole list, so removing is sending it without one.
+function need(input) {
+  if (input.value.trim()) return input.value.trim();
+  status.textContent = "Type it first."; status.classList.add("err"); input.focus();
+}
+const ruleForm = document.getElementById("remember-rule");
+ruleForm.addEventListener("submit", e => {
+  e.preventDefault();
+  const rule = need(ruleForm.rule);
+  if (rule) dropsEdits({action: "answer", rules: [...rules, rule]}, "Adding the rule…");
+});
+const aliasForm = document.getElementById("remember-alias");
+if (aliasForm) aliasForm.addEventListener("submit", e => {
+  e.preventDefault();
+  const name = need(aliasForm.alias);
+  if (name) dropsEdits({action: "answer", aliases: {...aliases, [name]: aliasForm.slug.value}}, "Adding the name…");
+});
+document.querySelectorAll(".forget-rule").forEach(b => b.addEventListener("click", () =>
+  dropsEdits({action: "answer", rules: rules.filter((_, i) => i !== +b.dataset.i)}, "Removing the rule…")));
+document.querySelectorAll(".forget-alias").forEach(b => b.addEventListener("click", () => {
+  const rest = {...aliases}; delete rest[b.dataset.name];
+  dropsEdits({action: "answer", aliases: rest}, "Removing the name…");
+}));
 document.querySelectorAll(".open-editor").forEach(b => b.addEventListener("click", () => {
   const form = document.getElementById(b.getAttribute("aria-controls"));
   form.hidden = false; b.hidden = true; form.text.focus();

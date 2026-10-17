@@ -41,12 +41,12 @@ from llm_wiki.ingest.staging import (
     StagingError,
 )
 from llm_wiki.readonly_backend import ReadOnlyFilesystemBackend
+from llm_wiki.remember import RULES_PATH
 from llm_wiki.retries import is_transient
 from llm_wiki.routing import decision_log_path, impact_path
 
 SKILLS_DIR = Path(__file__).parent / "skills"
 READ_TOOLS = ["read_file", "ls", "glob", "grep"]
-RULES_PATH = "90_meta/rules.md"
 RULES_VIRTUAL = f"/vault/{RULES_PATH}"
 
 SYSTEM_PROMPT = """\

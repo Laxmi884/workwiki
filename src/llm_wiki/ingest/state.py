@@ -74,6 +74,10 @@ class IngestState(TypedDict, total=False):
         apply_conflicts: Approved paths that changed since the review; nothing was
             written and the run re-renders for a fresh review.
         chosen_wins: Lines of done tasks the user picked as wins (review "answer").
+        remembered_rules: Rules the user asked to remember (review "answer", or
+            "revise" with remember); rendered into `90_meta/rules.md` (0009 R3).
+        remembered_aliases: Name → page slug the user asked to remember; rendered
+            as `aliases:` edits and used by task mapping in the same review.
         warnings: Problems found anywhere; nodes append.
         round_warnings: What the agent step says about its latest round (replaced each
             round, so a revise doesn't repeat old notes); the review shows both.
@@ -103,6 +107,8 @@ class IngestState(TypedDict, total=False):
     commit: str | None
     apply_conflicts: list[str]
     chosen_wins: list[int]
+    remembered_rules: list[str]
+    remembered_aliases: dict[str, str]
     warnings: Annotated[list[str], operator.add]
     round_warnings: list[str]
 

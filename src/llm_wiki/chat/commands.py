@@ -8,6 +8,8 @@
     /edit f3                        (next lines: the page's full new text)
     /tasks m1=project-x m2=none     task → project answers
     /wins w1 w2  |  /wins none      pick done tasks as wins
+    /remember <rule>                remember a rule (proposed in the review)
+    /alias Sammy = person-sam-ortiz remember a name for a page (proposed too)
     /help
 
 Answers become the same `ReviewAnswer` dicts the runner checks, so every rule of the
@@ -32,9 +34,11 @@ Commands:
 - `/edit f3` then, on the next lines, the page's full new text
 - `/tasks m1=project-x m2=none`: task → project answers
 - `/wins w1 w2` or `/wins none`: pick done tasks as wins
+- `/remember <rule>`: a rule both agents follow (saved if you approve)
+- `/alias Sammy = person-sam-ortiz`: another name for a page (saved if you approve)
 Anything without a leading `/` is a question for the assistant."""
 
-Kind = Literal["ingest", "review", "answer", "help", "error"]
+Kind = Literal["ingest", "review", "answer", "remember", "help", "error"]
 
 
 @dataclass(frozen=True)
@@ -43,16 +47,21 @@ class ChatCommand:
 
     Attributes:
         kind: "ingest" (start), "review" (show), "answer" (resume the review with
-            `answer`), "help", or "error" (`message` says why).
+            `answer`), "remember" (add `rule` or `alias` to what the review already
+            remembers), "help", or "error" (`message` says why).
         note_path: For "ingest": the vault-relative note.
         answer: For "answer": the `ReviewAnswer` dict (or "approve"/"reject").
         message: For "error": what was wrong.
+        rule: For "remember": a rule to add.
+        alias: For "remember": (name, page slug) to add.
     """
 
     kind: Kind
     note_path: str | None = None
     answer: dict[str, Any] | str | None = None
     message: str = ""
+    rule: str | None = None
+    alias: tuple[str, str] | None = None
 
 
 def is_command(text: str) -> bool:
@@ -129,4 +138,15 @@ def parse_command(text: str, today: datetime.date | None = None) -> ChatCommand:
             return _error("`/wins w1 w2` (or `/wins none`)")
         picked = [] if ids == ["none"] else ids
         return ChatCommand("answer", answer={"action": "answer", "wins": picked})
+    if name == "/remember":
+        rule = " ".join(f"{arg}\n{rest_lines}".split())
+        if not rule:
+            return _error("`/remember <rule>`, e.g. `/remember Don't file lunch plans`")
+        return ChatCommand("remember", rule=rule)
+    if name == "/alias":
+        alias, _, slug = arg.partition("=")
+        alias, slug = " ".join(alias.split()), slug.strip()
+        if not alias or not slug or " " in slug:
+            return _error("`/alias Sammy = person-sam-ortiz`: a name = a page slug")
+        return ChatCommand("remember", alias=(alias, slug))
     return _error(f"unknown command `{name}`")

@@ -53,6 +53,10 @@ def render_review(review: ReviewRequest, link: str | None = None) -> str:
             f"- `{w.id}` L{w.line} {w.text}{' ✅ win' if w.chosen else ''}"
             for w in review.wins
         ]
+    if review.rules or review.aliases:
+        out.append("**Remembered if you approve** (add with `/remember`, `/alias`):")
+        out += [f"- rule: {r}" for r in review.rules]
+        out += [f"- “{a.name}” means `{a.slug}`" for a in review.aliases]
     if review.warnings:
         out.append("**Notes from the run:**")
         out += [f"- {w}" for w in review.warnings]

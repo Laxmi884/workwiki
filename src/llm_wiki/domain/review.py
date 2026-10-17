@@ -111,6 +111,37 @@ class ReviewProject(BaseModel):
     title: str
 
 
+class ReviewPage(BaseModel):
+    """An entity page a remembered alias may be added to: in the vault or new here.
+
+    Attributes:
+        slug: The page's slug, e.g. "person-sam-ortiz".
+        title: Its title, for showing.
+        names: Its slug, title and aliases (before this review's remembered ones),
+            so an alias that already names a page can be refused.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    slug: str
+    title: str
+    names: tuple[str, ...] = ()
+
+
+class ReviewAlias(BaseModel):
+    """A name the user asked to remember for a page (an `aliases:` edit, 0009 R3).
+
+    Attributes:
+        name: The name, e.g. "Sammy".
+        slug: The page it names.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    name: str
+    slug: str
+
+
 class ReviewRequest(BaseModel):
     """Everything the user needs to approve or reject one ingest.
 
@@ -127,6 +158,11 @@ class ReviewRequest(BaseModel):
         projects: The projects a task answer may name, by title; the same list the
             answer is checked against.
         facts: What the agent filed, per page, with the note lines cited.
+        rules: Rules the user asked to remember in this review; approved, they are
+            added to `90_meta/rules.md`, which both agents read (0009 R3).
+        aliases: Names the user asked to remember, each added to its page's
+            `aliases:`; task mapping uses them in this review already.
+        pages: The entity pages an alias may name, by title.
         note_date: The note's date, if it has one.
         task_ids_added: How many task IDs this ingest appends to the note.
         error: Why the previous answer was not accepted, if it wasn't.
@@ -144,6 +180,9 @@ class ReviewRequest(BaseModel):
     tasks: tuple[ReviewTask, ...] = ()
     projects: tuple[ReviewProject, ...] = ()
     facts: tuple[ReviewFact, ...] = ()
+    rules: tuple[str, ...] = ()
+    aliases: tuple[ReviewAlias, ...] = ()
+    pages: tuple[ReviewPage, ...] = ()
     note_date: datetime.date | None = None
     task_ids_added: int = 0
     error: str | None = None
@@ -155,9 +194,9 @@ Action = Literal["approve", "reject", "revise", "edit", "answer"]
 _FIELDS: dict[str, set[str]] = {
     "approve": {"reject"},
     "reject": set(),
-    "revise": {"feedback"},
+    "revise": {"feedback", "remember"},
     "edit": {"file", "text"},
-    "answer": {"wins", "tasks"},
+    "answer": {"wins", "tasks", "rules", "aliases"},
 }
 _REQUIRED: dict[str, set[str]] = {
     "revise": {"feedback"},
@@ -176,6 +215,9 @@ class ReviewAnswer(BaseModel):
         {"action": "edit", "file": "f4", "text": "..."}        f4's full new text
         {"action": "answer", "wins": ["w2"],
          "tasks": {"m1": "project-atlas", "m2": "none"}}       wins, tasks
+        {"action": "answer", "rules": ["Skip lunch notes"],
+         "aliases": {"Sammy": "person-sam-ortiz"}}            remember
+        {"action": "revise", "feedback": "...", "remember": true}  and keep it as a rule
 
     Attributes:
         action: What to do.
@@ -186,6 +228,10 @@ class ReviewAnswer(BaseModel):
         wins: answer: win IDs to put on the impact page; replaces earlier picks.
         tasks: answer: task ID → a project slug (existing or proposed in this
             review) or "none" (no project; not proposed again).
+        rules: answer: the rules to remember; replaces the earlier list.
+        aliases: answer: name → page slug, the names to remember; replaces the
+            earlier list.
+        remember: revise: also remember the feedback as a rule.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -197,6 +243,9 @@ class ReviewAnswer(BaseModel):
     text: str | None = None
     wins: tuple[str, ...] | None = None
     tasks: dict[str, str] | None = None
+    rules: tuple[str, ...] | None = None
+    aliases: dict[str, str] | None = None
+    remember: bool = False
 
     @model_validator(mode="after")
     def _fields_match_action(self) -> ReviewAnswer:
@@ -205,12 +254,16 @@ class ReviewAnswer(BaseModel):
             for name in ("reject", "feedback", "file", "text", "tasks")
             if getattr(self, name) not in (None, (), "", {})
         }
-        if self.wins is not None:  # [] is an answer too: pick none
-            given.add("wins")
+        # [] / {} are answers too: pick none, forget all
+        given |= {
+            n for n in ("wins", "rules", "aliases") if getattr(self, n) is not None
+        }
+        if self.remember:
+            given.add("remember")
         if extra := sorted(given - _FIELDS[self.action]):
             raise ValueError(f'{", ".join(extra)} not allowed with "{self.action}"')
         if missing := sorted(_REQUIRED.get(self.action, set()) - given):
             raise ValueError(f'"{self.action}" needs {", ".join(missing)}')
         if self.action == "answer" and not given:
-            raise ValueError('"answer" needs wins or tasks')
+            raise ValueError('"answer" needs wins, tasks, rules or aliases')
         return self

@@ -3,7 +3,7 @@
 import pytest
 
 from llm_wiki.domain.changes import CreateFile, FileDiff
-from llm_wiki.domain.review import ReviewProject, ReviewTask
+from llm_wiki.domain.review import ReviewPage, ReviewProject, ReviewTask
 from llm_wiki.review import approved_digests, build_request, check_answer
 
 
@@ -115,7 +115,7 @@ def test_reject_approves_nothing():
         ({"action": "edit", "file": "f3", "text": "x"}, "f3 is 90_meta/ingest-ledger"),
         ({"action": "edit", "file": "f7", "text": "x"}, "unknown file ids ['f7']"),
         ({"action": "revise", "feedback": "x"}, "nothing to revise"),
-        ({"action": "answer"}, '"answer" needs wins or tasks'),
+        ({"action": "answer"}, '"answer" needs wins, tasks, rules or aliases'),
         ({"action": "answer", "people": {"p1": "new"}}, "invalid answer (people:"),
         ({"action": "answer", "wins": ["w1"]}, "unknown win ids ['w1']"),
         ({"action": "approve", "note": "hi"}, "invalid answer (note:"),
@@ -152,3 +152,57 @@ def test_task_answers_name_a_project_of_the_review_or_none():
     assert "not a project page" in error
     _, error = check_answer(request, {"action": "answer", "tasks": {"m9": "none"}})
     assert error.startswith("unknown task ids")
+
+
+# --- remember (0009 R3) ------------------------------------------------------------
+
+REMEMBER = build_request(
+    "00_raw/daily/2026-10-12.md",
+    DIFFS,
+    [],
+    can_revise=True,
+    pages=[ReviewPage(slug="person-sam-ortiz", title="Sam Ortiz", names=("Sam",))],
+    rules=["Old rule"],
+    aliases={"Ortiz": "person-sam-ortiz"},
+)
+
+
+def test_request_carries_what_is_remembered():
+    assert REMEMBER.rules == ("Old rule",)
+    assert [(a.name, a.slug) for a in REMEMBER.aliases] == [
+        ("Ortiz", "person-sam-ortiz")
+    ]
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        {"action": "answer", "rules": ["Old rule", "Skip lunch plans"]},
+        {"action": "answer", "rules": []},  # forget them all
+        {"action": "answer", "aliases": {"Sammy O": "person-sam-ortiz"}},
+        {"action": "answer", "aliases": {}},
+        {"action": "revise", "feedback": "Skip lunch plans", "remember": True},
+    ],
+)
+def test_valid_remember_answers(raw):
+    assert check_answer(REMEMBER, raw)[1] is None
+
+
+@pytest.mark.parametrize(
+    ("raw", "error"),
+    [
+        ({"action": "answer", "rules": [" "]}, "a rule is empty"),
+        (
+            {"action": "answer", "aliases": {"Sam": "person-sam-ortiz"}},
+            "already a name",
+        ),
+        ({"action": "answer", "aliases": {"Zed": "project-zed"}}, "is not a page"),
+        (
+            {"action": "edit", "file": "f1", "text": "x", "rules": ["a"]},
+            "rules not allowed",
+        ),
+        ({"action": "approve", "remember": True}, "remember not allowed"),
+    ],
+)
+def test_bad_remember_answers(raw, error):
+    assert error in check_answer(REMEMBER, raw)[1]

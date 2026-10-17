@@ -10,6 +10,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from llm_wiki.domain.review import ReviewFile, ReviewRequest
+from llm_wiki.entity_index import path_for
+from llm_wiki.remember import RULES_PATH
 
 KINDS = {
     "10_projects/": "project",
@@ -17,6 +19,7 @@ KINDS = {
     "20_people/": "person",
     "30_decisions/": "decisions",
     "40_impact/": "impact",
+    RULES_PATH: "rules",
 }
 
 
@@ -38,6 +41,7 @@ class PageCard:
     kind: str
     sections: list[tuple[str, list[FactRow]]] = field(default_factory=list)
     edited: bool = False
+    aliases: list[str] = field(default_factory=list)  # names remembered for it
 
     @property
     def fact_count(self) -> int:
@@ -56,6 +60,8 @@ class ReviewView:
     task_ids: int
     attention: list[str]
     edited: list[str] = field(default_factory=list)  # titles of pages with your text
+    aliases: list[tuple[str, str]] = field(default_factory=list)  # (name, page title)
+    alias_map: dict[str, str] = field(default_factory=dict)  # name → slug, for answers
 
 
 def _title(f: ReviewFile) -> str:
@@ -78,6 +84,7 @@ def build_view(review: ReviewRequest) -> ReviewView:
             bookkeeping.append(f)
             continue
         card = PageCard(f, _title(f), _kind(f.path), edited=f.path in review.edited)
+        card.aliases = [a.name for a in review.aliases if path_for(a.slug) == f.path]
         by_section: dict[str, list[FactRow]] = {}
         for fact in review.facts:
             if fact.path == f.path:
@@ -93,6 +100,7 @@ def build_view(review: ReviewRequest) -> ReviewView:
         lede += f" You can ask for {review.revisions_left} more revisions."
     date = review.note_date
     title = f"Daily note, {date:%A %-d %B %Y}" if date else review.note
+    titles = {p.slug: p.title for p in review.pages}
     return ReviewView(
         title,
         lede,
@@ -101,6 +109,8 @@ def build_view(review: ReviewRequest) -> ReviewView:
         review.task_ids_added,
         list(review.warnings),
         [c.title for c in pages if c.edited],
+        [(a.name, titles.get(a.slug, a.slug)) for a in review.aliases],
+        {a.name: a.slug for a in review.aliases},
     )
 
 

@@ -192,18 +192,43 @@ def test_replace_file_creates_or_overwrites():
 PAGE = "20_people/person-sam-ortiz.md"
 
 
+# Only the aliases lines change; every other byte of the page stays (comments, quoting,
+# key order), so the review's diff shows exactly the added name.
 @pytest.mark.parametrize(
-    ("front", "aliases"),
+    ("before", "after"),
     [
-        ("title: Sam\naliases: [Sam]\n", "aliases:\n- Sam\n- Sammy\n"),
-        ("title: Sam\naliases: Sam\n", "aliases:\n- Sam\n- Sammy\n"),  # one string
-        ("title: Sam\n", "aliases:\n- Sammy\n"),  # none yet
+        ("aliases: [Sam]\n", "aliases: [Sam, Sammy]\n"),
+        ("aliases: [ ]\n", "aliases: [Sammy]\n"),
+        ("aliases: [Sam]  # nicknames\n", "aliases: [Sam, Sammy]  # nicknames\n"),
+        ("aliases:\n  - Sam\n  - S.O.\n", "aliases:\n  - Sam\n  - S.O.\n  - Sammy\n"),
+        ("aliases:\n- Sam\n", "aliases:\n- Sam\n- Sammy\n"),
+        ("aliases: Sam\n", "aliases: [Sam, Sammy]\n"),  # one string
+        ("aliases:\n", "aliases:\n  - Sammy\n"),  # key, no value
     ],
 )
-def test_add_alias_keeps_the_body(front, aliases):
-    text = f"---\n{front}---\n# Sam\n\nNotes.\n"
-    after = apply_edit(text, AddAlias(path=PAGE, alias="Sammy"))
-    assert after == f"---\ntitle: Sam\n{aliases}---\n# Sam\n\nNotes.\n"
+def test_add_alias_changes_only_the_aliases(before, after):
+    head = '---\ntitle: "Sam Ortiz"   # full name\n'
+    tail = "status: active\n---\n# Sam\n\nNotes.\n"
+    text = head + before + tail
+    got = apply_edit(text, AddAlias(path=PAGE, alias="Sammy"))
+    assert got == head + after + tail
+
+
+def test_add_alias_without_the_key_adds_it_last():
+    text = "---\ntitle: Sam  # me\n---\n# Sam\n"
+    got = apply_edit(text, AddAlias(path=PAGE, alias="Sammy"))
+    assert got == "---\ntitle: Sam  # me\naliases:\n  - Sammy\n---\n# Sam\n"
+
+
+def test_add_alias_without_frontmatter_adds_it():
+    got = apply_edit("# Sam\n", AddAlias(path=PAGE, alias="Sammy"))
+    assert got == "---\naliases:\n  - Sammy\n---\n# Sam\n"
+
+
+def test_add_alias_quotes_what_yaml_needs_and_keeps_crlf():
+    text = "---\r\naliases: [Sam]\r\n---\r\n# Sam\r\n"
+    got = apply_edit(text, AddAlias(path=PAGE, alias="Sam: the PM, again"))
+    assert got == "---\r\naliases: [Sam, 'Sam: the PM, again']\r\n---\r\n# Sam\r\n"
 
 
 def test_add_alias_already_there_changes_nothing():
@@ -211,9 +236,17 @@ def test_add_alias_already_there_changes_nothing():
     assert apply_edit(text, AddAlias(path=PAGE, alias="Sammy")) == text
 
 
-def test_add_alias_refuses_broken_frontmatter():
+@pytest.mark.parametrize(
+    "front",
+    [
+        ": [\n",  # broken YAML
+        "aliases: [Sam,\n  S.O.]\n",  # a flow list over two lines
+        "aliases: Sam  # nick\n",  # a commented scalar
+    ],
+)
+def test_add_alias_refuses_what_it_cant_edit_safely(front):
     with pytest.raises(RenderError, match="can't add alias"):
-        apply_edit("---\n: [\n---\n", AddAlias(path=PAGE, alias="Sammy"))
+        apply_edit(f"---\n{front}---\n# Sam\n", AddAlias(path=PAGE, alias="Sammy"))
 
 
 def test_replace_section_replaces_body_or_adds_it_after_the_title():

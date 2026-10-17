@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import datetime
 from collections.abc import Sequence
+from typing import Any
 
 from llm_wiki.backend import (
     Backend,
@@ -22,8 +23,9 @@ from llm_wiki.backend import (
     RunResult,
     UnknownThread,
 )
-from llm_wiki.chat.commands import HELP, is_command, parse_command
+from llm_wiki.chat.commands import HELP, ChatCommand, is_command, parse_command
 from llm_wiki.chat.render import render_result
+from llm_wiki.domain.review import ReviewRequest
 
 
 def questions_only(history: Sequence[ChatTurn]) -> list[ChatTurn]:
@@ -96,12 +98,26 @@ def _command(
     if parsed.kind == "review":
         result = open_review
     else:
-        assert parsed.answer is not None
+        answer = parsed.answer
+        if parsed.kind == "remember":  # adds to the lists the review already has
+            assert open_review.review is not None
+            answer = _remember_answer(open_review.review, parsed)
+        assert answer is not None
         try:
-            result = backend.answer(open_review.thread_id, parsed.answer)
+            result = backend.answer(open_review.thread_id, answer)
         except (UnknownThread, NoOpenReview) as exc:  # answered elsewhere meanwhile
             return f"Can't answer that review here: {exc}"
     return render_result(result, review_link(link_base, result.thread_id))
+
+
+def _remember_answer(review: ReviewRequest, parsed: ChatCommand) -> dict[str, Any]:
+    """Return the "answer" that remembers the review's rules or aliases plus one more."""
+    if parsed.rule is not None:
+        return {"action": "answer", "rules": [*review.rules, parsed.rule]}
+    assert parsed.alias is not None
+    name, slug = parsed.alias
+    aliases = {a.name: a.slug for a in review.aliases}
+    return {"action": "answer", "aliases": {**aliases, name: slug}}
 
 
 def _note(result: RunResult) -> str:

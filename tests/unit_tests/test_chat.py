@@ -64,6 +64,9 @@ def test_parse_commands(text, kind, value):
         "/edit f3",
         "/tasks m1",
         "/wins",
+        "/remember",
+        "/alias Sammy",
+        "/alias = person-sam-ortiz",
         "/frobnicate",
     ],
 )
@@ -182,3 +185,22 @@ def test_the_assistant_sees_questions_and_answers_but_not_commands(
     assert reply(backend, "Is it on track?", history) == (
         "What is Atlas? | A risk analytics project. | Is it on track?"
     )
+
+
+def test_parse_remember_commands():
+    rule = parse_command("/remember Don't file\nlunch plans", TODAY)
+    assert (rule.kind, rule.rule) == ("remember", "Don't file lunch plans")
+    alias = parse_command("/alias Sammy O = person-sam-ortiz", TODAY)
+    assert (alias.kind, alias.alias) == ("remember", ("Sammy O", "person-sam-ortiz"))
+
+
+def test_remember_in_chat_adds_to_what_the_review_remembers(chat, vault_copy):
+    say, _, backend = chat
+    say("/ingest 2026-10-12")
+    say("/remember Don't file lunch plans")
+    reply_ = say("/alias stakeholders = project-atlas")
+    assert "- rule: Don't file lunch plans" in reply_  # the first one is kept
+    assert "- “stakeholders” means `project-atlas`" in reply_
+    assert "Not accepted: 'Sam' already names" in say("/alias Sam = project-atlas")
+    assert say("/approve").startswith("Applied")
+    assert "- Don't file lunch plans" in (vault_copy / "90_meta/rules.md").read_text()
