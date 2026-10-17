@@ -44,6 +44,11 @@ forward (2026-10-16).
 - Steps: R1 page (files, diffs, checkboxes, approve, reject) + the vault check; R2 edit, tasks,
   wins, revise; R3 remember.
 
+**R3 as built (2026-10-16):** the user chose two inputs, a Rule box and a Name row (name + page
+dropdown), so code never guesses which is which. Answers carry whole lists (`rules`, `aliases`), like
+`wins`. Aliases take effect in the same review (task mapping reads them); rules from the next ingest
+(agents load `rules.md` when built). A name that already names another page is refused.
+
 ## Why
 
 The review is the one place the user sees and controls every write; it deserves a real UI. Keeping

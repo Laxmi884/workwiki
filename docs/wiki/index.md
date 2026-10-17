@@ -26,6 +26,7 @@ One note per concept. Template: `learnings/_template.md`.
 - [[learnings/deep-agent-permissions-and-subagents|Deep agent permissions and subagents]]: first-match-wins rules, vault as a route, subagents inherit no skills/middleware, response_format
 - [[learnings/agent-server-and-deployment|The Agent Server: dev, up, build]]: who owns persistence, graph factories, http.app, langgraph.json keys, licences
 - [[learnings/backend-interface-and-node-input|Backend interface and node input]]: ports and adapters with contract tests; a node only gets its annotated schema's keys
+- [[learnings/memory-through-review|Memory through the review]]: rules and aliases as proposed edits; same-review overlay vs next-run memory; two inputs, whole-list answers
 
 ## Decisions
 
