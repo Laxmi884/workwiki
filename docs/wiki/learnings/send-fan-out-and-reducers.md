@@ -46,6 +46,11 @@ where each fact goes instead of the model.
 - A parallel step is all-or-nothing: if one branch raises, none of the step's updates apply. A
   `RetryPolicy` on `extract` retries only the failed branch.
 - `input_schema=IngestInput` keeps the Studio input form to just `note_path`.
+- Parallel tool calls in one model turn all read the state from **before** the turn; reducers merge after.
+  A check in one call can't see a sibling's update (2026-10-16: `file_fact` refused facts citing a task
+  `map_task` mapped in the same turn). Fix (2026-10-17): `ingest/agent.py` `_mappings` reads the sibling
+  `map_task` calls from the turn's `AIMessage` (found by `runtime.tool_call_id`), each run through
+  `stage_mapping` first. Notebook 3.3 section 5.
 
 ## In my words
 

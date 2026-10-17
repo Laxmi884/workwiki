@@ -51,3 +51,15 @@ By construction (user chose "fix all", 2026-10-16):
 
 Each fix removes a dependency instead of documenting it, and each has a test that fails the day the property
 breaks, so the guarantees hold on any machine, container or server we run on later (phase 8).
+
+## Addendum 2026-10-17: agents can't write `90_meta/`
+
+5. **Where an edit may write is part of its type, for memory too.** Before, `WritablePath` allowed
+   `90_meta/*.md` (for R3's rules file), so only slug-only staging and the review kept agents off
+   `rules.md`, which both agents read as memory; the review could even edit it. Now `WritablePath` refuses
+   `90_meta/`; `RememberRules` (path type: exactly `90_meta/rules.md`) is the only edit that writes it, built
+   only by `remember.remember_edits`; a `FileDiff`'s edits must all target its own path. Option not taken:
+   letting `AppendToSection` also accept `rules.md` (any bug producing one could write memory).
+   Cost: a review saved before this change that holds a remembered rule no longer loads (reject, re-run).
+   Tests in `test_changes.py`, `test_remember.py`, `test_review.py`, `test_review_web.py`,
+   `test_agent_staging.py`.

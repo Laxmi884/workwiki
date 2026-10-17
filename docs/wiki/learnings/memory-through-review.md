@@ -34,8 +34,10 @@ saves it and every caller can influence it. We keep the user as the only writer.
 - `AddAlias` used to re-dump the frontmatter with `yaml.safe_dump` (flow lists became block lists,
   comments would be lost). Now it edits only the aliases lines and parses the result back, refusing
   if anything but the alias changed (`diffs.py` `_add_alias`).
-- `WritablePath` allows `90_meta/*.md`; slug-only staging and the review are what keep agents off
-  `rules.md`.
+- ~~`WritablePath` allows `90_meta/*.md`~~ Fixed 2026-10-17: `WritablePath` refuses `90_meta/`; rules go only
+  through `RememberRules` (its path type accepts exactly `rules.md`, built only by `remember.py`), and a
+  `FileDiff`'s edits must target its own path. The review can't edit `rules.md` any more either (it could,
+  because `is_wiki_page` was true). See 0011 item 5; notebook 5.2 section 6.
 
 ## In my words
 

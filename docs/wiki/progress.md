@@ -98,8 +98,9 @@ Model: `openrouter:deepseek/deepseek-v4.1-flash` (~$0.001 per ingest, ~$0.002 pe
   - [x] Open-tasks page per [[decisions/0012-open-tasks-page|0012]] (2026-10-17, `d6fcb0e`): `open_tasks.py`, `ReplaceFile` for that path, not editable, under Bookkeeping; notebook 18
   - [x] Bookkeeping all or nothing per [[decisions/0013-bookkeeping-all-or-nothing|0013]] (2026-10-17, committed): `ReviewFile.required`, `check_answer` refuses leaving one out, fixed list on the page, "always written" in chat; notebook 18 section 3
   - [x] Real-run follow-up: `review_web`/`ask` load `.env` (`config.load_env_file`, shell values win) and both POST routes return a JSON error on an unexpected crash (`_crashed`, trace in the server log); the page scripts also cope with a non-JSON reply (2026-10-17, `d50987e`)
-  - [ ] Real-run follow-ups: lower reasoning effort for the ingest model (81 s / 175 s calls); same-turn `map_task` visible to `file_fact`
+  - [x] Real-run follow-ups (2026-10-17, `9aeb8f1`; built by three parallel subagents in worktrees, merged by Claude): `WIKI_REASONING_EFFORT` (OpenRouter `reasoning.effort`, unset = provider default; notebook 3.7 §4b); same-turn `map_task` visible to `file_fact` (`_mappings`; notebook 3.3 §5, ex. 5)
+  - [ ] Try `WIKI_REASONING_EFFORT=low` on one real ingest (paid; needs the user's OK: spend ≈ $2.81, over the cap)
   - [x] `AddAlias` changes only the aliases lines (Claude, 2026-10-16; awaiting review with R3): text edit + parse-back check, refuses shapes it can't edit safely; all 5 `~/WorkDev` entity pages take an alias as a one-line change (dry run, nothing written)
-  - [ ] Follow-up from R3: `WritablePath` refuses `90_meta/*.md` for agent edits (remember gets its own path type); before phase 5's write guard
+  - [x] Follow-up from R3: agents can't write `90_meta/` (2026-10-17, `9aeb8f1`): `WritablePath` refuses it, `RememberRules` for `rules.md`, `FileDiff` edits match its path; 0011 addendum; notebook 5.2 §6
   - [ ] Telegram/Slack adapters: summary + Approve all / Reject + link to the review page
 - [ ] **8. Optional**: `langgraph up`, `langgraph deploy`. Hosting only (0005 addendum): vault + `WIKI_STATE_DIR` volumes, auth on the review page's custom routes, vault git clone synced with the Mac. The UI does not wait for this.
