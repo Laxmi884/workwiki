@@ -30,6 +30,7 @@ One note per concept. Template: `learnings/_template.md`.
 - [[learnings/middleware-current-date|Middleware: the current date]]: wrap_model_call vs dynamic_prompt vs before_model; per-call clock, not in the thread; order and subagent inheritance
 - [[learnings/tool-allow-list|Tool allow-list]]: hide and refuse in code, not prompts; why hiding alone isn't enough; ingest's `task` hole
 - [[learnings/redaction|Redaction]]: filter the request, not the state; why `PIIMiddleware` leaks in a deep agent; replacing the general-purpose subagent
+- [[learnings/offload|Offload]]: cap, page or offload; Deep Agents' built-in eviction for tool results and user messages; why no middleware of ours
 
 ## Decisions
 
