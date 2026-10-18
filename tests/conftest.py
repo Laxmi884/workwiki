@@ -70,6 +70,13 @@ def _vaults_tests_may_use(monkeypatch, tmp_path_factory, _default_vault):
     monkeypatch.setenv("WIKI_VAULT_PATH", str(_default_vault))
     roots = f"{tmp_path_factory.getbasetemp()},{FIXTURE_VAULT}"
     monkeypatch.setenv("WIKI_VAULT_ROOTS", roots)
+    monkeypatch.setenv(
+        "WIKI_SERVER_TOKEN", "test-token"
+    )  # what the contract servers want
+    for name in ("SLACK_BOT_TOKEN", "SLACK_APP_TOKEN", "WIKI_SLACK_USER_ID"):
+        monkeypatch.delenv(
+            name, raising=False
+        )  # the developer's real values never reach a test
     get_settings.cache_clear()
     yield
     get_settings.cache_clear()

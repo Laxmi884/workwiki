@@ -46,6 +46,29 @@ services:
       start_period: 10s
     restart: unless-stopped
 
+  # The Slack bot, opt-in: docker compose --profile slack up -d --wait
+  # Socket Mode connects out to Slack; nothing listens here. The vault is mounted
+  # read-only only because settings check that WIKI_VAULT_PATH exists.
+  slack:
+    image: ${WIKI_IMAGE:-llm-wiki:local}
+    profiles: ["slack"]
+    entrypoint: ["python", "-m", "llm_wiki.slack"]
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      WIKI_VAULT_PATH: ${WIKI_VAULT_PATH:?set WIKI_VAULT_PATH to the vault's absolute path}
+      WIKI_BACKEND: server
+      WIKI_SERVER_URL: http://api:8000
+    volumes:
+      - ${WIKI_VAULT_PATH}:${WIKI_VAULT_PATH}:ro
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      disable: true
+    restart: unless-stopped
+
   postgres:
     image: pgvector/pgvector:pg16
     environment:

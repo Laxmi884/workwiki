@@ -25,3 +25,15 @@ def test_the_vault_is_mounted_at_its_own_path_and_state_restores_strictly():
     assert env["LANGGRAPH_STRICT_MSGPACK"] == "true"
     assert env["WIKI_BACKEND"] == "server"
     assert env["WIKI_SERVER_URL"] == "http://127.0.0.1:8000"
+
+
+def test_the_slack_bot_is_opt_in_and_reaches_the_api_inside_compose():
+    slack = COMPOSE["services"]["slack"]
+    assert slack["profiles"] == ["slack"]  # `docker compose up` alone never starts it
+    assert slack["entrypoint"] == ["python", "-m", "llm_wiki.slack"]
+    env = slack["environment"]
+    assert env["WIKI_BACKEND"] == "server"
+    assert env["WIKI_SERVER_URL"] == "http://api:8000"
+    assert "ports" not in slack  # Socket Mode: nothing listens
+    assert "${WIKI_VAULT_PATH}:${WIKI_VAULT_PATH}:ro" in slack["volumes"]
+    assert slack["depends_on"]["api"]["condition"] == "service_healthy"

@@ -1,0 +1,22 @@
+# Create the Slack app from this manifest (docs/setup/slack.md).
+display_information:
+  name: wiki
+  description: Your work wiki in a DM (llm-wiki)
+features:
+  app_home:
+    messages_tab_enabled: true
+    messages_tab_read_only_enabled: false
+  bot_user:
+    display_name: wiki
+    always_online: false
+oauth_config:
+  scopes:
+    bot: [chat:write, im:history, im:read, im:write]
+settings:
+  event_subscriptions:
+    bot_events: [message.im]
+  interactivity:
+    is_enabled: true
+  org_deploy_enabled: false
+  socket_mode_enabled: true
+  token_rotation_enabled: false

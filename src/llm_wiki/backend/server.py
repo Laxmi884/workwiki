@@ -58,6 +58,12 @@ ASK_MODES: list[StreamMode] = ["updates", "messages-tuple"]
 F = TypeVar("F", bound=Callable[..., Any])
 
 
+def auth_headers() -> dict[str, str]:
+    """Return the Authorization header for the Agent Server (none if no token is set)."""
+    token = get_settings().server_token
+    return {"Authorization": f"Bearer {token.get_secret_value()}"} if token else {}
+
+
 def _reachable(method: F) -> F:
     """Turn HTTP failures that escape `method` (server down, a 5xx) into `BackendError`.
 
@@ -140,7 +146,7 @@ class ServerBackend:
         (the same on this machine; a mounted volume under `langgraph up`).
         """
         self.url = url or get_settings().server_url
-        self._client = client or get_sync_client(url=self.url)
+        self._client = client or get_sync_client(url=self.url, headers=auth_headers())
         self._vault = (
             Path(vault).expanduser().resolve() if vault else get_settings().vault_path
         )

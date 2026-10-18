@@ -15,6 +15,9 @@
     "rollover": "./src/llm_wiki/rollover_graph.py:graph"
   },
   "env": ".env",
+  "auth": {
+    "path": "./src/llm_wiki/server_auth.py:auth"
+  },
   "http": {
     "app": "./src/llm_wiki/review_web/app.py:app",
     "cors": {

@@ -76,7 +76,11 @@ def _wait_until_up(url: str, alive, deadline_s: float, log_path: Path) -> None:
 
 # Strict: the servers restore only LangGraph's safe types, as a future langgraph-api will
 # by default. Ingest state is plain JSON (ingest/state.py), so nothing of ours is needed.
-SERVER_ENV = {"LANGSMITH_TRACING": "false", "LANGGRAPH_STRICT_MSGPACK": "true"}
+SERVER_ENV = {
+    "LANGSMITH_TRACING": "false",
+    "LANGGRAPH_STRICT_MSGPACK": "true",
+    "WIKI_SERVER_TOKEN": "test-token",  # conftest sets the same for the clients
+}
 
 
 def _dev_server(work: Path):
@@ -87,6 +91,7 @@ def _dev_server(work: Path):
             "ingest": f"{SERVER_GRAPHS}:ingest",
             "assistant": f"{SERVER_GRAPHS}:assistant",
         },
+        "auth": {"path": f"{ROOT}/src/llm_wiki/server_auth.py:auth"},
     }
     (work / "langgraph.json").write_text(json.dumps(config))
     port = _free_port()
@@ -147,6 +152,7 @@ def _docker_server(work: Path, shared: Path):
                     ),
                     "LANGSMITH_TRACING": "false",
                     "WIKI_VAULT_ROOTS": str(shared),  # the tests' vaults are inside
+                    "WIKI_SERVER_TOKEN": "test-token",
                 },
                 "volumes": [f"{tests}:/deps/workspace/tests:ro"],
             }
@@ -219,6 +225,19 @@ def make(request, tmp_path, scripted_models):
 @pytest.fixture
 def backend(make, vault_copy):
     return make(vault_copy)
+
+
+def test_the_server_refuses_a_client_without_the_token(request):
+    # fetched here, not as a parameter: a session fixture named in the signature
+    # starts before the autouse env fixture, and the server would miss WIKI_VAULT_PATH
+    server_url = request.getfixturevalue("server_url")
+    assert httpx.post(f"{server_url}/threads/search", json={}).status_code == 401
+    ok = httpx.post(
+        f"{server_url}/threads/search",
+        json={},
+        headers={"Authorization": "Bearer test-token"},
+    )
+    assert ok.status_code == 200
 
 
 def test_start_pauses_at_a_review_that_holds_everything_the_page_shows(backend):

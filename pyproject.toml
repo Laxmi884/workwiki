@@ -21,6 +21,8 @@ dependencies = [
     "pydantic-settings>=2.15.0",
     "python-dotenv>=1.0.1",
     "pyyaml>=6.0.3",
+    "slack-bolt>=1.30.0",
+    "slack-sdk>=3.45.0",
     "starlette>=1.3",
     "tzdata>=2025.2",
     "uvicorn>=0.41",
@@ -42,6 +44,7 @@ where = ["src"]  # every subpackage (ingest, assistant, backend, ...), not just 
 "llm_wiki.ingest" = ["skills/*/SKILL.md"]
 "llm_wiki.assistant" = ["skills/*/SKILL.md", "subagent_skills/*/SKILL.md"]
 "llm_wiki.review_web" = ["templates/*.html"]
+"llm_wiki.slack" = ["manifest.yml"]
 
 [tool.ruff]
 lint.select = [

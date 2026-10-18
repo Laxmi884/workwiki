@@ -38,3 +38,10 @@ Measured quality beats an untested local model, and the user judged the notes fi
 User: "for now let the tracing be on i'll monitor initial runs". Real runs (ingest, assistant, and on the
 server the rollover cron, whose result holds task text) are traced to LangSmith unredacted. Revisit after the
 first runs; turning it off is `LANGSMITH_TRACING_V2=false` in `.env` (and a server restart).
+
+## Addendum 2026-10-18: Slack
+
+With the Slack bot on (opt-in, `docs/setup/slack.md`), the user's DM messages, the bot's answers, review
+summaries and step names are kept in the DM history on Slack's servers; a free workspace shows the last 90
+days. Diffs and vault files are not sent, except as summarised in the review text. Turning the bot off stops
+new messages; deleting the history is the user's call.

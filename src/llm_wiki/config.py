@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Annotated, Literal
 
 from dotenv import load_dotenv
-from pydantic import Field, field_validator, model_validator
+from pydantic import AliasChoices, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 from llm_wiki.models import ModelSpec, ReasoningEffort
@@ -58,6 +58,13 @@ class Settings(BaseSettings):
             `server_url`). Default "local".
         server_url: `WIKI_SERVER_URL`. The Agent Server for the "server" backend.
             Default "http://127.0.0.1:2024" (`langgraph dev`).
+        server_token: `WIKI_SERVER_TOKEN`. The bearer token the Agent Server requires
+            (`server_auth`) and its clients send. Unset: the server refuses every API
+            call, and clients send no header.
+        slack_bot_token, slack_app_token: `SLACK_BOT_TOKEN` (xoxb-…) and
+            `SLACK_APP_TOKEN` (xapp-…, Socket Mode), the Slack bot's (no `WIKI_`
+            prefix: Slack's own names). Unset: the bot doesn't start.
+        slack_user_id: `WIKI_SLACK_USER_ID`. The only Slack user the bot answers.
     """
 
     model_config = SettingsConfigDict(
@@ -78,6 +85,16 @@ class Settings(BaseSettings):
     state_dir: Path = Path("~/.llm-wiki")
     backend: Literal["local", "server"] = "local"
     server_url: str = "http://127.0.0.1:2024"
+    server_token: SecretStr | None = None
+    slack_bot_token: SecretStr | None = Field(
+        default=None,
+        validation_alias=AliasChoices("SLACK_BOT_TOKEN", "slack_bot_token"),
+    )
+    slack_app_token: SecretStr | None = Field(
+        default=None,
+        validation_alias=AliasChoices("SLACK_APP_TOKEN", "slack_app_token"),
+    )
+    slack_user_id: str | None = None
     vault_roots: Annotated[tuple[Path, ...], NoDecode] = ()
 
     @field_validator("vault_path")

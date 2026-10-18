@@ -35,6 +35,7 @@ One note per concept. Template: `learnings/_template.md`.
 - [[learnings/scheduling-and-time-zones|Scheduling and time zones]]: whose "today"; a cron runs a graph; server cron vs launchd; the image needed system zone files
 - [[learnings/code-only-jobs|Code-only jobs]]: rollover writes `00_raw/` without a review because no model text is involved; create-if-absent, catch up by ID
 - [[learnings/streaming-progress|Streaming a run as steps]]: v2 stream parts → one frozen `Progress`; custom events as the contract; generators that end with one `Finished`
+- [[learnings/slack-surface|The Slack surface]]: Socket Mode, events and button payloads, task chunks, buttons as `Command(resume=…)` with a token, bearer auth on the server
 
 ## Decisions
 

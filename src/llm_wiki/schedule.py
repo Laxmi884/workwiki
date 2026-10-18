@@ -193,7 +193,9 @@ def remove_launchd(agents_dir: Path = AGENTS_DIR, run: Runner = subprocess.run) 
 def _client(url: str) -> Any:
     from langgraph_sdk import get_sync_client
 
-    return get_sync_client(url=url)
+    from llm_wiki.backend.server import auth_headers
+
+    return get_sync_client(url=url, headers=auth_headers())
 
 
 def _server(args: argparse.Namespace) -> None:
