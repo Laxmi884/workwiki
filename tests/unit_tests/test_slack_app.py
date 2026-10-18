@@ -89,3 +89,32 @@ def test_the_manifest_asks_only_for_what_the_bot_uses():
     assert settings["socket_mode_enabled"] is True
     assert settings["interactivity"]["is_enabled"] is True
     assert settings["event_subscriptions"]["bot_events"] == ["message.im"]
+
+
+def test_state_lives_in_the_state_dir(tmp_path):
+    from llm_wiki.slack.__main__ import announced_path
+
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    settings = Settings(_env_file=None, vault_path=vault, state_dir=tmp_path / "state")
+    assert announced_path(settings) == tmp_path / "state" / "slack-announced.json"
+
+
+def test_the_notifier_runs_in_a_daemon_thread_until_stopped():
+    import threading
+
+    from llm_wiki.slack.__main__ import start_notifier
+
+    started = threading.Event()
+
+    class Waits:
+        def run_forever(self, client, stop, interval=60):
+            started.set()
+            stop.wait()
+
+    thread, stop = start_notifier(Waits(), client=None)
+    assert thread.daemon and thread.name == "wiki-notifier"
+    assert started.wait(1)
+    stop.set()
+    thread.join(1)
+    assert not thread.is_alive()

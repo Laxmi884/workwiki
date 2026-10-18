@@ -29,10 +29,12 @@ from llm_wiki.backend import (
     ChatTurn,
     NoOpenReview,
     ReviewBusy,
+    RunResult,
     UnknownThread,
 )
 from llm_wiki.chat.session import ChatReply, stream_reply
 from llm_wiki.progress import Progress
+from llm_wiki.slack.announced import Announced, Shown
 from llm_wiki.slack.render import APPROVE, REJECT, reply_text, review_buttons
 from llm_wiki.slack.stream import Reply
 
@@ -84,12 +86,37 @@ class WikiSlack:
     """The bot's behaviour over one backend; Slack calls go to the `client` passed in."""
 
     def __init__(
-        self, backend: Backend, *, user_id: str, review_url: str | None
+        self,
+        backend: Backend,
+        *,
+        user_id: str,
+        review_url: str | None,
+        announced: Announced | None = None,
     ) -> None:
-        """Answer only `user_id`; link reviews to `review_url` when it isn't local."""
+        """Answer only `user_id`; link reviews to `review_url` when it isn't local.
+
+        `announced` is shared with the notifier: the reviews this bot shows or answers
+        are recorded there, so the notifier doesn't announce or clear them again.
+        """
         self._backend = backend
         self._user_id = user_id
         self._review_url = review_url
+        self._announced = announced or Announced(None)
+
+    @property
+    def announced(self) -> Announced:
+        """What this bot shows of each review (shared with the notifier)."""
+        return self._announced
+
+    def _shown(self, channel: str, ts: str | None, result: RunResult) -> None:
+        """Record or forget `result`'s review once a reply has shown it."""
+        if result.status == "review" and result.review is not None and ts:
+            self._announced.record(
+                result.thread_id,
+                Shown(channel=channel, ts=ts, seen=result.review.token),
+            )
+        else:
+            self._announced.forget(result.thread_id)
 
     def on_message(self, event: dict[str, Any], client: WebClient) -> None:
         """Answer one DM from the allowed user; ignore every other event."""
@@ -120,15 +147,21 @@ class WikiSlack:
             team=event.get("team"),
             user=self._user_id,
         )
-        self._run(
-            reply,
-            lambda: stream_reply(
-                self._backend, text, history, link_base=self._review_url or ""
-            ),
-        )
+        with self._announced.busy():
+            self._run(
+                reply,
+                event["channel"],
+                lambda: stream_reply(
+                    self._backend, text, history, link_base=self._review_url or ""
+                ),
+            )
 
     def on_action(self, body: dict[str, Any], client: WebClient) -> None:
         """Answer the review a button names: approve or reject what was shown, once."""
+        with self._announced.busy():
+            self._on_action(body, client)
+
+    def _on_action(self, body: dict[str, Any], client: WebClient) -> None:
         user = body.get("user", {}).get("id")
         if user != self._user_id:
             log.info("slack: ignored a button press from user %s", user)
@@ -181,17 +214,20 @@ class WikiSlack:
                 if result.status == "review"
                 else text.splitlines()[0]
             )
-            reply.finish(
+            ts = reply.finish(
                 text,
                 review_buttons(result, self._review_url) or None,
                 finished.progress,
             )
+            self._shown(channel, ts, result)
         except UnknownThread:
+            self._announced.forget(target["thread"])
             mark("This review isn't open any more.")
             reply.finish(
                 f"This review isn't open any more (no thread {target['thread']})."
             )
         except NoOpenReview as exc:
+            self._announced.forget(target["thread"])
             mark("Already answered.")
             current = self._backend.review(target["thread"])
             reply.finish(
@@ -210,7 +246,10 @@ class WikiSlack:
             reply.fail(CRASHED)
 
     def _run(
-        self, reply: Reply, events: Callable[[], Iterator[Progress | ChatReply]]
+        self,
+        reply: Reply,
+        channel: str,
+        events: Callable[[], Iterator[Progress | ChatReply]],
     ) -> None:
         try:
             last: ChatReply | None = None
@@ -225,7 +264,9 @@ class WikiSlack:
                 blocks = review_buttons(last.result, self._review_url)
             else:
                 text, blocks = last.text, []
-            reply.finish(text, blocks or None, last.progress)
+            ts = reply.finish(text, blocks or None, last.progress)
+            if last.result is not None:
+                self._shown(channel, ts, last.result)
         except BackendError as exc:
             reply.fail(f"Can't reach the wiki server: {exc}")
         except Exception:  # noqa: BLE001  (the user gets a line; the log has the trace)

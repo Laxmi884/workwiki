@@ -37,3 +37,10 @@ def test_the_slack_bot_is_opt_in_and_reaches_the_api_inside_compose():
     assert "ports" not in slack  # Socket Mode: nothing listens
     assert "${WIKI_VAULT_PATH}:${WIKI_VAULT_PATH}:ro" in slack["volumes"]
     assert slack["depends_on"]["api"]["condition"] == "service_healthy"
+
+
+def test_the_slack_bot_keeps_what_it_announced_across_restarts():
+    slack = COMPOSE["services"]["slack"]
+    state = slack["environment"]["WIKI_STATE_DIR"]
+    assert f"slack-state:{state}" in slack["volumes"]
+    assert "slack-state" in COMPOSE["volumes"]

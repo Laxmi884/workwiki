@@ -115,3 +115,19 @@ def review_buttons(result: RunResult, review_url: str | None) -> list[dict[str, 
             }
         )
     return [{"type": "actions", "block_id": "wiki_review", "elements": elements}]
+
+
+NOTICE = "**A review is waiting.**\n\n"
+ANSWERED = "**Answered elsewhere.**\n\n"
+
+
+def message_blocks(
+    text: str, blocks: list[dict[str, Any]] | None
+) -> list[dict[str, Any]]:
+    """Return a whole message: `text` as a markdown block, then `blocks`."""
+    return [{"type": "markdown", "text": text[:MAX_MARKDOWN]}, *(blocks or [])]
+
+
+def answered_text(result: RunResult, review_url: str | None) -> str:
+    """Return what replaces a review's buttons once it was answered somewhere else."""
+    return ANSWERED + reply_text(result, review_url)

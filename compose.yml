@@ -60,8 +60,11 @@ services:
       WIKI_VAULT_PATH: ${WIKI_VAULT_PATH:?set WIKI_VAULT_PATH to the vault's absolute path}
       WIKI_BACKEND: server
       WIKI_SERVER_URL: http://api:8000
+      # slack-announced.json: one DM per review, kept across restarts (the image runs as root)
+      WIKI_STATE_DIR: /root/.llm-wiki
     volumes:
       - ${WIKI_VAULT_PATH}:${WIKI_VAULT_PATH}:ro
+      - slack-state:/root/.llm-wiki
     depends_on:
       api:
         condition: service_healthy
@@ -96,3 +99,4 @@ services:
 
 volumes:
   pgdata:
+  slack-state:

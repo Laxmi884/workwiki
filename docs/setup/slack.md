@@ -81,6 +81,20 @@ commands and never sends the message (a leading space, ` /ingest`, works too).
 
 A button on a review that changed since (e.g. revised on the page) is refused: open it again.
 
+## Review notices
+
+The bot checks every minute for open reviews and DMs you once for each one opened outside
+Slack (the review page, the CLI, a cron job), with the same **Approve all / Reject / Open review
+page** buttons.
+
+- A review answered somewhere else (the page, the CLI): its message loses the buttons and says
+  "Answered elsewhere" with the outcome.
+- A review edited on the page: its message is updated in place; you get no second DM.
+- The bot remembers what it showed in `WIKI_STATE_DIR/slack-announced.json` (in compose, the
+  `slack-state` volume). Deleting it means open reviews are announced once more; nothing else changes.
+- The first start after this was added announces reviews that are already open, once.
+- If the wiki server is down, the bot clears nothing and tries again a minute later.
+
 ## Troubleshooting
 
 - **"Sending messages to this app has been turned off"**: the Messages Tab setting in step 1.

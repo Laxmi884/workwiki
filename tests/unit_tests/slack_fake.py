@@ -46,6 +46,8 @@ class FakeSlack(WebClient):
         data: dict[str, Any] = {"ok": True}
         if api_method == "conversations.replies":
             data |= {"messages": self.replies, "has_more": False}
+        if api_method == "conversations.open":
+            data |= {"channel": {"id": "D1"}}
         if api_method == "auth.test":  # Bolt learns its own ids, to ignore its messages
             data |= {"user_id": "U0BOT", "bot_id": "B0BOT", "team_id": "T1"}
         if api_method in ("chat.startStream", "chat.postMessage"):

@@ -18,7 +18,12 @@ from slack_sdk.errors import SlackApiError
 from slack_sdk.web.chat_stream import ChatStream
 
 from llm_wiki.progress import Progress
-from llm_wiki.slack.render import MAX_MARKDOWN, task_chunks, text_delta
+from llm_wiki.slack.render import (
+    MAX_MARKDOWN,
+    message_blocks,
+    task_chunks,
+    text_delta,
+)
 
 log = logging.getLogger(__name__)
 EXPIRED = "message_not_in_streaming_state"
@@ -88,7 +93,7 @@ class Reply:
                 channel=self._channel,
                 thread_ts=self._thread_ts,
                 text=text[:MAX_MARKDOWN],
-                blocks=self._with_text(text, blocks),
+                blocks=message_blocks(text, blocks),
             )
             return response.get("ts")
         rest = text_delta(self._sent, text)
@@ -104,7 +109,7 @@ class Reply:
             channel=self._channel,
             ts=self.ts or "",
             text=text[:MAX_MARKDOWN],
-            blocks=self._with_text(text, blocks),
+            blocks=message_blocks(text, blocks),
         )
         return self.ts
 
@@ -136,9 +141,3 @@ class Reply:
                 task_display_mode="plan",
             )
         return self._stream
-
-    @staticmethod
-    def _with_text(
-        text: str, blocks: list[dict[str, Any]] | None
-    ) -> list[dict[str, Any]]:
-        return [{"type": "markdown", "text": text[:MAX_MARKDOWN]}, *(blocks or [])]

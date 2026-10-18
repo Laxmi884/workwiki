@@ -330,3 +330,45 @@ def test_a_thread_slack_wont_return_is_answered_without_history(echo_bot):
     slack.fail_next["conversations.replies"] = "ratelimited"
     echo_bot.on_message(in_thread("Is it on track?"), slack)
     assert "Is it on track?" in slack.text()
+
+
+def notifier_for(wiki, backend):
+    from llm_wiki.slack.notifier import Notifier
+
+    return Notifier(backend, wiki.announced, user_id=USER, review_url=None)
+
+
+def test_a_review_started_in_slack_is_not_announced_again(bot):
+    wiki, backend = bot
+    opened(wiki)
+    (result,) = backend.pending()
+    assert wiki.announced.get(result.thread_id).seen == result.review.token
+    slack = FakeSlack()
+    notifier_for(wiki, backend).run_once(slack)
+    assert slack.calls == []
+
+
+def test_a_review_answered_by_button_is_not_cleared_again(bot):
+    wiki, backend = bot
+    value = opened(wiki)
+    (result,) = backend.pending()
+    press(FakeSlack(), wiki, REJECT, value)
+    assert wiki.announced.get(result.thread_id) is None
+    slack = FakeSlack()
+    notifier_for(wiki, backend).run_once(slack)
+    assert slack.calls == []
+
+
+def test_a_refused_press_records_the_reply_with_current_buttons(bot):
+    wiki, backend = bot
+    value = opened(wiki)
+    (result,) = backend.pending()
+    first = wiki.announced.get(result.thread_id)
+    stale = json.dumps(json.loads(value) | {"seen": "0" * 16})
+    slack = FakeSlack()
+    slack._ts = 5  # its replies get other ts values than the first message's
+    press(slack, wiki, APPROVE, stale)
+    shown = wiki.announced.get(result.thread_id)
+    assert (
+        shown is not None and shown.ts != first.ts
+    )  # the new reply, not the pressed one
