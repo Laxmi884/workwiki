@@ -2,13 +2,15 @@
 
 import dataclasses
 import json
+import re
+from pathlib import Path
 
 import pytest
 from langchain_core.messages import AIMessage
 
 from llm_wiki.daily_syntax import parse_daily_note
-from llm_wiki.diffs import vault_reader
-from llm_wiki.domain.changes import AppendToSection, CreateFile
+from llm_wiki.diffs import apply_edit, vault_reader
+from llm_wiki.domain.changes import AddAlias, AppendToSection, CreateFile
 from llm_wiki.entity_index import load_index
 from llm_wiki.ingest import nodes, staging
 from llm_wiki.ingest.graph import builder as agent_builder
@@ -818,3 +820,114 @@ def test_a_staging_bug_still_cannot_write_the_rules_file(ctx, monkeypatch):
         staging.stage_page(
             ctx, [], slug="concept-cookie-domain", title="Cookie Domain", line=47
         )
+
+
+# --- names on new pages (found by the phase 6 eval, 2026-10-17) -------------------
+
+CORPUS_NOTE = Path(__file__).parents[1] / "fixtures/corpus/notes/2026-11-02.md"
+
+
+@pytest.fixture
+def corpus_ctx(fixture_vault):
+    """The eval's first day: "Marta Ruiz joined today", later "Showed Marta …", "k6"."""
+    text = CORPUS_NOTE.read_text()
+    note = parse_daily_note("00_raw/daily/2026-11-02.md", text)
+    read = vault_reader(fixture_vault)
+    ctx = StagingContext(
+        note, staging.citable_lines(note), load_index(fixture_vault), read
+    )
+    lines = text.splitlines()
+    return ctx, lambda anchor: next(n for n, t in enumerate(lines, 1) if anchor in t)
+
+
+def test_a_short_name_can_get_a_page(corpus_ctx):
+    ctx, line = corpus_ctx
+    page = staging.stage_page(
+        ctx, [], slug="concept-k6", title="k6", line=line("k6 can ramp")
+    )
+    assert page.path == "15_concepts/concept-k6.md"
+    with pytest.raises(StagingError, match="doesn't name"):
+        staging.stage_page(
+            ctx, [], slug="concept-k6", title="k6", line=line("Showed Marta")
+        )
+
+
+def test_aliases_let_a_first_name_line_reach_a_new_page(corpus_ctx):
+    ctx, line = corpus_ctx
+    help_line = line("Showed Marta")
+
+    def help_fact(staged):
+        return fact(ctx, staged, target="person-marta-ruiz", section="Help given",
+                    text="Showed her how feature flags work (30 min).", line=help_line)  # fmt: skip
+
+    bare = staging.stage_page(
+        ctx, [], slug="person-marta-ruiz", title="Marta Ruiz", line=line("joined")
+    )
+    with pytest.raises(StagingError, match="doesn't name person-marta-ruiz"):
+        help_fact([bare])
+
+    page = staging.stage_page(
+        ctx,
+        [],
+        slug="person-marta-ruiz",
+        title="Marta Ruiz",
+        line=line("joined"),
+        aliases=[" Marta "],
+    )
+    assert "aliases:\n- Marta\n" in page.text
+    edits, _ = help_fact([page])
+    assert edits[0].path == "20_people/person-marta-ruiz.md"
+    # the alias is the page's own: code that reads proposed pages sees it too
+    assert staging.with_created(ctx.entities, [page]).lookup("marta")[0].slug == (
+        "person-marta-ruiz"
+    )
+    # and the review's "remember a name" can still add one to that page
+    assert "- Martita" in apply_edit(
+        page.text, AddAlias(path=page.path, alias="Martita")
+    )
+
+
+@pytest.mark.parametrize(
+    ("aliases", "why"),
+    [
+        (["Martita"], "never says 'Martita'"),
+        (["marta ruiz"], "the title or given twice"),
+        (["Marta", "MARTA"], "the title or given twice"),
+        (["Priya"], "already names person-priya-nair"),
+        ([""], "short name"),
+        (["Marta"] * 6, "at most 5"),
+    ],
+)
+def test_bad_aliases_are_refused(corpus_ctx, aliases, why):
+    ctx, line = corpus_ctx
+    with pytest.raises(StagingError, match=why):
+        staging.stage_page(
+            ctx, [], slug="person-marta-ruiz", title="Marta Ruiz",
+            line=line("joined"), aliases=aliases,
+        )  # fmt: skip
+
+
+def test_an_alias_can_not_be_another_proposed_pages_name(corpus_ctx):
+    ctx, line = corpus_ctx
+    k6 = staging.stage_page(
+        ctx, [], slug="concept-k6", title="k6", line=line("k6 can ramp")
+    )
+    with pytest.raises(StagingError, match="already names concept-k6"):
+        staging.stage_page(
+            ctx, [k6], slug="project-load-test", title="Load test",
+            line=line("Load test scheduled"), aliases=["k6"],
+        )  # fmt: skip
+
+
+def test_file_fact_tells_the_model_the_fixed_sections_code_allows():
+    """The tool text once offered "Help given" on impact, which code refused."""
+    from llm_wiki.ingest.agent import file_fact, propose_page
+
+    fixed = " ".join(file_fact.description.split("Fixed:")[1].split())
+    for target in staging.FIXED_SECTIONS:
+        said = re.search(rf'((?:"[^"]+"(?:, | or )?)+) on {target}\b', fixed)
+        assert said, f"the description doesn't say which sections {target} takes"
+        named = re.findall(r'"([^"]+)"', said.group(1))
+        assert named == [h.removeprefix("## ") for h in staging.SECTIONS[target]]
+    schema = propose_page.tool_call_schema.model_json_schema()
+    assert "aliases" in schema["properties"] and "aliases" not in schema["required"]

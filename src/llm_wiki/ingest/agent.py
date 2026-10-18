@@ -178,13 +178,13 @@ def file_fact(
 
     Args:
         target: An entity slug with a page (e.g. "person-sam-ortiz", "project-atlas"),
-            or "impact" (the quarter's wins and help given) or "decision-log" (the
-            quarter's decisions).
-        section: The page section. Usual ones: "Notes" or "Help given" on a person;
-            "Updates", "Decisions" or "Wins" on a project; "Notes" on a concept. Any
-            other short heading works on person/project/concept pages (follow the
-            user's rules). Fixed: "Wins" or "Help given" on impact; "Decisions" on
-            decision-log.
+            or "impact" (the quarter's #win lines) or "decision-log" (the quarter's
+            decisions).
+        section: The page section. Usual ones: "Notes" or "Help given" (help the
+            author gave that person) on a person; "Updates", "Decisions" or "Wins" on
+            a project; "Notes" on a concept. Any other short heading works on
+            person/project/concept pages (follow the user's rules). Fixed: "Wins" on
+            impact; "Decisions" on decision-log.
         text: The fact, 1-2 sentences in your words. Code adds date, meeting and link.
         line: The note line number the fact comes from.
         title: Only for decision-log: the decision as a short title.
@@ -275,20 +275,32 @@ def withdraw_fact(
 
 @tool
 def propose_page(
-    slug: str, title: str, line: int, runtime: ToolRuntime[AgentContext]
+    slug: str,
+    title: str,
+    line: int,
+    runtime: ToolRuntime[AgentContext],
+    aliases: list[str] | None = None,
 ) -> Command:
     """Stage a new page for a person, project or concept the note names.
 
     Args:
         slug: "person-<name>", "project-<name>" or "concept-<name>", lowercase words
             joined by "-", e.g. "person-marta-ruiz".
-        title: The name as the note writes it, e.g. "Marta".
+        title: The fullest name as the note writes it, e.g. "Marta Ruiz".
         line: A note line that names it.
+        aliases: Other names the note uses for it, e.g. ["Marta"] (a first name, a
+            short form). Lines that use only an alias can then be filed on the page.
+            Each must appear in the note; leave out a name another page already has.
     """
     ctx = runtime.context.staging
     try:
         edit = staging.stage_page(
-            ctx, _live(runtime)[0], slug=slug, title=title, line=line
+            ctx,
+            _live(runtime)[0],
+            slug=slug,
+            title=title,
+            line=line,
+            aliases=aliases or (),
         )
     except StagingError as exc:
         return _reply(runtime, f"REFUSED: {exc}", refusals=[f"propose_page: {exc}"])

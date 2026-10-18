@@ -47,8 +47,10 @@ from llm_wiki.domain.entities import EntityKind
 from llm_wiki.domain.task_index import TaskProposal
 from llm_wiki.entity_index import (
     EntityIndex,
+    build_index,
     contains_phrase,
     kind_of,
+    name_key,
     path_for,
     with_created,
 )
@@ -68,6 +70,8 @@ from llm_wiki.routing import (
 IMPACT, DECISION_LOG = "impact", "decision-log"
 MAX_TEXT = 400
 MAX_WHY = 120
+MAX_ALIASES = 5
+MAX_NAME = 80
 NO_PROJECT = "none"
 
 CURRENT_STATE = "## Current state"
@@ -182,15 +186,16 @@ def _context(note: DailyNote, line: int) -> list[str]:
 
 
 def _names(ctx: StagingContext, staged: Sequence[Edit], slug: str) -> list[str]:
-    """Return the names of a page: its title and aliases, or a proposed page's title."""
+    """Return the names of a page: its title and aliases, existing or proposed."""
     entity = ctx.entities.get(slug)
-    if entity is not None:
-        return [entity.title, *entity.aliases]
-    for e in staged:
-        if isinstance(e, CreateFile) and e.path == path_for(slug):
-            m = re.search(r"^# (.+)$", e.text, re.MULTILINE)
-            return [m.group(1)] if m else []
-    return []
+    if entity is None:
+        created = [
+            (e.path, e.text)
+            for e in staged
+            if isinstance(e, CreateFile) and e.path == path_for(slug)
+        ]
+        entity = build_index(created).get(slug)
+    return [entity.title, *entity.aliases] if entity is not None else []
 
 
 def _names_entity(
@@ -450,11 +455,17 @@ def stage_page(
     slug: str,
     title: str,
     line: int,
+    aliases: Sequence[str] = (),
 ) -> CreateFile:
     """Check a new entity page and return its stub.
 
+    `aliases` are other names the note uses for it ("Marta" for "Marta Ruiz"); they
+    go in the page's `aliases:`, so lines that use only that name can be filed on it,
+    in this review and later ones.
+
     Raises:
-        StagingError: Bad slug, the page exists, or the cited line doesn't name it.
+        StagingError: Bad slug, the page exists, the cited line doesn't name it, or
+            an alias the note doesn't use or that already names another page.
     """
     quote = _check_name_line(ctx, line)
     kind = kind_of(slug)
@@ -471,17 +482,58 @@ def stage_page(
     title = " ".join(title.split())
     if not title or len(title) > 80:
         raise StagingError("title must be one short line")
-    words = [w for w in re.findall(r"\w+", title.lower()) if len(w) >= 3]
+    words = re.findall(r"\w+", title.lower())
+    words = [w for w in words if len(w) >= 3] or words  # "k6", "Go": short names too
     if not any(
         re.search(rf"(?<!\w){re.escape(w)}(?!\w)", quote.lower()) for w in words
     ):
         raise StagingError(
             f"line {line} doesn't name {title!r}; cite the line where it is named"
         )
-    meta = {"type": kind.value, "title": title, "aliases": []}
+    meta = {
+        "type": kind.value,
+        "title": title,
+        "aliases": _check_aliases(ctx, staged, title, aliases),
+    }
     return CreateFile(
         path=path, text=f"---\n{yaml.safe_dump(meta, sort_keys=False)}---\n# {title}\n"
     )
+
+
+def _check_aliases(
+    ctx: StagingContext, staged: Sequence[Edit], title: str, aliases: Sequence[str]
+) -> list[str]:
+    """Return a new page's aliases, cleaned; each must be a name the note uses.
+
+    Raises:
+        StagingError: Too many, empty or long, the title again or twice, not in the
+            note, or already a name of another page (existing or proposed): a name
+            shared by two pages links neither.
+    """
+    if len(aliases) > MAX_ALIASES:
+        raise StagingError(f"at most {MAX_ALIASES} aliases")
+    note = "\n".join(line for s in ctx.note.sections for line in s.lines)
+    known = with_created(ctx.entities, staged)
+    out: list[str] = []
+    seen = {name_key(title)}
+    for raw in aliases:
+        alias = " ".join(str(raw).split())
+        if not alias or len(alias) > MAX_NAME:
+            raise StagingError("an alias must be a short name, e.g. a first name")
+        if name_key(alias) in seen:
+            raise StagingError(f"{alias!r} is the title or given twice")
+        if not contains_phrase(note, alias):
+            raise StagingError(
+                f"the note never says {alias!r}; aliases are names the note uses"
+            )
+        if owners := known.lookup(alias):
+            raise StagingError(
+                f"{alias!r} already names {owners[0].slug}; a name shared by two pages "
+                "links neither, so leave it out"
+            )
+        seen.add(name_key(alias))
+        out.append(alias)
+    return out
 
 
 def stage_mapping(

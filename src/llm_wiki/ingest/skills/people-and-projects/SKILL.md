@@ -16,6 +16,11 @@ description: How to tell which person or project a name in a daily note refers t
    belongs to its parent bullet's project; a task line shows its project in `[...]`.
 5. A first name shared by two pages is ambiguous: ask, don't guess.
 
+When you `propose_page` a person or project, give the fullest name as `title` and the
+other names the note uses as `aliases` ("Marta Ruiz" joined today; later "Showed Marta
+…" → title "Marta Ruiz", aliases ["Marta"]). Without the alias, a line that says only
+"Marta" can't be filed on her page.
+
 ## Which project a line is about
 
 Put a fact on an existing project page only when the line, its parent bullet or its

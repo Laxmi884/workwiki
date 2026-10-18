@@ -26,6 +26,7 @@ Model: `openrouter:deepseek/deepseek-v4.1-flash` (~$0.001 per ingest, ~$0.002 pe
 
 ## Open decisions
 
+- Rules vs the naming check: a remembered rule that names a page (P4: interviews → `[[project-hiring-q4]]`) can't be followed, because the check never reads rules (found by the 6b baseline, 2026-10-17).
 - Which cloud model to use alongside the local default (mechanism settled in [[decisions/0003-model-selection|0003]]). `WIKI_MODEL` is now `openrouter:deepseek/deepseek-v4.1-flash` (since 2026-10-16; the free Nemotron hung and returned provider errors); `gemma4:12b` misses person notes.
 
 ## Setup
@@ -97,7 +98,7 @@ Model: `openrouter:deepseek/deepseek-v4.1-flash` (~$0.001 per ingest, ~$0.002 pe
   - [ ] Traces: LangSmith records graph state and middleware hook inputs unredacted; `TracePolicy`/`configure_trace_policy` could shape hook spans (follow-up)
 - [ ] **6. Tests and evals**: scripted model, sample notes with expected diffs. Read: `testing/scripted_model.py`, `tests/eval/`.
   - [x] 6a. Eval harness (Claude, 2026-10-17; awaiting review, not committed): the 0006 spike harness moved from `experiments/` (deleted) to `tests/eval/` and pointed at today's code. Each corpus day runs through `IngestRunner` (start → oracle revise → the rule as a review "remember" answer → approve; the graph's own apply and git commit), then vault checks (Current state, candidate pages, task IDs/`tasks.json`/ledger). Q&A asks the real `build_assistant` (clock pinned to 2026-11-28), scored by key facts. `run.py`: `run`, `qa`, `compare`; `report.json` per run under `$WIKI_STATE_DIR/evals/`; LangSmith and fallbacks off unless asked; `--max-spend`. Smoke test: two days end to end with a scripted model (mutation-checked). 663 tests pass. Notebook 7.1
-  - [ ] 6b. Baseline run with a real model (needs the user's OK: spend is past the cap): DeepSeek Flash, 20 days + 30 questions, ~$0.40
+  - [ ] 6b. Baseline run with a real model: started 2026-10-17 (user OK), stopped after day 1 ($0.04/day, double the estimate; 10 of 27 calls refused by three code issues, see log). Fixed (short names, the tool description, `propose_page` aliases; awaiting review). Baseline ingest done (recall 0.805 → 0.854, right page 0.768 → 0.817, $0.48; see log); Q&A not run (spend stop)
   - [ ] 6c. Use the eval to settle: `update_summary` never called; `WIKI_REASONING_EFFORT` low vs unset; the model choice (open decision)
 - [ ] **7. Morning brief, schedule, CLI**. Read: `surfaces/runner.py`, `schedules/`.
   - [ ] Streaming on the surfaces (user agreed 2026-10-17 to do it here): `ask` and chat stream tokens, the review page shows ingest progress; sync APIs per 0014
