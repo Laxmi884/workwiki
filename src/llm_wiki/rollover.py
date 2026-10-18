@@ -28,7 +28,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict
 
-from llm_wiki import task_tracking, vault_git
+from llm_wiki import clock, task_tracking, vault_git
 from llm_wiki.config import get_settings, load_env_file
 from llm_wiki.daily_syntax import parse_daily_note, split_sections
 from llm_wiki.domain.changes import RAW_DAILY_FOLDER, sha256_text
@@ -314,7 +314,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--date",
         type=datetime.date.fromisoformat,
-        help="the day to create, YYYY-MM-DD (default: today)",
+        help="the day to create, YYYY-MM-DD (default: today in WIKI_TIMEZONE)",
     )
     parser.add_argument("--no-commit", action="store_true", help="don't git-commit it")
     args = parser.parse_args(argv)
@@ -324,7 +324,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.vault
         else get_settings().vault_path
     )
-    day = args.date or datetime.date.today()
+    day = args.date or clock.today()
     try:
         result = roll_over(vault, day, commit=not args.no_commit)
     except RolloverError as exc:

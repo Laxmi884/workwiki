@@ -6,11 +6,13 @@
     "kind": "uv"
   },
   "dockerfile_lines": [
-    "ENV UV_NO_DEV=1"
+    "ENV UV_NO_DEV=1",
+    "RUN apk add --no-cache tzdata"
   ],
   "graphs": {
     "ingest": "./src/llm_wiki/ingest/graph.py:graph",
-    "assistant": "./src/llm_wiki/assistant/graph.py:make_graph"
+    "assistant": "./src/llm_wiki/assistant/graph.py:make_graph",
+    "rollover": "./src/llm_wiki/rollover_graph.py:graph"
   },
   "env": ".env",
   "http": {

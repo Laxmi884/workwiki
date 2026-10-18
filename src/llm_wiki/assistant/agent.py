@@ -35,6 +35,7 @@ from deepagents.middleware.subagents import GENERAL_PURPOSE_SUBAGENT
 from langchain_core.language_models import BaseChatModel
 from langgraph.checkpoint.base import BaseCheckpointSaver
 
+from llm_wiki import clock
 from llm_wiki.assistant.tools import make_find_tasks
 from llm_wiki.diffs import vault_reader
 from llm_wiki.domain.brag import BragDraft
@@ -152,7 +153,7 @@ def build_assistant(
     fallbacks: Sequence[BaseChatModel] = (),
     checkpointer: BaseCheckpointSaver | None = None,
     context_schema: type | None = None,
-    today: Callable[[], datetime.date] = datetime.date.today,
+    today: Callable[[], datetime.date] = clock.today,
 ) -> Any:
     """Return the compiled assistant over `vault` (read only).
 

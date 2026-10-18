@@ -4,8 +4,8 @@ A model's sense of "now" is its training data, so without this a question like "
 I do last week?" gets a window in the wrong year. Code works out the weekday and the
 quarter too: they are arithmetic a model gets wrong, and the vault's logs are quarterly.
 
-The date is the machine's local date, because daily notes are named by the user's day; a
-container on UTC needs `TZ` set. It is read on every model call, not baked into the
+The date is the user's (`clock.today`: `WIKI_TIMEZONE`, else the machine's local date),
+because daily notes are named by the user's day; a server container runs in UTC. It is read on every model call, not baked into the
 prompt: the server builds the graph once and a chat can run past midnight. It goes into
 the system message, which isn't saved in the thread, so a thread resumed tomorrow gets
 tomorrow's date instead of a stale one in its history.
@@ -22,6 +22,8 @@ from typing import Any
 
 from langchain.agents.middleware import AgentMiddleware, ModelRequest, ModelResponse
 from langchain_core.messages import SystemMessage
+
+from llm_wiki import clock
 
 WEEKDAYS = (
     "Monday",
@@ -60,10 +62,8 @@ class CurrentDateMiddleware(AgentMiddleware[Any, Any, Any]):
 
     name = "CurrentDate"
 
-    def __init__(
-        self, today: Callable[[], datetime.date] = datetime.date.today
-    ) -> None:
-        """Read the date from `today` (local time unless a test passes a clock)."""
+    def __init__(self, today: Callable[[], datetime.date] = clock.today) -> None:
+        """Read the date from `today` (the user's day unless a test passes a clock)."""
         super().__init__()
         self._today = today
 
