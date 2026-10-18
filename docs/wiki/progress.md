@@ -72,7 +72,8 @@ Model: `openrouter:deepseek/deepseek-v4.1-flash` (~$0.001 per ingest, ~$0.002 pe
   - [ ] 0006 teaching: user walks through the agent code (staging, agent, graph, skills). Lessons 1–2 given (2026-10-15)
   - [x] Learning notebooks 00–07 for all stages so far, git-ignored in `notebooks/` (2026-10-15)
   - [x] Bugs from the real run: stale warnings; empty page left after withdrawals (2026-10-15)
-  - [x] Sync trial: LiveSync + CouchDB + Tailscale on `~/WorkDev` (`docs/setup/livesync.md`) — 2026-10-18, Mac ↔ iPhone both ways; ingest of a phone-written note (guide step 8) not yet run
+  - [x] Sync trial: LiveSync + CouchDB + Tailscale on `~/WorkDev` (`docs/setup/livesync.md`) — 2026-10-18, Mac ↔ iPhone both ways; step 8 done too: phone edit → ingest → approved on the phone → synced back (`e9c695b`)
+  - [x] Review page and `/chat` on the phone: `tailscale serve --https=8443 8123` on the compose stack — 2026-10-18, opened on the iPhone
   - [x] 0006 agent-quality fixes (Claude, 2026-10-15; awaiting review; notebook 10): name-or-ask for person/project pages, wins = `#win` + review picks, help given on person pages, empty pages dropped, same-turn pages, headings citable for names, per-round warnings, no "first time" (details in 0006)
   - [x] Task → project proposals designed: [[decisions/0007-task-project-proposals|0007]] (2026-10-16)
   - [x] 0007 task → project proposals built and committed (`00551c0`, 2026-10-16)

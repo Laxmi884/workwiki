@@ -144,10 +144,25 @@ Test both ways: edit on the phone → see it on the Mac; edit on the Mac → see
 2. On the Mac (Obsidian open), run ingest on it (`langgraph dev` → `ingest`).
 3. Once 3d (apply) exists: approve, then see the updated pages on the phone.
 
+## 9. Review page and chat on the phone
+
+The review page and `/chat` run inside the Agent Server (`compose.yml`, published on 127.0.0.1 only).
+Give it a second Tailscale HTTPS port:
+
+```sh
+uv run langgraph build -t llm-wiki:local
+WIKI_VAULT_PATH=$HOME/WorkDev docker compose up -d --wait
+tailscale serve --bg --https=8443 8123
+```
+
+Phone (Tailscale on): `https://<mac-name>.<tailnet>.ts.net:8443/review` and `…:8443/chat`. The page
+has no login of its own: only devices on your tailnet reach it. Keep it that way (never `tailscale
+funnel`). Stop: `tailscale serve --https=8443 off`.
+
 ## Undo
 
 ```sh
-tailscale serve reset
+tailscale serve reset            # removes both the CouchDB and the review-page entries
 docker rm -f couchdb-for-ols && rm -rf ~/.livesync
 ```
 Then disable the plugin in Obsidian. The vault files on disk are untouched.
