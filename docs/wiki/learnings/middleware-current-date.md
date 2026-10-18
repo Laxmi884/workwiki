@@ -35,7 +35,10 @@ the local date (daily notes are named by the user's day) and add weekday and qua
   its core but before skills, prompt caching and memory: the date ends our prompt, then the skills middleware adds
   a second text block. So the system message the model gets is a list of blocks, not a string.
 - Custom subagents get only their own `middleware`; the built-in general-purpose subagent inherits only middleware
-  whose `name` replaces one of its default slots. A new name (`CurrentDate`) doesn't reach it.
+  whose `name` replaces one of its default slots. A new name (`CurrentDate`) doesn't reach it. Since 5c a spec named
+  `general-purpose` replaces it (`general_purpose()`), so it gets the date too.
+- The docs' way to change the system message is `content_blocks` + an appended block (5c switched `with_line` to it;
+  `cache_control` on existing blocks survives).
 - A container on UTC gives the wrong day around midnight; set `TZ`.
 
 ## In my words

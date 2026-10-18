@@ -33,7 +33,7 @@ Neither LangChain nor Deep Agents ships an allow-list. `ToolCallLimitMiddleware(
 - Hiding alone is not enough: a model can call a tool it wasn't offered, and the tool node runs any registered tool it's asked for.
 - `wrap_tool_call` also sees calls to names nothing registered (`request.tool` is `None`). LangChain used to answer them with "not a valid tool" and nothing counted them; now they count as refusals.
 - Structured output (`BragDraft`) never reaches the tool node, so it needn't be on the list.
-- The built-in general-purpose subagent can't take this middleware (it only inherits middleware that replaces one of its default slots). For the assistant that's fine: it inherits only read tools.
+- The built-in general-purpose subagent can't take this middleware (it only inherits middleware that replaces one of its default slots). Since 5c it is replaced by our own spec with the review-writer's list.
 - Prompts went stale: they still forbade `write_todos` after Deep Agents 0.7 removed it.
 
 ## In my words

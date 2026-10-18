@@ -29,6 +29,7 @@ One note per concept. Template: `learnings/_template.md`.
 - [[learnings/memory-through-review|Memory through the review]]: rules and aliases as proposed edits; same-review overlay vs next-run memory; two inputs, whole-list answers
 - [[learnings/middleware-current-date|Middleware: the current date]]: wrap_model_call vs dynamic_prompt vs before_model; per-call clock, not in the thread; order and subagent inheritance
 - [[learnings/tool-allow-list|Tool allow-list]]: hide and refuse in code, not prompts; why hiding alone isn't enough; ingest's `task` hole
+- [[learnings/redaction|Redaction]]: filter the request, not the state; why `PIIMiddleware` leaks in a deep agent; replacing the general-purpose subagent
 
 ## Decisions
 
