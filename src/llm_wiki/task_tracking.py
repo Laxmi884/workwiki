@@ -185,6 +185,12 @@ def _merge(
         return seen
 
     current = seen if _status_from_this_note(old, task, note) else old
+    if task.section is SectionKind.CARRIED_OVER:
+        # A rollover copy (decision 0001) lost its meeting heading and parent bullet,
+        # so it keeps the people it had; other notes' lines replace them.
+        current = current.model_copy(
+            update={"people": tuple(dict.fromkeys((*old.people, *current.people)))}
+        )
 
     # Project: sticky once set (a user's "none" too); an explicit link in a note at
     # least as new overrides.

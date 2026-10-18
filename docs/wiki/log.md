@@ -2,6 +2,14 @@
 
 Newest first. One entry per session, 2–5 bullets: what was done, what was learned, what's next.
 
+## 2026-10-18
+
+- **Rollover job built (user: "start the rollover job"; committed on "commit everything", after the 0016 wiki commit `85a5078`).** User chose before building: read ticks from notes not ingested since they changed (by ID, in memory), stale list on the CLI until the brief exists, carried tasks grouped by project, commit only the new note (0001 addendum). `rollover.py`, `test_rollover.py` (15 tests), 692 pass; 7 mutation checks each fail a test.
+- Found while building: a carried copy loses its `###` meeting heading, so ingesting it would have dropped the task's people (they follow the newest note). Fixed in `_merge`: tasks under `## Carried over` keep their people.
+- Real run on a scratch clone of `~/WorkDev` (no model, no cost): 8 tasks carried, 2026-10-12 (never ingested) warned about 10 tasks without IDs. First run didn't commit: git printed the path as `…LLM-Wiki…`, we passed `…llm-wiki…`, and `vault_git` compared spellings; now `samefile` (would also have hit ingest with `--vault ~/workdev`). Rerun: one commit holding only the note.
+- Notebook 8.1 (new Part 8), key verified. Learning note `code-only-jobs`.
+- Next: real use on `~/Work`. Not built: scheduling it (launchd), the morning brief that shows the stale list.
+
 ## 2026-10-17
 
 - LangSmith: the queued trace delete went through (rechecked: 0 runs left).

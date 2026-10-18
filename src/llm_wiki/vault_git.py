@@ -57,7 +57,8 @@ def commit_paths(
     top = _git(vault, "rev-parse", "--show-toplevel")
     if top.returncode != 0:
         return None, ["the vault is not a git repository; nothing committed"]
-    if Path(top.stdout.strip()).resolve() != vault.resolve():
+    # samefile, not ==: on macOS "~/workdev" is "~/WorkDev", but git prints the latter
+    if not Path(top.stdout.strip()).samefile(vault):
         return None, [
             f"the vault is inside another git repository ({top.stdout.strip()}); "
             "nothing committed"

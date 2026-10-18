@@ -230,6 +230,21 @@ def test_people_and_tags_follow_the_note_that_sets_the_status():
     assert _record(unblocked, blocked).tags == ()  # an older note can't bring it back
 
 
+def test_a_carried_over_copy_keeps_the_people_from_its_meeting():
+    meeting = _note(
+        "2026-10-14", "## Meetings\n### 1:1 with Joanna\n- [ ] Send UBM ^t-q7m2xa\n"
+    )
+    carried = _note("2026-10-15", "## Carried over\n- [ ] Send UBM ^t-q7m2xa\n")
+    retyped = _note("2026-10-15", "## Tasks\n- [ ] Send UBM ^t-q7m2xa\n")
+    index = load_task_index(None)[0]
+    index, _ = update_task_index(index, meeting, {}, PEOPLE)
+    kept, _ = update_task_index(index, carried, {}, PEOPLE)
+    dropped, _ = update_task_index(index, retyped, {}, PEOPLE)
+    assert kept.tasks["t-q7m2xa"].people == ("person-joanna-reed",)
+    assert kept.tasks["t-q7m2xa"].source == carried.path  # the copy is the newest
+    assert dropped.tasks["t-q7m2xa"].people == ()  # the user's own line still rules
+
+
 def test_note_without_date_changes_nothing():
     note = parse_daily_note("00_raw/daily/scratch.md", "## Tasks\n- [ ] a ^t-aaaaaa\n")
     index, warnings = update_task_index(load_task_index(None)[0], note, {}, ENTITIES)

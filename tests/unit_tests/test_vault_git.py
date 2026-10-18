@@ -137,6 +137,19 @@ def test_not_a_repo_or_inside_another_repo_only_warns(tmp_path):
     assert sha is None and "inside another git repository" in warnings[0]
 
 
+def test_vault_path_spelled_in_another_case_still_commits(tmp_path):
+    vault = tmp_path / "WorkDev"
+    vault.mkdir()
+    (vault / "a.md").write_text("a\n")
+    make_repo(vault)
+    other_case = tmp_path / "workdev"
+    if not other_case.exists():
+        pytest.skip("case-sensitive file system")
+    (vault / "a.md").write_text("changed\n")
+    sha, warnings = commit_paths(other_case, ["a.md"], "x")
+    assert (sha is not None, warnings) == (True, [])
+
+
 @pytest.fixture
 def model(monkeypatch):
     decision = call(

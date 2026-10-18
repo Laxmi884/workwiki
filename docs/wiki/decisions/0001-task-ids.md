@@ -62,3 +62,16 @@ Prose without a checkbox is never edited; the index records the completion with 
 Block IDs give exact, plugin-free identity that survives rewording, and rollover puts IDs in front of the
 user every day, so fuzzy matching is reduced to rare, human-confirmed cases. Isolating syntax behind one
 parser and one config switch keeps the door open for Tasks-plugin and no-write users if open-sourced.
+
+## Addendum 2026-10-18: rollover as built
+
+User's choices (2026-10-17, before building): `python -m llm_wiki.rollover` (`--vault`, `--date`, `--no-commit`).
+- **Index behind the notes:** notes before the day that changed since their ingest, or were never ingested, are
+  folded in by ID with ingest's `update_task_index` (in memory; `tasks.json` untouched), so a ticked task isn't
+  carried. Their tasks without an ID are not carried; rollover warns "ingest it to carry them" (giving an ID here
+  would give the task a second ID at that note's ingest).
+- **Stale list:** printed by the CLI and returned as data until the morning brief exists.
+- **Layout:** `### <project title>` per project, `### No project` last; `[/]` kept.
+- **Commit:** the new note alone, by `llm-wiki`, `rollover: <date>`.
+- **Ingest follow-up:** a task under `## Carried over` keeps the people it had (the copy lost its meeting
+  heading); elsewhere people still follow the newest note.

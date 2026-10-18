@@ -32,6 +32,7 @@ One note per concept. Template: `learnings/_template.md`.
 - [[learnings/redaction|Redaction]]: filter the request, not the state; why `PIIMiddleware` leaks in a deep agent; replacing the general-purpose subagent
 - [[learnings/offload|Offload]]: cap, page or offload; Deep Agents' built-in eviction for tool results and user messages; why no middleware of ours
 - [[learnings/evals|Evals]]: label once, run the real graph, score in code, compare; first vs final pass; one run is one sample
+- [[learnings/code-only-jobs|Code-only jobs]]: rollover writes `00_raw/` without a review because no model text is involved; create-if-absent, catch up by ID
 
 ## Decisions
 
