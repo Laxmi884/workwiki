@@ -16,11 +16,11 @@ the other refused calls.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable
+from collections.abc import Awaitable, Callable, Iterable
 from typing import Any
 
-from langchain.agents.middleware import AgentMiddleware, ModelRequest
-from langchain.agents.middleware.types import ToolCallRequest
+from langchain.agents.middleware import AgentMiddleware, ModelRequest, ModelResponse
+from langchain.tools.tool_node import ToolCallRequest
 from langchain_core.messages import ToolMessage
 from langgraph.types import Command
 
@@ -33,7 +33,12 @@ def tool_name(tool: Any) -> str | None:
 
 
 class ToolGuardMiddleware(AgentMiddleware[Any, Any, Any]):
-    """Show the model only `allowed` tools; refuse calls to any other name."""
+    """Show the model only `allowed` tools; refuse calls to any other name.
+
+    State: with `refusals_key`, each refusal is appended to that key, so the agent's
+    state must have it as a list with an add reducer (ingest's `IngestAgentState.refusals`).
+    The key belongs to the agent, not this middleware, so there is no `state_schema` here.
+    """
 
     name = "ToolGuard"
 
@@ -67,27 +72,35 @@ class ToolGuardMiddleware(AgentMiddleware[Any, Any, Any]):
         )
 
     def wrap_model_call(
-        self, request: ModelRequest[Any], handler: Callable[[ModelRequest[Any]], Any]
-    ) -> Any:
+        self,
+        request: ModelRequest[Any],
+        handler: Callable[[ModelRequest[Any]], ModelResponse[Any]],
+    ) -> ModelResponse[Any]:
         """Call the model with only the allowed tools bound."""
         return handler(self._visible(request))
 
     async def awrap_model_call(
-        self, request: ModelRequest[Any], handler: Callable[[ModelRequest[Any]], Any]
-    ) -> Any:
+        self,
+        request: ModelRequest[Any],
+        handler: Callable[[ModelRequest[Any]], Awaitable[ModelResponse[Any]]],
+    ) -> ModelResponse[Any]:
         """Async twin of `wrap_model_call` (the server runs agents async)."""
         return await handler(self._visible(request))
 
     def wrap_tool_call(
-        self, request: ToolCallRequest, handler: Callable[..., Any]
-    ) -> Any:
+        self,
+        request: ToolCallRequest,
+        handler: Callable[[ToolCallRequest], ToolMessage | Command[Any]],
+    ) -> ToolMessage | Command[Any]:
         """Run an allowed call; answer any other with a refusal (unknown names too)."""
         refusal = self._refusal(request)
         return refusal if refusal is not None else handler(request)
 
     async def awrap_tool_call(
-        self, request: ToolCallRequest, handler: Callable[..., Any]
-    ) -> Any:
+        self,
+        request: ToolCallRequest,
+        handler: Callable[[ToolCallRequest], Awaitable[ToolMessage | Command[Any]]],
+    ) -> ToolMessage | Command[Any]:
         """Async twin of `wrap_tool_call`."""
         refusal = self._refusal(request)
         return refusal if refusal is not None else await handler(request)

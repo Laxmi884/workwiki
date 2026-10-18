@@ -17,16 +17,20 @@ def test_date_line_names_the_weekday_and_quarter():
     assert "(2026 Q3)" in date_line(datetime.date(2026, 9, 30))
 
 
-def test_with_line_appends_and_keeps_the_prompt_as_it_was():
+def test_with_line_appends_a_block_and_keeps_the_prompt_as_it_was():
+    today = {"type": "text", "text": "Today."}
     plain = SystemMessage(content="You are helpful.\n")
-    assert with_line(plain, "Today.").content == "You are helpful.\n\nToday."
-    assert plain.content == "You are helpful.\n"  # a new message, the old one unchanged
-    blocks = SystemMessage(content=[{"type": "text", "text": "A"}])
-    assert with_line(blocks, "Today.").content == [
-        {"type": "text", "text": "A"},
-        {"type": "text", "text": "Today."},
+    assert with_line(plain, "Today.").content == [
+        {"type": "text", "text": "You are helpful.\n"},
+        today,
     ]
-    assert with_line(None, "Today.").content == "Today."
+    assert plain.content == "You are helpful.\n"  # a new message, the old one unchanged
+    cached = {"type": "text", "text": "A", "cache_control": {"type": "ephemeral"}}
+    assert with_line(SystemMessage(content=[cached]), "Today.").content == [
+        cached,
+        today,
+    ]
+    assert with_line(None, "Today.").content == [today]
 
 
 class _Recording(ToolScript):
@@ -84,3 +88,25 @@ def test_one_built_graph_follows_the_clock(vault_copy):
         agent.invoke({"messages": [{"role": "user", "content": "hi"}]})
     assert "Saturday, 2026-10-17" in model.seen[0]
     assert "Sunday, 2026-10-18" in model.seen[1]
+
+
+def test_the_general_purpose_subagent_is_ours_and_sees_today(vault_copy):
+    model = _Recording(
+        seen=[],
+        messages=iter(
+            [
+                call(
+                    "task", description="Check Atlas", subagent_type="general-purpose"
+                ),
+                AIMessage("sub: done"),
+                AIMessage("Done."),
+            ]
+        ),
+    )
+    build_assistant(
+        vault_copy, model, today=lambda: datetime.date(2026, 10, 17)
+    ).invoke({"messages": [{"role": "user", "content": "hi"}]})
+    assert "Today is Saturday, 2026-10-17" in model.seen[1]
+    assert (
+        "In order to complete the objective" in model.seen[1]
+    )  # Deep Agents' own prompt

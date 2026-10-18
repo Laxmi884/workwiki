@@ -14,11 +14,11 @@ through `find_tasks` (code reads the task index). Review synthesis goes to the
 `review-writer` subagent, which returns a sourced `BragDraft`. No writes in phase 4: saving a brief
 comes in phase 7 through the reviewed, committed path ingest uses.
 
-Both agents get today's date on every model call (`CurrentDateMiddleware`), and each
-may call only the tools listed for it (`ToolGuardMiddleware`: the main agent also has
-`task`, for the review-writer). Deep Agents'
-built-in general-purpose subagent doesn't: it inherits only middleware that replaces one
-of its default slots, so the prompt asks for absolute dates when handing work over.
+Every agent here, subagents included, runs the same middleware: today's date
+(`CurrentDateMiddleware`), secrets redacted from each request (`RedactionMiddleware`) and
+its own tool list (`ToolGuardMiddleware`: the main agent also has `task`). Deep Agents'
+built-in general-purpose subagent would take none of it (it inherits only middleware that
+replaces one of its default slots), so `general_purpose()` replaces it with our own spec.
 """
 
 from __future__ import annotations
@@ -28,9 +28,10 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 
-from deepagents import FilesystemPermission, create_deep_agent
+from deepagents import FilesystemPermission, SubAgent, create_deep_agent
 from deepagents.backends import CompositeBackend, StateBackend
 from deepagents.middleware import FilesystemMiddleware
+from deepagents.middleware.subagents import GENERAL_PURPOSE_SUBAGENT
 from langchain_core.language_models import BaseChatModel
 from langgraph.checkpoint.base import BaseCheckpointSaver
 
@@ -39,6 +40,7 @@ from llm_wiki.diffs import vault_reader
 from llm_wiki.domain.brag import BragDraft
 from llm_wiki.ingest.agent import READ_TOOLS, RULES_PATH, model_middleware
 from llm_wiki.middleware.current_date import CurrentDateMiddleware
+from llm_wiki.middleware.redaction import RedactionMiddleware, secret_values
 from llm_wiki.middleware.tool_guard import ToolGuardMiddleware
 from llm_wiki.readonly_backend import ReadOnlyFilesystemBackend
 
@@ -75,8 +77,6 @@ Rules:
 - Use only what the vault says. Never invent dates, numbers, names or outcomes.
 - If the vault doesn't say, answer "The notes don't say." and what you did find.
 - The user's rules (90_meta/rules.md, in your context if present) beat the skills.
-- When you hand work to a subagent, give periods as dates (2026-10-01 to 2026-12-31), \
-not "last month": a subagent may not know today's date.
 """
 
 
@@ -92,12 +92,36 @@ def permissions() -> list[FilesystemPermission]:
     ]
 
 
+def shared_middleware(
+    backend: Any, rules: list[FilesystemPermission], date: Any, tool_names: list[str]
+) -> list[Any]:
+    """Return a subagent's middleware: date, redaction, its tools, read-only files."""
+    return [
+        date,
+        RedactionMiddleware(secret_values()),
+        ToolGuardMiddleware(tool_names),
+        FilesystemMiddleware(backend=backend, tools=READ_TOOLS, _permissions=rules),
+    ]
+
+
+def general_purpose(
+    backend: Any, rules: list[FilesystemPermission], date: Any, tool_names: list[str]
+) -> SubAgent:
+    """Return Deep Agents' general-purpose subagent, with our middleware.
+
+    Same name, description and prompt as the built-in one, which a spec with this name
+    replaces; the built-in one would skip the date, the redaction and the tool list.
+    """
+    return {
+        **GENERAL_PURPOSE_SUBAGENT,
+        "middleware": shared_middleware(backend, rules, date, tool_names),
+        "permissions": rules,
+    }
+
+
 def review_writer(
-    backend: Any,
-    rules: list[FilesystemPermission],
-    date: CurrentDateMiddleware,
-    tool_names: list[str],
-) -> dict[str, Any]:
+    backend: Any, rules: list[FilesystemPermission], date: Any, tool_names: list[str]
+) -> SubAgent:
     """Return the review-writer subagent spec: read-only, its own skill, a BragDraft.
 
     Custom subagents inherit neither skills nor middleware, so it gets its own skill
@@ -114,11 +138,7 @@ def review_writer(
         ),
         "system_prompt": REVIEW_WRITER_PROMPT,
         "skills": ["/subagent_skills/"],
-        "middleware": [
-            date,
-            ToolGuardMiddleware(tool_names),
-            FilesystemMiddleware(backend=backend, tools=READ_TOOLS, _permissions=rules),
-        ],
+        "middleware": shared_middleware(backend, rules, date, tool_names),
         "permissions": rules,
         "response_format": BragDraft,
     }
@@ -165,10 +185,14 @@ def build_assistant(
         middleware=[
             *model_middleware(fallbacks),
             date,
+            RedactionMiddleware(secret_values()),
             ToolGuardMiddleware([*names, "task"]),
             FilesystemMiddleware(backend=backend, tools=READ_TOOLS, _permissions=rules),
         ],
-        subagents=[review_writer(backend, rules, date, names)],
+        subagents=[
+            review_writer(backend, rules, date, names),
+            general_purpose(backend, rules, date, names),
+        ],
         checkpointer=checkpointer,
         context_schema=context_schema,
         name="assistant",

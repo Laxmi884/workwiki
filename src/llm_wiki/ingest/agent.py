@@ -41,6 +41,7 @@ from llm_wiki.ingest.staging import (
     StagingContext,
     StagingError,
 )
+from llm_wiki.middleware.redaction import RedactionMiddleware, secret_values
 from llm_wiki.middleware.tool_guard import ToolGuardMiddleware
 from llm_wiki.readonly_backend import ReadOnlyFilesystemBackend
 from llm_wiki.remember import RULES_PATH
@@ -379,6 +380,7 @@ def build_ingest_agent(
     """Return the compiled ingest agent over `vault` (read only).
 
     `fallbacks` are tried in order when `model` still fails after its retries.
+    Secrets in the note and in what it reads never reach the model (`redaction`).
     """
     backend = CompositeBackend(
         default=StateBackend(),
@@ -405,6 +407,7 @@ def build_ingest_agent(
         permissions=permissions,
         middleware=[
             *model_middleware(fallbacks),
+            RedactionMiddleware(secret_values()),
             # No `task`: a subagent would stage edits outside this agent's stats.
             ToolGuardMiddleware(
                 [*READ_TOOLS, *(t.name for t in tools)], refusals_key="refusals"

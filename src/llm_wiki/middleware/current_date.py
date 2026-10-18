@@ -17,10 +17,10 @@ its brief; the wall-clock date would be wrong for an old note.
 from __future__ import annotations
 
 import datetime
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from typing import Any
 
-from langchain.agents.middleware import AgentMiddleware, ModelRequest
+from langchain.agents.middleware import AgentMiddleware, ModelRequest, ModelResponse
 from langchain_core.messages import SystemMessage
 
 WEEKDAYS = (
@@ -44,17 +44,15 @@ def date_line(day: datetime.date) -> str:
 
 
 def with_line(system: SystemMessage | None, line: str) -> SystemMessage:
-    """Return `system` with `line` appended (a new message; `system` is unchanged).
+    """Return `system` with `line` appended as a text block (`system` is unchanged).
 
-    A string prompt stays a string, so the text before the line is byte-for-byte the
-    same and a provider's prompt cache still matches it; list content gets a text block.
+    The LangChain docs' way: `content_blocks` reads string or list content as blocks,
+    and a new block keeps the existing ones as they are (`cache_control` included), so
+    the text before the line is unchanged and a provider's prompt cache still matches.
     """
-    if system is None:
-        return SystemMessage(content=line)
-    content = system.content
-    if isinstance(content, str):
-        return SystemMessage(content=f"{content.rstrip()}\n\n{line}")
-    return SystemMessage(content=[*content, {"type": "text", "text": line}])
+    block = {"type": "text", "text": line}
+    blocks: list[Any] = [*system.content_blocks] if system is not None else []
+    return SystemMessage(content=[*blocks, block])
 
 
 class CurrentDateMiddleware(AgentMiddleware[Any, Any, Any]):
@@ -74,13 +72,17 @@ class CurrentDateMiddleware(AgentMiddleware[Any, Any, Any]):
         return request.override(system_message=with_line(request.system_message, line))
 
     def wrap_model_call(
-        self, request: ModelRequest[Any], handler: Callable[[ModelRequest[Any]], Any]
-    ) -> Any:
+        self,
+        request: ModelRequest[Any],
+        handler: Callable[[ModelRequest[Any]], ModelResponse[Any]],
+    ) -> ModelResponse[Any]:
         """Call the model with the date appended to its system message."""
         return handler(self._stamp(request))
 
     async def awrap_model_call(
-        self, request: ModelRequest[Any], handler: Callable[[ModelRequest[Any]], Any]
-    ) -> Any:
+        self,
+        request: ModelRequest[Any],
+        handler: Callable[[ModelRequest[Any]], Awaitable[ModelResponse[Any]]],
+    ) -> ModelResponse[Any]:
         """Async twin of `wrap_model_call` (the server runs agents async)."""
         return await handler(self._stamp(request))
