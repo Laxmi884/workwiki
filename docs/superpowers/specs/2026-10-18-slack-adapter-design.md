@@ -89,7 +89,7 @@ Steps shown (labels in `progress.py`, keyed by node name):
 | Graph | Steps |
 |---|---|
 | ingest | Read note (`load_note`) → Task IDs (`assign_ids`) → Tasks (`track_tasks`) → Agent filing facts (`stage`, detail "n tool calls" from `custom`) → Projects (`map_tasks`) → Checks (`render`) → Review ready (`review` interrupt) |
-| answer | Writing files (`apply`) → Git commit (`custom` from apply) → Done |
+| answer | by action (`progress.answer_plan`): approve → Writing files (`apply`) → Git commit (`custom` from apply); revise → Agent revising → Projects → Checks → Review ready; answer/edit → (Picked wins) → Projects → Checks → Review ready; reject → Closing the review |
 | ask | Searching the wiki (tool calls) → answer text from `messages` tokens of the assistant (subgraph namespaces flattened; only the top-level agent's final text is shown) |
 
 `stage` skipped (nothing new) shows as "Agent: nothing new to file ✓".
@@ -127,6 +127,11 @@ a while; slack-sdk issue #1859), switch to `chat.update` on `stream.ts` for the 
 are no open tasks needing a project (`open_tasks` empty). Code-only nodes still run: IDs, tick
 tracking, open-tasks page, ledger. Today a rollover-only or tick-only note costs one agent run
 (≈ $0.005); after this, $0.
+
+Changed in the build (step 1, 2026-10-18): the `open_tasks` condition is dropped. A rollover note
+carries open tasks every day, so it would rarely skip; the review still asks the user about tasks
+with no project (code, no model). The rule is `staging.needs_agent`: the agent runs when a citable
+line is not a known task with the same words. Revise always runs the agent.
 
 ## Configuration
 

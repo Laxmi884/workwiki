@@ -27,7 +27,13 @@ from pathlib import Path
 import httpx
 import pytest
 
-from llm_wiki.backend import BackendError, NoOpenReview, NoteNotFound, UnknownThread
+from llm_wiki.backend import (
+    BackendError,
+    Finished,
+    NoOpenReview,
+    NoteNotFound,
+    UnknownThread,
+)
 from llm_wiki.backend import local as local_backend
 from llm_wiki.backend.local import LocalBackend
 from llm_wiki.backend.server import ServerBackend
@@ -322,3 +328,77 @@ def test_an_unreachable_server_is_a_backend_error(vault_copy):
     backend = ServerBackend(url, vault_copy, client=client)
     with pytest.raises(BackendError, match="failed: ConnectError"):
         backend.pending()
+
+
+def drain(events):
+    """Return (progress events, the Finished event); exactly one Finished, at the end."""
+    *steps, last = list(events)
+    assert isinstance(last, Finished)
+    assert not any(isinstance(e, Finished) for e in steps)
+    return steps, last
+
+
+def states(progress):
+    return {s.key: s.state for s in progress.steps}
+
+
+def test_streamed_ingest_ends_where_start_ingest_ends(backend):
+    steps, finished = drain(backend.stream_ingest(NOTE))
+    assert states(steps[0])["load_note"] == "running"
+    assert finished.result.status == "review"
+    assert set(states(finished.progress).values()) == {"done"}
+    stage = finished.progress.step("stage")
+    assert stage.calls >= 1 and stage.detail == "facts filed: 1"
+    assert backend.review(finished.result.thread_id) == finished.result
+    blocking = backend.start_ingest(
+        NOTE
+    )  # the ledger diff carries a time: compare facts
+    assert finished.result.review.facts == blocking.review.facts
+
+
+def test_streamed_approve_writes_and_reports_the_commit(backend):
+    _, started = drain(backend.stream_ingest(NOTE))
+    _, done = drain(backend.stream_answer(started.result.thread_id, "approve"))
+    assert (done.result.status, done.result.action) == ("done", "approve")
+    assert NOTE in done.result.written
+    assert states(done.progress)["apply"] == "done"
+    commit = done.progress.step("commit")  # the vault copy is not a git repo
+    assert (commit.state, commit.detail) == ("skipped", "not committed")
+
+
+def test_streamed_reject_closes_the_review_and_writes_nothing(backend):
+    _, started = drain(backend.stream_ingest(NOTE))
+    _, done = drain(backend.stream_answer(started.result.thread_id, "reject"))
+    assert done.result.action == "reject"
+    assert states(done.progress) == {"review": "done"}  # no apply / commit step
+
+
+def test_streaming_a_missing_note_is_refused(backend):
+    with pytest.raises(NoteNotFound, match="2030-01-01"):
+        list(backend.stream_ingest("00_raw/daily/2030-01-01.md"))
+    assert backend.pending() == []
+
+
+def test_streaming_an_answer_to_an_unknown_thread_is_refused(backend):
+    with pytest.raises(UnknownThread):
+        list(backend.stream_answer("ingest-nope", "approve"))
+
+
+def test_streamed_ask_gives_the_same_answer_as_ask(backend):
+    history = [("user", "What is Atlas?"), ("assistant", "A risk analytics project.")]
+    _, finished = drain(backend.stream_ask("Is it on track?", history))
+    expected = "What is Atlas? | A risk analytics project. | Is it on track?"
+    assert finished.answer == expected == backend.ask("Is it on track?", history)
+    assert finished.progress.text == expected
+    assert states(finished.progress)["answer"] == "done"
+
+
+def test_a_streamed_ask_that_searches_gives_the_same_text_as_ask(backend):
+    # EchoModel: "Let me look." + an `ls` of the vault, then an answer in content blocks
+    _, finished = drain(backend.stream_ask("search: Atlas?"))
+    assert finished.progress.step("search").calls == 1
+    assert states(finished.progress) == {"search": "done", "answer": "done"}
+    assert (
+        finished.answer == "search: Atlas? | Let me look."
+    )  # the preamble isn't shown
+    assert backend.ask("search: Atlas?") == finished.answer

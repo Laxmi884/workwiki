@@ -2,23 +2,31 @@
 
     review page · chat box · Telegram · CLI      → only call Backend
     Backend: start_ingest · pending · review · answer · ask
+             (+ stream_ingest · stream_answer · stream_ask)
       LocalBackend  (IngestRunner + SQLite; no server)
       ServerBackend (langgraph-sdk over HTTP)
 
 A backend works on one vault: it starts ingests there, lists only that vault's open
-reviews, and treats another vault's threads as unknown. Calls block until the run
-pauses or ends (no streaming yet; 0010 rule 4).
+reviews, and treats another vault's threads as unknown. Blocking calls return when
+the run pauses or ends; `stream_*` calls yield `Progress` on the way
+(`llm_wiki.progress`) and end with one `Finished`.
+
+Stopping a `stream_*` iteration early (a surface gone) differs by backend: the server
+finishes the run anyway (`on_disconnect="continue"`), so its review still opens;
+locally the run stops after the current step and the thread is left unfinished.
+Surfaces should drain the stream.
 """
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from pathlib import Path
 from typing import Any, Literal, Protocol
 
 from pydantic import BaseModel, ConfigDict
 
 from llm_wiki.domain.review import ReviewAnswer, ReviewRequest
+from llm_wiki.progress import Progress
 
 ChatTurn = tuple[Literal["user", "assistant"], str]
 
@@ -47,6 +55,33 @@ class RunResult(BaseModel):
     written: tuple[str, ...] = ()
     commit: str | None = None
     warnings: tuple[str, ...] = ()
+
+
+class Finished(BaseModel):
+    """The last event of a `stream_*` call: the final progress and the call's value.
+
+    Attributes:
+        progress: Settled: no step is left running.
+        result: For `stream_ingest` / `stream_answer`: what the blocking call returns.
+        answer: For `stream_ask`: the assistant's answer.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    progress: Progress
+    result: RunResult | None = None
+    answer: str | None = None
+
+
+StreamEvent = Progress | Finished
+
+
+def chat_messages(question: str, history: Sequence[ChatTurn]) -> list[Any]:
+    """Return the chat as model messages: the earlier turns, then the question."""
+    return [
+        *({"role": r, "content": text} for r, text in history),
+        {"role": "user", "content": question},
+    ]
 
 
 def run_result(
@@ -137,5 +172,33 @@ class Backend(Protocol):
         """Return the assistant's answer; `history` is the earlier chat, oldest first.
 
         Nothing is saved: the surface keeps the conversation.
+        """
+        ...
+
+    def stream_ingest(self, note_path: str) -> Iterator[StreamEvent]:
+        """Like `start_ingest`, yielding `Progress` as steps run, then one `Finished`.
+
+        Raises (while iterating):
+            NoteNotFound: No note at `note_path` in this vault.
+        """
+        ...
+
+    def stream_answer(
+        self, thread_id: str, answer: ReviewAnswer | dict[str, Any] | str
+    ) -> Iterator[StreamEvent]:
+        """Like `answer`, yielding `Progress`, then one `Finished`.
+
+        Raises (while iterating):
+            UnknownThread: No such thread on this vault.
+            NoOpenReview: Nothing is waiting for an answer on it.
+        """
+        ...
+
+    def stream_ask(
+        self, question: str, history: Sequence[ChatTurn] = ()
+    ) -> Iterator[StreamEvent]:
+        """Like `ask`, yielding `Progress`, then one `Finished` with `answer`.
+
+        Each `Progress.text` is the answer so far.
         """
         ...

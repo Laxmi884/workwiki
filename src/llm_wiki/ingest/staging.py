@@ -166,6 +166,29 @@ def citable_lines(note: DailyNote, seen: Collection[str] = ()) -> dict[int, str]
     return lines
 
 
+def needs_agent(
+    note: DailyNote, citable: Mapping[int, str], known: Mapping[str, str]
+) -> bool:
+    """Return whether anything in the note is new for the ingest agent.
+
+    `known` is task ID → task text from the task index before this run. A task line
+    whose ID is known and whose words are unchanged is code's: rollover carried it, or
+    only its status changed (a tick), which task tracking records and the review
+    offers as a win. Any other new line (prose, a sub-bullet, a new task, new words
+    on a known task) is news.
+    """
+    codes = {
+        task.line_no
+        for task in note.tasks
+        if task.id is not None and _words(known.get(task.id)) == _words(task.text)
+    }
+    return any(line not in codes for line in citable)
+
+
+def _words(text: str | None) -> str | None:
+    return " ".join(text.split()) if text is not None else None
+
+
 def proposed_paths(staged: Sequence[Edit]) -> set[str]:
     """Return the paths of pages created by staged edits."""
     return {e.path for e in staged if isinstance(e, CreateFile)}

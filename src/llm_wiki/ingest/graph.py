@@ -10,6 +10,7 @@
            │              → map_tasks → render
            └─ edit ─→ render  (fresh review)
 
+`stage` skips the agent when nothing in the note is new for it (`needs_agent`).
 Code nodes live in `nodes.py`, the agent in `agent.py`. In `stage` the agent reads the note and the vault
 and stages edits that `staging` checks.
 `map_tasks` is `track_tasks` again, now with the agent's task → project proposals and
@@ -46,6 +47,7 @@ from llm_wiki.ingest.staging import (
     finalize,
     finalize_mappings,
     mapped_pages,
+    needs_agent,
     proposed_paths,
     task_people_pages,
     with_mappings,
@@ -58,6 +60,7 @@ from llm_wiki.ingest.state import (
 )
 from llm_wiki.retries import is_transient
 from llm_wiki.routing import win_edits
+from llm_wiki.task_tracking import TASK_INDEX_PATH, load_task_index
 
 RECURSION_LIMIT = 120  # agent steps: ~2 per tool call
 
@@ -92,6 +95,9 @@ def stage(state: AgentIngestState, runtime: Runtime[IngestContext]) -> dict[str,
     entities = load_index(vault)
     citable = citable_lines(note, state.get("seen_lines", []))
     revising = state.get("review_action") == "revise"
+    if not revising and not needs_agent(note, citable, _known_tasks(read)):
+        nodes.report(runtime, "stage", "nothing new to file")
+        return _quiet_round(state, read)
     previous_edits = state.get("agent_edits", state.get("fact_edits", []))
     chosen = state.get("chosen_projects", {})
     task_projects = {
@@ -190,6 +196,7 @@ def stage(state: AgentIngestState, runtime: Runtime[IngestContext]) -> dict[str,
         {"line": line, "text": text}
         for line, text in dict.fromkeys(map(tuple, result.get("questions", [])))
     ]
+    nodes.report(runtime, "stage", f"facts filed: {len(filed)}")
     return {
         "agent_edits": staged,
         "fact_edits": staged + _win_edits(state, staged, read),
@@ -198,6 +205,37 @@ def stage(state: AgentIngestState, runtime: Runtime[IngestContext]) -> dict[str,
         "questions": questions,
         "agent_stats": stats,
         "round_warnings": _for_the_user(refusals),
+    }
+
+
+def _known_tasks(read: VaultReader) -> dict[str, str]:
+    """Return task ID → text from the vault's task index (empty if none or broken)."""
+    index, _ = load_task_index(read(TASK_INDEX_PATH))
+    return {tid: record.text for tid, record in index.tasks.items()} if index else {}
+
+
+def _quiet_round(state: AgentIngestState, read: VaultReader) -> dict[str, Any]:
+    """Return `stage`'s update when the note has nothing new for the agent.
+
+    Same keys as an agent round, all empty; picked wins still become edits (code).
+    """
+    return {
+        "agent_edits": [],
+        "fact_edits": _win_edits(state, [], read),
+        "agent_filed": [],
+        "task_proposals": [],
+        "questions": [],
+        "agent_stats": {
+            "skipped": "nothing new to file",
+            "seconds": 0.0,
+            "model_calls": 0,
+            "tool_calls": 0,
+            "calls_by_tool": {},
+            "refusals": 0,
+            "refused": [],
+            "tokens": {},
+        },
+        "round_warnings": [],
     }
 
 

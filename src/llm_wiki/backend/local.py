@@ -10,21 +10,25 @@ review threads across restarts), and `ask` builds the assistant for one answer.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from pathlib import Path
 from typing import Any
 
 from llm_wiki.assistant.agent import build_assistant
 from llm_wiki.backend.base import (
     ChatTurn,
+    Finished,
     NoOpenReview,
     NoteNotFound,
     RunResult,
+    StreamEvent,
     UnknownThread,
+    chat_messages,
 )
 from llm_wiki.config import get_settings
 from llm_wiki.domain.review import ReviewAnswer
 from llm_wiki.model_setup import configured_fallbacks, configured_model
+from llm_wiki.progress import answer_plan, follow, message_text, settle, step_plan
 from llm_wiki.runner import IngestRunner
 
 
@@ -125,7 +129,51 @@ class LocalBackend:
         agent = build_assistant(
             self._vault, configured_model(self._model), fallbacks=configured_fallbacks()
         )
-        messages = [{"role": r, "content": text} for r, text in history]
-        messages.append({"role": "user", "content": question})
-        result = agent.invoke({"messages": messages})
-        return str(result["messages"][-1].content)
+        result = agent.invoke({"messages": chat_messages(question, history)})
+        return message_text(result["messages"][-1].content)
+
+    def stream_ingest(self, note_path: str) -> Iterator[StreamEvent]:
+        """Ingest `note_path`, yielding progress, until its review pauses."""
+        thread_id = self._runner.new_thread_id()
+        progress = step_plan("ingest")
+        yield progress
+        try:
+            progress = yield from follow(
+                progress, self._runner.stream_start(note_path, thread_id)
+            )
+        except FileNotFoundError as exc:  # raised by the graph's load_note
+            raise NoteNotFound(f"no note at {note_path} in {self._vault}") from exc
+        result = self._runner.status(thread_id)
+        yield Finished(progress=settle(progress, result.status), result=result)
+
+    def stream_answer(
+        self, thread_id: str, answer: ReviewAnswer | dict[str, Any] | str
+    ) -> Iterator[StreamEvent]:
+        """Send the user's answer, yielding progress, until the next pause or the end."""
+        if self.review(thread_id).status != "review":
+            raise NoOpenReview(f"no review is waiting on thread {thread_id!r}")
+        progress = answer_plan(answer)
+        yield progress
+        progress = yield from follow(
+            progress, self._runner.stream_resume(thread_id, answer)
+        )
+        result = self._runner.status(thread_id)
+        yield Finished(progress=settle(progress, result.status), result=result)
+
+    def stream_ask(
+        self, question: str, history: Sequence[ChatTurn] = ()
+    ) -> Iterator[StreamEvent]:
+        """Answer, yielding progress whose `text` is the answer so far."""
+        agent = build_assistant(
+            self._vault, configured_model(self._model), fallbacks=configured_fallbacks()
+        )
+        progress = step_plan("ask")
+        yield progress
+        parts = agent.stream(
+            {"messages": chat_messages(question, history)},
+            stream_mode=["updates", "messages"],
+            subgraphs=True,
+            version="v2",
+        )
+        progress = yield from follow(progress, parts)
+        yield Finished(progress=settle(progress, "done"), answer=progress.text)

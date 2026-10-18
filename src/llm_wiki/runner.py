@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import sqlite3
 import uuid
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -21,13 +22,15 @@ from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.graph import StateGraph
-from langgraph.types import Command
+from langgraph.types import Command, StreamMode
 
 from llm_wiki.backend.base import RunResult, run_result
 from llm_wiki.config import get_settings
 from llm_wiki.domain.review import ReviewAnswer
 from llm_wiki.ingest.graph import builder
 from llm_wiki.ingest.state import IngestContext
+
+STREAM_MODES: list[StreamMode] = ["updates", "custom"]  # what `llm_wiki.progress` reads
 
 
 def checkpoint_serializer() -> JsonPlusSerializer:
@@ -90,7 +93,7 @@ class IngestRunner:
 
     def start(self, note_path: str, thread_id: str | None = None) -> RunResult:
         """Ingest a note until the review pauses (or it ends early)."""
-        thread_id = thread_id or f"ingest-{uuid.uuid4().hex[:12]}"
+        thread_id = thread_id or self.new_thread_id()
         self.graph.invoke(
             {"note_path": note_path},
             self._config(thread_id),
@@ -109,15 +112,53 @@ class IngestRunner:
             ValueError: Nothing is waiting for an answer on this thread, or the thread
                 belongs to another vault than this runner's.
         """
+        self.graph.invoke(
+            self._resume_command(thread_id, answer),
+            self._config(thread_id),
+            context=self.context,
+        )
+        return self.status(thread_id)
+
+    @staticmethod
+    def new_thread_id() -> str:
+        """Return a fresh ingest thread id."""
+        return f"ingest-{uuid.uuid4().hex[:12]}"
+
+    def stream_start(self, note_path: str, thread_id: str) -> Iterator[dict[str, Any]]:
+        """Ingest a note, yielding LangGraph v2 stream parts until the review pauses."""
+        yield from self.graph.stream(
+            {"note_path": note_path},
+            self._config(thread_id),
+            context=self.context,
+            stream_mode=STREAM_MODES,
+            subgraphs=True,
+            version="v2",
+        )
+
+    def stream_resume(
+        self, thread_id: str, answer: ReviewAnswer | dict[str, Any] | str
+    ) -> Iterator[dict[str, Any]]:
+        """Send the user's answer, yielding v2 stream parts (same checks as `resume`)."""
+        command = self._resume_command(thread_id, answer)
+        yield from self.graph.stream(
+            command,
+            self._config(thread_id),
+            context=self.context,
+            stream_mode=STREAM_MODES,
+            subgraphs=True,
+            version="v2",
+        )
+
+    def _resume_command(
+        self, thread_id: str, answer: ReviewAnswer | dict[str, Any] | str
+    ) -> Command[Any]:
+        """Check the thread can take an answer here; return the resume command."""
         if self.status(thread_id).status != "review":
             raise ValueError(f"no review is waiting on thread {thread_id!r}")
         self._check_vault(thread_id)
         if isinstance(answer, ReviewAnswer):
             answer = answer.model_dump(mode="json")
-        self.graph.invoke(
-            Command(resume=answer), self._config(thread_id), context=self.context
-        )
-        return self.status(thread_id)
+        return Command(resume=answer)
 
     def vault_of(self, thread_id: str) -> Path | None:
         """Return the vault a thread's run works on (None: not started here)."""

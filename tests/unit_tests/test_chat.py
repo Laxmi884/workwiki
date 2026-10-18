@@ -8,7 +8,7 @@ from langchain_core.messages import AIMessage
 from llm_wiki.backend import local as local_backend
 from llm_wiki.backend.local import LocalBackend
 from llm_wiki.chat.commands import parse_command
-from llm_wiki.chat.session import questions_only, reply
+from llm_wiki.chat.session import ChatReply, questions_only, reply, stream_reply
 from llm_wiki.ingest import nodes
 
 from .scripted_model import AgentRounds, EchoModel, ToolScript, call
@@ -94,9 +94,13 @@ def _decision(title):
     )
 
 
-@pytest.fixture
-def chat(vault_copy, monkeypatch):
-    """The chat over a local backend on a vault copy: scripted ingest, scripted answers."""
+@pytest.fixture(params=["reply", "stream_reply"])
+def chat(request, vault_copy, monkeypatch):
+    """The chat over a local backend on a vault copy: scripted ingest, scripted answers.
+
+    Every chat test runs twice: through `reply`, and through `stream_reply` drained to
+    its last event (the same rules must give the same text).
+    """
     ingest = AgentRounds(
         [_decision("Keep the old BI tool until Q1")],
         [
@@ -121,7 +125,12 @@ def chat(vault_copy, monkeypatch):
     history: list[tuple[str, str]] = []
 
     def say(text):
-        answer = reply(backend, text, history, today=TODAY)
+        if request.param == "reply":
+            answer = reply(backend, text, history, today=TODAY)
+        else:
+            *_, last = stream_reply(backend, text, history, today=TODAY)
+            assert isinstance(last, ChatReply)
+            answer = last.text
         history.extend([("user", text), ("assistant", answer)])
         return answer
 
@@ -212,3 +221,31 @@ def test_remember_in_chat_adds_to_what_the_review_remembers(chat, vault_copy):
     assert "Not accepted: 'Sam' already names" in say("/alias Sam = project-atlas")
     assert say("/approve").startswith("Applied")
     assert "- Don't file lunch plans" in (vault_copy / "90_meta/rules.md").read_text()
+
+
+def test_a_streamed_ingest_shows_steps_then_the_review_with_its_result(chat):
+    _, _, backend = chat
+    *steps, last = stream_reply(backend, "/ingest 2026-10-12", today=TODAY)
+    assert steps and not any(isinstance(e, ChatReply) for e in steps)
+    assert isinstance(last, ChatReply)
+    assert last.result is not None and last.result.status == "review"
+    assert last.progress.step("review").state == "done"
+    assert f"**Review: {NOTE}**" in last.text  # render_result's heading
+
+
+def test_a_streamed_revise_shows_the_agent_rerunning_then_the_new_review(chat):
+    _, _, backend = chat
+    backend.start_ingest(NOTE)
+    *_, last = stream_reply(backend, "/revise It was Q2, not Q1", today=TODAY)
+    assert isinstance(last, ChatReply) and last.result.status == "review"
+    steps = {s.key: s.state for s in last.progress.steps}
+    assert steps == {
+        "stage": "done",
+        "map_tasks": "done",
+        "render": "done",
+        "review": "done",
+    }
+    assert last.progress.step("stage").detail == "facts filed: 1"
+    *_, last = stream_reply(backend, "/approve", today=TODAY)
+    assert last.progress.step("apply").state == "done"
+    assert last.progress.step("commit").detail == "not committed"  # not a git repo

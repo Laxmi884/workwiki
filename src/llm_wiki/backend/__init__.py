@@ -12,9 +12,11 @@ from llm_wiki.backend.base import (
     Backend,
     BackendError,
     ChatTurn,
+    Finished,
     NoOpenReview,
     NoteNotFound,
     RunResult,
+    StreamEvent,
     UnknownThread,
 )
 
@@ -22,9 +24,11 @@ __all__ = [
     "Backend",
     "BackendError",
     "ChatTurn",
+    "Finished",
     "NoOpenReview",
     "NoteNotFound",
     "RunResult",
+    "StreamEvent",
     "UnknownThread",
     "get_backend",
 ]

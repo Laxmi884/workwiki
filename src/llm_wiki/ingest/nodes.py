@@ -64,6 +64,18 @@ def vault_path(runtime: Runtime[IngestContext]) -> Path:
     return get_settings().vault_path
 
 
+def report(runtime: Any, step: str, detail: str, state: str = "done") -> None:
+    """Tell a streaming surface how a step went (`custom` stream mode).
+
+    These events are the progress contract (`llm_wiki.progress`): surfaces read them,
+    never node state. A no-op when nothing streams `custom`, and for the plain
+    namespaces unit tests pass as a runtime.
+    """
+    writer = getattr(runtime, "stream_writer", None)
+    if writer is not None:
+        writer({"step": step, "detail": detail, "state": state})
+
+
 def chat_model(runtime: Runtime[IngestContext]) -> BaseChatModel:
     """Return the run's model: context `model`, else `WIKI_MODEL` (decision 0003)."""
     return configured_model((runtime.context or {}).get("model"))
@@ -423,6 +435,10 @@ def apply(state: IngestState, runtime: Runtime[IngestContext]) -> dict[str, Any]
     commit, warnings = vault_git.commit_paths(
         vault_path(runtime), written, _commit_message(state, written)
     )
+    if commit:
+        report(runtime, "commit", f"commit {commit[:7]}")
+    else:
+        report(runtime, "commit", "not committed", "skipped")
     return {
         "written": written,
         "apply_conflicts": [],

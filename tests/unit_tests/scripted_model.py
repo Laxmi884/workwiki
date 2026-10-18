@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 from uuid import uuid4
 
@@ -71,6 +72,10 @@ class EchoModel(GenericFakeChatModel):
 
     "What is Atlas? | A risk analytics project. | Is it on track?": tests (and a test
     server, where nothing can be recorded from outside) can check the history arrived.
+
+    A question starting "search:" first says "Let me look." with an `ls` of the vault,
+    then answers in content blocks (as Anthropic models do), so the answer streams
+    after a tool call. It streams like a real model: a tool call as one chunk.
     """
 
     messages: Any = iter(())
@@ -78,10 +83,50 @@ class EchoModel(GenericFakeChatModel):
     def bind_tools(self, tools: Any, **kwargs: Any) -> EchoModel:
         return self
 
+    def _reply(self, messages: list[Any]) -> AIMessage:
+        turns = [
+            text
+            for m in messages
+            if m.type in ("human", "ai") and (text := _plain(m.content))
+        ]
+        reply = " | ".join(turns)
+        question = next((m for m in reversed(messages) if m.type == "human"), None)
+        if question is None or not _plain(question.content).startswith("search:"):
+            return AIMessage(reply)
+        if messages[-1].type != "tool":
+            tool_call = {"name": "ls", "args": {"path": "/vault/"}, "id": "call-ls"}
+            return AIMessage(content="Let me look.", tool_calls=[tool_call])
+        return AIMessage(content=[{"type": "text", "text": reply}])
+
     def _generate(self, messages, *args, **kwargs):  # type: ignore[override]
         from langchain_core.outputs import ChatGeneration, ChatResult
 
-        turns = [str(m.content) for m in messages if m.type in ("human", "ai")]
-        return ChatResult(
-            generations=[ChatGeneration(message=AIMessage(" | ".join(turns)))]
+        return ChatResult(generations=[ChatGeneration(message=self._reply(messages))])
+
+    def _stream(self, messages, *args, **kwargs):  # type: ignore[override]
+        from langchain_core.messages import AIMessageChunk
+        from langchain_core.outputs import ChatGenerationChunk
+
+        message = self._reply(messages)
+        chunks = [
+            {
+                "name": c["name"],
+                "args": json.dumps(c["args"]),
+                "id": c["id"],
+                "index": i,
+            }
+            for i, c in enumerate(message.tool_calls)
+        ]
+        content = message.content
+        if isinstance(content, list):
+            content = [{**block, "index": i} for i, block in enumerate(content)]
+        yield ChatGenerationChunk(
+            message=AIMessageChunk(content=content, tool_call_chunks=chunks)
         )
+
+
+def _plain(content: Any) -> str:
+    """Return message content as text (a string or text content blocks)."""
+    if isinstance(content, str):
+        return content
+    return "".join(b.get("text", "") for b in content if isinstance(b, dict))
