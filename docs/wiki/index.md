@@ -31,6 +31,7 @@ One note per concept. Template: `learnings/_template.md`.
 - [[learnings/tool-allow-list|Tool allow-list]]: hide and refuse in code, not prompts; why hiding alone isn't enough; ingest's `task` hole
 - [[learnings/redaction|Redaction]]: filter the request, not the state; why `PIIMiddleware` leaks in a deep agent; replacing the general-purpose subagent
 - [[learnings/offload|Offload]]: cap, page or offload; Deep Agents' built-in eviction for tool results and user messages; why no middleware of ours
+- [[learnings/evals|Evals]]: label once, run the real graph, score in code, compare; first vs final pass; one run is one sample
 
 ## Decisions
 

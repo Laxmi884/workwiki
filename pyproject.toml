@@ -67,7 +67,7 @@ lint.ignore = [
 convention = "google"
 
 [tool.pytest.ini_options]
-pythonpath = ["."]  # tests import the spike harness in experiments/ (not part of llm_wiki)
+pythonpath = ["."]  # tests import the eval harness in tests/eval/ (not part of llm_wiki)
 
 [dependency-groups]
 dev = [
