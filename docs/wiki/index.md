@@ -49,3 +49,4 @@ Numbered, one per decision. Template: `decisions/_template.md`.
 - [[decisions/0011-guarantees-not-conventions|0011]]: guarantees in code: JSON-only state (strict serde), read-only backends, our own `compose.yml`, explicit git identity
 - [[decisions/0012-open-tasks-page|0012]]: one code-generated `05_generated/open-tasks.md` (by project, by person), proposed with the task index; pages stay facts only
 - [[decisions/0013-bookkeeping-all-or-nothing|0013]]: the note's task IDs, `tasks.json`, `open-tasks.md` and the ledger are written with every approval, never left out one by one
+- [[decisions/0014-sync-core-async-edges|0014]]: our nodes, tools, runner and CLI stay sync; async only where the framework calls it; stream with sync APIs
