@@ -1,0 +1,12 @@
+{# What to do after a review is finished: the next open one, or back to the chat. #}
+{% set others = (open_reviews or [])|reject("equalto", thread)|list %}
+<div class="next">
+  {% if others %}
+  <a class="go" href="/review/{{ others[0] }}">Next review</a>
+  <a href="/chat">Back to chat</a>
+  {% if others|length > 1 %}<a href="/review">All open reviews ({{ others|length }})</a>{% endif %}
+  {% else %}
+  <a class="go" href="/chat">Back to chat</a>
+  {% if open_reviews is not none %}<span class="none">No other reviews waiting.</span>{% endif %}
+  {% endif %}
+</div>

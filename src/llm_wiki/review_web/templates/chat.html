@@ -3,8 +3,7 @@
 {% block head %}
 <style>
 main { padding-bottom: 40px; }
-.top { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
-.vault { font-size: 13px; color: var(--faint); overflow-wrap: anywhere; }
+.vault { font-size: 13px; color: var(--faint); overflow-wrap: anywhere; margin: -4px 0 8px; }
 .log { display: flex; flex-direction: column; gap: 14px; margin: 8px 0 20px; }
 .msg { border-radius: 14px; padding: 12px 16px; max-width: 100%; overflow-wrap: anywhere; }
 .msg.user { align-self: flex-end; background: var(--teal-wash); color: var(--ink); max-width: 85%;
@@ -31,8 +30,8 @@ textarea { flex: 1; min-height: 48px; max-height: 40vh; resize: vertical; border
 </style>
 {% endblock %}
 {% block body %}
-<div class="top"><a class="back" href="/review">Reviews</a><span class="vault">{{ vault }}</span></div>
 <h1>Wiki chat</h1>
+<p class="vault">{{ vault }}</p>
 <p class="lede">Ask about your work, or start with <code>/ingest</code> to file a daily note. <code>/help</code> lists the commands.</p>
 <div class="log" id="log" aria-live="polite"></div>
 <form id="form">

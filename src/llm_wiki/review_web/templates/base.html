@@ -38,8 +38,19 @@ body { margin: 0; background: var(--paper); color: var(--ink);
 main { max-width: 760px; margin: 0 auto; padding: 40px 16px 160px; }
 a { color: var(--teal); text-underline-offset: 3px; }
 :focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; border-radius: 4px; }
-.back { font-size: 14px; color: var(--soft); text-decoration: none; }
-.back:hover { color: var(--teal); }
+.nav { display: flex; gap: 6px; margin: -16px 0 8px; }
+.nav a { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 14px;
+  border-radius: 10px; font: 600 15px/1 var(--sans); color: var(--soft); text-decoration: none; }
+.nav a:hover { color: var(--teal); }
+.nav a[aria-current] { background: var(--teal-wash); color: var(--teal); }
+.nav .count { min-width: 22px; padding: 4px 7px; border-radius: 999px; text-align: center;
+  background: var(--teal); color: var(--teal-ink); font-size: 13px; }
+.next { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 28px 0 0; }
+.next a { display: inline-flex; align-items: center; min-height: 44px; padding: 0 18px;
+  border-radius: 10px; border: 1px solid var(--rule); background: var(--card);
+  font: 600 15px/1 var(--sans); color: var(--ink); text-decoration: none; }
+.next a.go { background: var(--teal); border-color: var(--teal); color: var(--teal-ink); }
+.next .none { font-size: 15px; color: var(--soft); }
 h1 { font: 600 34px/1.15 var(--serif); letter-spacing: -.01em; margin: 18px 0 8px; }
 .lede { font-size: 17px; color: var(--soft); margin: 0 0 28px; max-width: 62ch; }
 h2 { font: 600 21px/1.3 var(--serif); margin: 44px 0 4px; }
@@ -59,5 +70,10 @@ button:disabled { opacity: .45; cursor: default; }
 </style>
 {% block head %}{% endblock %}
 </head>
-<body><main>{% block body %}{% endblock %}</main>{% block scripts %}{% endblock %}</body>
+<body><main>
+<nav class="nav" aria-label="Pages">
+  <a href="/chat"{% if nav == "chat" %} aria-current="page"{% endif %}>Chat</a>
+  <a href="/review"{% if nav == "reviews" %} aria-current="page"{% elif nav == "review" %} aria-current="true"{% endif %}>Reviews{% if open_reviews %} <span class="count" aria-label="{{ open_reviews|length }} open">{{ open_reviews|length }}</span>{% endif %}</a>
+</nav>
+{% block body %}{% endblock %}</main>{% block scripts %}{% endblock %}</body>
 </html>

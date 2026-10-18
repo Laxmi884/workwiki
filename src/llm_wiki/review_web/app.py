@@ -68,8 +68,30 @@ def diff_lines(diff: str) -> list[tuple[str, str]]:
     return out
 
 
-def _page(name: str, **values: Any) -> HTMLResponse:
-    return HTMLResponse(env.get_template(name).render(**values))
+def _page(
+    name: str, *, nav: str, open_reviews: list[str] | None, **values: Any
+) -> HTMLResponse:
+    """Render a page under the shared nav bar.
+
+    `nav` names the bar's current entry ("chat", "reviews", or "review" for one review);
+    `open_reviews` are the open reviews' thread ids, `None` when the backend can't say.
+    """
+    return HTMLResponse(
+        env.get_template(name).render(nav=nav, open_reviews=open_reviews, **values)
+    )
+
+
+def _open_reviews() -> list[str] | None:
+    """Return the open reviews' thread ids for the nav bar; `None` if the backend is down.
+
+    Only the count and the "next review" link need it, so a backend failure leaves the
+    page usable instead of failing it.
+    """
+    try:
+        return [r.thread_id for r in backend().pending()]
+    except BackendError as exc:
+        log.warning("open reviews unavailable: %s", exc)
+        return None
 
 
 def index(request: Request) -> HTMLResponse:
@@ -78,7 +100,12 @@ def index(request: Request) -> HTMLResponse:
         {"thread": r.thread_id, "note": r.review.note if r.review else None}
         for r in backend().pending()
     ]
-    return _page("index.html", rows=rows)
+    return _page(
+        "index.html",
+        nav="reviews",
+        open_reviews=[row["thread"] for row in rows],
+        rows=rows,
+    )
 
 
 def review_page(request: Request) -> HTMLResponse:
@@ -87,10 +114,14 @@ def review_page(request: Request) -> HTMLResponse:
     try:
         result = backend().review(thread)
     except UnknownThread:
-        return _page("missing.html", thread=thread)
+        return _page(
+            "missing.html", nav="review", open_reviews=_open_reviews(), thread=thread
+        )
     view = build_view(result.review) if result.review is not None else None
     return _page(
         "review.html",
+        nav="review",
+        open_reviews=_open_reviews(),
         thread=thread,
         result=result,
         review=result.review,
@@ -141,7 +172,12 @@ async def answer(request: Request) -> JSONResponse:
 
 def chat_page(request: Request) -> HTMLResponse:
     """Show the chat box; the browser keeps the conversation."""
-    return _page("chat.html", vault=str(backend().vault))
+    return _page(
+        "chat.html",
+        nav="chat",
+        open_reviews=_open_reviews(),
+        vault=str(backend().vault),
+    )
 
 
 def _chat_reply(message: str, history: list[ChatTurn]) -> JSONResponse:

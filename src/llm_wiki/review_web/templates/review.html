@@ -107,7 +107,6 @@ select.task-pick { font: 600 16px/1.3 var(--serif); color: var(--ink); backgroun
 </style>
 {% endblock %}
 {% block body %}
-<a class="back" href="/review">All reviews</a>
 {% if view %}
 <h1>{{ view.title }}</h1>
 <p class="lede">{{ view.lede }}</p>
@@ -282,9 +281,11 @@ select.task-pick { font: 600 16px/1.3 var(--serif); color: var(--ink); backgroun
 {% else %}
 <p class="lede">This note's review was {{ "rejected" if result.action == "reject" else "closed" }}. Your vault is unchanged.</p>
 {% endif %}
+{% include "next.html" %}
 {% else %}
 <h1>Nothing to review</h1>
 <p class="lede">{{ result.warnings|join("; ") or "This note was already filed." }}</p>
+{% include "next.html" %}
 {% endif %}
 {% endblock %}
 

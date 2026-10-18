@@ -122,6 +122,54 @@ def test_the_index_lists_only_open_reviews(setup):
     assert "Nothing to review" in client.get("/review").text
 
 
+def test_every_page_has_the_nav_bar_with_the_open_count(setup):
+    client, _, thread, _ = setup
+    count = '<span class="count" aria-label="1 open">1</span>'
+    for url, chat_current, reviews_current in [
+        ("/chat", ' aria-current="page"', ""),
+        ("/review", "", ' aria-current="page"'),
+        (f"/review/{thread}", "", ' aria-current="true"'),
+        ("/review/ingest-nope", "", ' aria-current="true"'),
+    ]:
+        page = client.get(url).text
+        assert f'<a href="/chat"{chat_current}>Chat</a>' in page, url
+        assert f'<a href="/review"{reviews_current}>Reviews {count}</a>' in page, url
+
+
+def test_a_finished_review_points_to_the_next_one_then_to_the_chat(setup):
+    client, backend, first, _ = setup
+    second = backend.start_ingest("00_raw/daily/2026-10-13.md").thread_id
+    assert backend.review(second).status == "review"
+
+    client.post(f"/review/{first}/answer", json={"answer": "reject"})
+    page = client.get(f"/review/{first}").text
+    assert f'<a class="go" href="/review/{second}">Next review</a>' in page
+    assert '<a href="/chat">Back to chat</a>' in page
+    assert "All open reviews" not in page  # only one other
+
+    client.post(f"/review/{second}/answer", json={"answer": "reject"})
+    page = client.get(f"/review/{second}").text
+    assert '<a class="go" href="/chat">Back to chat</a>' in page
+    assert "No other reviews waiting." in page and "Next review" not in page
+    assert '<span class="count"' not in page  # nothing open: no badge
+
+
+def test_pages_work_without_the_count_when_the_backend_is_down(setup, monkeypatch):
+    client, backend, thread, _ = setup
+    backend.answer(thread, "reject")
+
+    def down(*args, **kwargs):
+        raise BackendError("the Agent Server failed: ConnectError")
+
+    monkeypatch.setattr(backend, "pending", down)
+    for url in ("/chat", f"/review/{thread}"):
+        res = client.get(url)
+        assert res.status_code == 200, url
+        assert '<a href="/review"' in res.text and '<span class="count"' not in res.text
+    finished = client.get(f"/review/{thread}").text
+    assert "Back to chat" in finished and "No other reviews waiting." not in finished
+
+
 def test_chat_box_answers_commands_and_reports_backend_failures(setup, monkeypatch):
     client, backend, thread, _ = setup
     assert 'id="text"' in client.get("/chat").text
