@@ -29,9 +29,11 @@ def test_a_server_without_a_token_refuses_everything():
         check_bearer("Bearer anything", None)
 
 
-def test_server_backend_sends_the_token(monkeypatch):
+def test_server_backend_sends_the_token(monkeypatch, tmp_path):
     from llm_wiki.backend.server import auth_headers
     from llm_wiki.config import get_settings
+
+    monkeypatch.chdir(tmp_path)  # no .env here: the developer's real token stays out
 
     monkeypatch.setenv("WIKI_SERVER_TOKEN", "s3cret-token")
     get_settings.cache_clear()

@@ -21,6 +21,9 @@ A button press becomes the same `ReviewAnswer` the page sends, so it resumes the
   a non-loopback `WIKI_REVIEW_URL`).
 - `src/llm_wiki/slack/stream.py::Reply`: `show` / `finish` / `fail`; `chat.update` when Slack ends the stream
   (`message_not_in_streaming_state`).
+- `src/llm_wiki/slack/handlers.py::thread_history`: a reply inside a thread carries the thread's earlier turns,
+  read back with `conversations.replies` (user's and bot's messages, last 20; `questions_only` drops commands).
+  No state of ours: Slack is the memory, as the page is for the web chat.
 - `src/llm_wiki/slack/handlers.py::WikiSlack`: `on_message` (subtype/bot/DM/user checks, `!` → `/`),
   `on_action` (buttons replaced first, `stream_answer` with `seen`, buttons back on a server error).
 - `src/llm_wiki/slack/app.py` (sync Bolt, `ack()` first), `__main__.py` (exit 2 naming missing settings),
@@ -47,6 +50,8 @@ sync Bolt (0014), and our buttons carry the review token so a stale message can'
 - **Chunk objects reach `api_call` unserialised** (`MarkdownTextChunk`); the fake converts them with `to_dict()`.
 - **A session fixture named in a test's signature starts before function-scoped autouse fixtures**: the
   401 contract test's server came up without `WIKI_VAULT_PATH`. Fetch it with `request.getfixturevalue`.
+- **A test that reads `.env` sees the developer's real values**: `test_server_backend_sends_the_token` broke once
+  `WIKI_SERVER_TOKEN` was in `.env` (and its failure would print the token). It now `chdir`s to a temp folder.
 - **`.env` already holds the real tokens**: running `python -m llm_wiki.slack` in the repo starts the real bot.
   Check start-up from a folder without `.env`.
 

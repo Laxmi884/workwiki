@@ -76,6 +76,8 @@ commands and never sends the message (a leading space, ` /ingest`, works too).
 - `!review`: the open reviews. `!help` lists the rest (`!revise …`, `!approve except f2`, …), shown
   with `/` as on the web chat.
 - Anything else is a question; the answer streams.
+- A Slack thread is a conversation: a reply inside a thread is answered with that thread's earlier
+  questions and answers (the last 20 turns). A new top-level message starts a new conversation.
 
 A button on a review that changed since (e.g. revised on the page) is refused: open it again.
 

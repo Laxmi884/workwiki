@@ -16,6 +16,7 @@ class FakeSlack(WebClient):
         super().__init__(token="xoxb-test")
         self.calls: list[tuple[str, dict[str, Any]]] = []
         self.fail_next: dict[str, str] = {}
+        self.replies: list[dict[str, Any]] = []  # what conversations.replies returns
         self._ts = 0
 
     def _response(self, method: str, data: dict[str, Any]) -> SlackResponse:
@@ -43,6 +44,8 @@ class FakeSlack(WebClient):
                 error, self._response(api_method, {"ok": False, "error": error})
             )
         data: dict[str, Any] = {"ok": True}
+        if api_method == "conversations.replies":
+            data |= {"messages": self.replies, "has_more": False}
         if api_method == "auth.test":  # Bolt learns its own ids, to ignore its messages
             data |= {"user_id": "U0BOT", "bot_id": "B0BOT", "team_id": "T1"}
         if api_method in ("chat.startStream", "chat.postMessage"):

@@ -12,7 +12,7 @@ from llm_wiki.ingest import nodes
 from llm_wiki.slack.handlers import WikiSlack
 from llm_wiki.slack.render import APPROVE, REJECT
 
-from .scripted_model import AgentRounds, ToolScript, bi_tool_decision
+from .scripted_model import AgentRounds, EchoModel, ToolScript, bi_tool_decision
 from .slack_fake import FakeSlack
 
 USER = "U0USER"
@@ -248,3 +248,85 @@ def test_a_press_keeps_the_summary_and_ends_with_the_outcome(bot):
     assert updates[-1]["blocks"][0] == summary
     assert "Nothing was written" in str(updates[-1]["blocks"])
     assert all(b["type"] != "actions" for u in updates for b in u["blocks"])
+
+
+@pytest.fixture
+def echo_bot(vault_copy, monkeypatch):
+    """The assistant replies with the turns it was sent ("q1 | a1 | q2")."""
+    monkeypatch.setattr(local_backend, "configured_model", lambda model: EchoModel())
+    monkeypatch.setattr(local_backend, "configured_fallbacks", lambda: [])
+    backend = LocalBackend.in_memory(vault_copy)
+    return WikiSlack(backend, user_id=USER, review_url=None)
+
+
+def said(ts, text, user=USER):
+    return {"type": "message", "user": user, "text": text, "ts": ts, "thread_ts": "1.0"}
+
+
+def from_bot(ts, text):
+    return {
+        "type": "message",
+        "user": "U0BOT",
+        "bot_id": "B0BOT",
+        "text": text,
+        "ts": ts,
+        "thread_ts": "1.0",
+    }
+
+
+def in_thread(text, ts="5.0"):
+    return dm(text, ts=ts, thread_ts="1.0")
+
+
+def test_a_reply_in_a_thread_carries_the_threads_earlier_turns(echo_bot):
+    slack = FakeSlack()
+    slack.replies = [
+        said("1.0", "What is Atlas?"),
+        from_bot("2.0", "A risk analytics project."),
+        said("5.0", "Is it on track?"),  # the message being answered: not history
+    ]
+    echo_bot.on_message(in_thread("Is it on track?"), slack)
+    (fetch,) = [a for m, a in slack.calls if m == "conversations.replies"]
+    assert (fetch["channel"], fetch["ts"]) == ("D1", "1.0")
+    assert (
+        "What is Atlas? | A risk analytics project. | Is it on track?" in slack.text()
+    )
+
+
+def test_a_top_level_message_starts_a_new_conversation(echo_bot):
+    slack = FakeSlack()
+    echo_bot.on_message(dm("Is it on track?"), slack)
+    assert "conversations.replies" not in slack.methods()
+    assert "Is it on track?" in slack.text() and " | " not in slack.text()
+
+
+def test_commands_reviews_and_other_users_are_not_history(echo_bot):
+    slack = FakeSlack()
+    slack.replies = [
+        said("1.0", "!ingest 2026-10-12"),
+        from_bot("2.0", "**Review: 00_raw/daily/2026-10-12.md** …"),
+        said("3.0", "spam", user="U0OTHER"),
+        said("3.5", "What is Atlas?"),
+        from_bot("4.0", "A project."),
+    ]
+    echo_bot.on_message(in_thread("Who owns it?"), slack)
+    assert "What is Atlas? | A project. | Who owns it?" in slack.text()
+    assert "Review" not in slack.text() and "spam" not in slack.text()
+
+
+def test_only_the_last_turns_are_kept(echo_bot):
+    slack = FakeSlack()
+    slack.replies = [
+        said(f"{i}.0", f"q{i}") if i % 2 else from_bot(f"{i}.0", f"a{i}")
+        for i in range(1, 31)
+    ]
+    echo_bot.on_message(in_thread("last", ts="99.0"), slack)
+    shown = slack.text()
+    assert "q11 | a12" in shown and "a10 |" not in shown  # 20 turns: 11..30
+
+
+def test_a_thread_slack_wont_return_is_answered_without_history(echo_bot):
+    slack = FakeSlack()
+    slack.fail_next["conversations.replies"] = "ratelimited"
+    echo_bot.on_message(in_thread("Is it on track?"), slack)
+    assert "Is it on track?" in slack.text()

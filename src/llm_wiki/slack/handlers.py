@@ -7,6 +7,10 @@
 Only `user_id`, only DMs. The same routing as the web chat: "/…" is a command,
 anything else a question. Slack's client keeps a leading "/" for its own slash
 commands and never sends the message, so "!ingest" stands for "/ingest" here.
+
+A Slack thread is a conversation: a reply inside one carries the thread's earlier
+turns (read back from Slack, the last `MAX_TURNS`), as the web chat sends its own.
+A message at the top level starts a new one.
 """
 
 from __future__ import annotations
@@ -17,10 +21,12 @@ from collections.abc import Callable, Iterator
 from typing import Any
 
 from slack_sdk import WebClient
+from slack_sdk.errors import SlackApiError
 
 from llm_wiki.backend import (
     Backend,
     BackendError,
+    ChatTurn,
     NoOpenReview,
     ReviewBusy,
     UnknownThread,
@@ -32,6 +38,46 @@ from llm_wiki.slack.stream import Reply
 
 log = logging.getLogger(__name__)
 CRASHED = "Something failed (details in the log)."
+MAX_TURNS = 20  # earlier turns sent with a question in a thread
+
+
+def _as_typed(text: str) -> str:
+    """Return the message as the chat reads it ("!ingest" → "/ingest")."""
+    text = text.strip()
+    return "/" + text[1:] if text.startswith("!") else text
+
+
+def thread_history(
+    client: WebClient, channel: str, thread_ts: str, before_ts: str, user_id: str
+) -> list[ChatTurn]:
+    """Return the thread's turns before `before_ts`: `user_id`'s and the bot's.
+
+    Other users' messages and edits are left out; `chat.session` drops commands and
+    their replies. If Slack won't return the thread, the question goes without it.
+    """
+    try:
+        response = client.conversations_replies(
+            channel=channel, ts=thread_ts, limit=200
+        )
+    except SlackApiError as exc:
+        log.warning(
+            "slack: no history for thread %s (%s)", thread_ts, exc.response.get("error")
+        )
+        return []
+    turns: list[ChatTurn] = []
+    for message in response.get("messages") or []:
+        text = (message.get("text") or "").strip()
+        if (
+            not text
+            or float(message["ts"]) >= float(before_ts)
+            or message.get("subtype")
+        ):
+            continue
+        if message.get("bot_id"):
+            turns.append(("assistant", text))
+        elif message.get("user") == user_id:
+            turns.append(("user", _as_typed(text)))
+    return turns[-MAX_TURNS:]
 
 
 class WikiSlack:
@@ -56,11 +102,17 @@ class WikiSlack:
         if event.get("user") != self._user_id:
             log.info("slack: ignored a message from user %s", event.get("user"))
             return
-        text = (event.get("text") or "").strip()
+        text = _as_typed(event.get("text") or "")
         if not text:
             return
-        if text.startswith("!"):
-            text = "/" + text[1:]
+        thread_ts = event.get("thread_ts")
+        history = (
+            thread_history(
+                client, event["channel"], thread_ts, event["ts"], self._user_id
+            )
+            if thread_ts and thread_ts != event["ts"]
+            else []
+        )
         reply = Reply(
             client,
             channel=event["channel"],
@@ -70,7 +122,9 @@ class WikiSlack:
         )
         self._run(
             reply,
-            lambda: stream_reply(self._backend, text, link_base=self._review_url or ""),
+            lambda: stream_reply(
+                self._backend, text, history, link_base=self._review_url or ""
+            ),
         )
 
     def on_action(self, body: dict[str, Any], client: WebClient) -> None:
