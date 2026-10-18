@@ -16,6 +16,26 @@
   },
   "env": ".env",
   "http": {
-    "app": "./src/llm_wiki/review_web/app.py:app"
+    "app": "./src/llm_wiki/review_web/app.py:app",
+    "cors": {
+      "allow_origins": [
+        "https://smith.langchain.com"
+      ],
+      "allow_methods": [
+        "GET",
+        "POST",
+        "PUT",
+        "PATCH",
+        "DELETE"
+      ],
+      "allow_headers": [
+        "*"
+      ],
+      "expose_headers": [
+        "x-pagination-total",
+        "x-pagination-next",
+        "content-location"
+      ]
+    }
   }
 }

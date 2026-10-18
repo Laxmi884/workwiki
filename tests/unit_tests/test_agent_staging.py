@@ -966,3 +966,54 @@ def test_a_page_the_rules_link_may_take_any_line(corpus_ctx):
         interview(ctx_with(rules.replace("[[project-hiring-q4]]", "Hiring Q4")))
     edits, _ = interview(ctx_with(rules))
     assert edits[0].path == hiring
+
+
+SECRET = "correct-horse-battery"  # no digit: the key=value pattern alone can't catch it
+
+
+class Recording(ToolScript):
+    seen: list = []
+
+    def _generate(self, messages, *args, **kwargs):  # type: ignore[override]
+        self.seen.append(list(messages))
+        return super()._generate(messages, *args, **kwargs)
+
+
+def test_the_ingest_agent_cannot_read_git_or_obsidian(vault_copy, monkeypatch):
+    # LiveSync keeps its CouchDB password and vault passphrase in .obsidian (I2)
+    plugin = vault_copy / ".obsidian/plugins/obsidian-livesync"
+    plugin.mkdir(parents=True)
+    (plugin / "data.json").write_text(f'{{"passphrase": "{SECRET}"}}')
+    (vault_copy / ".git").mkdir()
+    (vault_copy / ".git/config").write_text(f"[remote]\n\turl = {SECRET}\n")
+    script = Recording(
+        messages=iter(
+            [
+                call(
+                    "read_file",
+                    file_path="/vault/.obsidian/plugins/obsidian-livesync/data.json",
+                ),
+                call("read_file", file_path="/vault/.git/config"),
+                call("grep", pattern="horse", path="/vault/"),
+                call("glob", pattern="**/*.json", path="/vault/"),
+                call("ls", path="/vault/.obsidian/plugins/obsidian-livesync"),
+                AIMessage("Nothing to file."),
+            ]
+        ),
+        seen=[],
+    )
+    monkeypatch.setattr(nodes, "chat_model", lambda runtime: script)
+    runner = IngestRunner.in_memory(
+        context={"vault_path": str(vault_copy)}, graph_builder=agent_builder
+    )
+    runner.start(NOTE)
+    last = script.seen[-1]
+    results = {
+        m.name + str(i): str(m.content) for i, m in enumerate(last) if m.type == "tool"
+    }
+    assert len(results) == 5
+    assert not any("horse" in text for text in results.values())
+    reads = [t for k, t in results.items() if k.startswith(("read_file", "ls"))]
+    assert all(t.startswith("Error: permission denied") for t in reads)
+    found = [t for k, t in results.items() if k.startswith(("grep", "glob"))]
+    assert not any("data.json" in t or ".git" in t for t in found)

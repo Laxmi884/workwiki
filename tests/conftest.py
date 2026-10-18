@@ -51,3 +51,25 @@ def _no_fallback_models(monkeypatch):
     from llm_wiki.ingest import nodes
 
     monkeypatch.setattr(nodes, "fallback_models", lambda runtime: [])
+
+
+@pytest.fixture(scope="session")
+def _default_vault(tmp_path_factory) -> Path:
+    return tmp_path_factory.mktemp("default-vault")
+
+
+@pytest.fixture(autouse=True)
+def _vaults_tests_may_use(monkeypatch, tmp_path_factory, _default_vault):
+    """Runs may name vault copies under pytest's temp folder or the fixture vault.
+
+    `resolve_vault` refuses any other vault a run names. `WIKI_VAULT_PATH` is an empty
+    temp folder, so no test falls back to the developer's `.env` vault.
+    """
+    from llm_wiki.config import get_settings
+
+    monkeypatch.setenv("WIKI_VAULT_PATH", str(_default_vault))
+    roots = f"{tmp_path_factory.getbasetemp()},{FIXTURE_VAULT}"
+    monkeypatch.setenv("WIKI_VAULT_ROOTS", roots)
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()

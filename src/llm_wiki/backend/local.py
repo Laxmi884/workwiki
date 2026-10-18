@@ -10,7 +10,9 @@ review threads across restarts), and `ask` builds the assistant for one answer.
 
 from __future__ import annotations
 
+import threading
 from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +22,7 @@ from llm_wiki.backend.base import (
     Finished,
     NoOpenReview,
     NoteNotFound,
+    ReviewBusy,
     RunResult,
     StreamEvent,
     UnknownThread,
@@ -51,6 +54,8 @@ class LocalBackend:
         self._runner = runner
         self._vault = vault
         self._model = model
+        self._answering: set[str] = set()  # threads with an answer running
+        self._guard = threading.Lock()
 
     @classmethod
     def sqlite(
@@ -116,13 +121,32 @@ class LocalBackend:
             raise UnknownThread(f"no ingest thread {thread_id!r} for {self._vault}")
         return self._runner.status(thread_id)
 
+    @contextmanager
+    def _one_answer(self, thread_id: str) -> Iterator[None]:
+        """Hold `thread_id` while an answer runs; a second one meanwhile is refused.
+
+        The review page and the chat share this backend: without it, two answers
+        could both see the review open and resume it twice. One process only (a CLI
+        run beside the server isn't covered).
+        """
+        with self._guard:
+            if thread_id in self._answering:
+                raise ReviewBusy(f"review {thread_id!r} is already being answered")
+            self._answering.add(thread_id)
+        try:
+            yield
+        finally:
+            with self._guard:
+                self._answering.discard(thread_id)
+
     def answer(
         self, thread_id: str, answer: ReviewAnswer | dict[str, Any] | str
     ) -> RunResult:
         """Send the user's answer and run on until the next pause or the end."""
-        if self.review(thread_id).status != "review":
-            raise NoOpenReview(f"no review is waiting on thread {thread_id!r}")
-        return self._runner.resume(thread_id, answer)
+        with self._one_answer(thread_id):
+            if self.review(thread_id).status != "review":
+                raise NoOpenReview(f"no review is waiting on thread {thread_id!r}")
+            return self._runner.resume(thread_id, answer)
 
     def ask(self, question: str, history: Sequence[ChatTurn] = ()) -> str:
         """Return the assistant's answer, given the earlier chat."""
@@ -150,15 +174,16 @@ class LocalBackend:
         self, thread_id: str, answer: ReviewAnswer | dict[str, Any] | str
     ) -> Iterator[StreamEvent]:
         """Send the user's answer, yielding progress, until the next pause or the end."""
-        if self.review(thread_id).status != "review":
-            raise NoOpenReview(f"no review is waiting on thread {thread_id!r}")
-        progress = answer_plan(answer)
-        yield progress
-        progress = yield from follow(
-            progress, self._runner.stream_resume(thread_id, answer)
-        )
-        result = self._runner.status(thread_id)
-        yield Finished(progress=settle(progress, result.status), result=result)
+        with self._one_answer(thread_id):  # held until the stream ends or is closed
+            if self.review(thread_id).status != "review":
+                raise NoOpenReview(f"no review is waiting on thread {thread_id!r}")
+            progress = answer_plan(answer)
+            yield progress
+            progress = yield from follow(
+                progress, self._runner.stream_resume(thread_id, answer)
+            )
+            result = self._runner.status(thread_id)
+            yield Finished(progress=settle(progress, result.status), result=result)
 
     def stream_ask(
         self, question: str, history: Sequence[ChatTurn] = ()

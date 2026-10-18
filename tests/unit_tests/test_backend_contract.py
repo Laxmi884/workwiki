@@ -106,7 +106,8 @@ def _dev_server(work: Path):
             cwd=work,  # the server keeps .langgraph_api here
             stdout=log,
             stderr=subprocess.STDOUT,
-            env={**os.environ, **SERVER_ENV},
+            # the tests' vaults are under pytest's temp folder (`resolve_vault`)
+            env={**os.environ, **SERVER_ENV, "WIKI_VAULT_ROOTS": str(work.parent)},
         )
     url = f"http://127.0.0.1:{port}"
     try:
@@ -145,6 +146,7 @@ def _docker_server(work: Path, shared: Path):
                         }
                     ),
                     "LANGSMITH_TRACING": "false",
+                    "WIKI_VAULT_ROOTS": str(shared),  # the tests' vaults are inside
                 },
                 "volumes": [f"{tests}:/deps/workspace/tests:ro"],
             }

@@ -4,6 +4,8 @@ import pytest
 
 from llm_wiki import apply as apply_mod
 from llm_wiki.apply import ApplyConflict, ApplyError, apply_diffs, only_ids_added
+from llm_wiki.chat.render import render_result
+from llm_wiki.diffs import render_file
 from llm_wiki.domain.changes import (
     AppendId,
     FileDiff,
@@ -195,3 +197,35 @@ def test_note_changed_during_review_ends_without_writing(runner, vault_copy):
     assert done.status == "done" and done.written == ()
     assert any("run again" in w for w in done.warnings)
     assert note.read_text() == edited
+
+
+@pytest.mark.parametrize(
+    "line",
+    ["- [ ] a  \n", "- [ ] a\t\n", "- [ ] a\r\n", "- [ ] a \t \r\n"],
+    ids=["trailing spaces", "trailing tab", "CRLF", "mixed"],
+)
+def test_a_note_the_review_accepted_is_written_too(vault, line):
+    # render (diffs) and apply must agree: append_id drops trailing whitespace
+    (vault / "00_raw/daily").mkdir(parents=True)
+    before = f"## Tasks\n{line}b\n"
+    (vault / NOTE).write_bytes(before.encode())
+    diff = render_file(
+        NOTE, before, [AppendId(path=NOTE, line_no=2, task_id="t-abc123")]
+    )
+    assert diff is not None
+    assert apply_diffs(vault, [diff], [diff.digest]) == [NOTE]
+    assert (vault / NOTE).read_bytes().decode() == diff.after_text
+
+
+def test_a_run_that_fails_in_apply_says_so_instead_of_done(runner, monkeypatch):
+    started = runner.start(NOTE)
+
+    def refuse(*args, **kwargs):
+        raise ApplyError(f"{NOTE}: raw notes may only get task IDs")
+
+    monkeypatch.setattr(nodes, "apply_diffs", refuse)
+    with pytest.raises(ApplyError):
+        runner.resume(started.thread_id, "approve")
+    stopped = runner.status(started.thread_id)
+    assert stopped.status == "failed" and stopped.stopped_at == ("apply",)
+    assert render_result(stopped).startswith("The run stopped at apply")

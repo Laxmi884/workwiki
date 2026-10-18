@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING, Any
 from typing_extensions import TypedDict
 
 from llm_wiki.assistant.agent import build_assistant
-from llm_wiki.config import get_settings
+from llm_wiki.config import resolve_vault
 from llm_wiki.model_setup import configured_fallbacks, configured_model
 
 if TYPE_CHECKING:
@@ -41,9 +41,7 @@ class AssistantContext(TypedDict, total=False):
 def run_choice(context: AssistantContext | None) -> tuple[Path, str | None]:
     """Return (vault, model override) for a run's context."""
     context = context or {}
-    vault = context.get("vault_path")
-    path = Path(vault).expanduser().resolve() if vault else get_settings().vault_path
-    return path, context.get("model")
+    return resolve_vault(context.get("vault_path")), context.get("model")
 
 
 def graph_for(context: AssistantContext | None) -> Any:

@@ -109,3 +109,29 @@ def append_id(line: str, task_id: str) -> str:
         raise ValueError(f"task already has ID {parsed.task_id}: {line!r}")
 
     return f"{body.rstrip()} ^{task_id}{ending}"
+
+
+_ID_SUFFIX_RE = re.compile(r" \^t-[0-9a-z]{6}$")
+
+
+def line_changed_beyond_ids(before: str, after: str) -> int | None:
+    """Return the first line (1-based) of `after` that changes more than `append_id` may.
+
+    Decision 0001: a raw note may only gain " ^t-xxxxxx" at the end of task lines
+    (trailing spaces and tabs before it dropped, the line ending kept). None means
+    the change is only that. A changed line count returns 0. Render and apply both
+    use this check, so a diff the review shows is a diff apply writes.
+    """
+    old = before.splitlines(keepends=True)
+    new = after.splitlines(keepends=True)
+    if len(old) != len(new):
+        return 0
+    for n, (a, b) in enumerate(zip(old, new, strict=True), start=1):
+        if a == b:
+            continue
+        a_body, b_body = a.rstrip("\r\n"), b.rstrip("\r\n")
+        ending_kept = a[len(a_body) :] == b[len(b_body) :]
+        suffix = _ID_SUFFIX_RE.search(b_body)
+        if not (ending_kept and suffix and b_body[: suffix.start()] == a_body.rstrip()):
+            return n
+    return None

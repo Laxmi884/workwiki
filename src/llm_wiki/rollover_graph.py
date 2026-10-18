@@ -13,14 +13,13 @@ run's context `vault_path`, else `WIKI_VAULT_PATH`. A `RolloverError` fails the 
 from __future__ import annotations
 
 import datetime
-from pathlib import Path
 from typing import Any, TypedDict
 
 from langgraph.graph import END, START, StateGraph
 from langgraph.runtime import Runtime
 
 from llm_wiki import clock
-from llm_wiki.config import get_settings
+from llm_wiki.config import resolve_vault
 from llm_wiki.rollover import roll_over
 
 
@@ -42,11 +41,7 @@ class RolloverContext(TypedDict, total=False):
 def run(state: RolloverState, runtime: Runtime[RolloverContext]) -> dict[str, Any]:
     """Create the day's note unless it exists; return what was done."""
     context = runtime.context or {}
-    vault = (
-        Path(context["vault_path"]).expanduser().resolve()
-        if context.get("vault_path")
-        else get_settings().vault_path
-    )
+    vault = resolve_vault(context.get("vault_path"))
     day = (
         datetime.date.fromisoformat(state["date"])
         if state.get("date")

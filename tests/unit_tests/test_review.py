@@ -323,3 +323,20 @@ def test_wiki_pages_can_still_be_left_out_and_bookkeeping_alone_is_fine():
     answer, error = check_answer(WITH_BOOKS, {"action": "approve", "reject": [log.id]})
     assert error is None
     assert len(approved_digests(WITH_BOOKS, answer)) == len(BOOKS)
+
+
+def test_an_approval_names_the_review_it_saw():
+    # I3: a page opened before a revise must not approve the revised diffs
+    other = build_request(
+        "00_raw/daily/2026-10-12.md",
+        [*DIFFS[:2], _diff("90_meta/ingest-ledger.json", "b" * 64)],
+        [],
+    )
+    assert REQUEST.token and other.token != REQUEST.token
+    assert build_request("00_raw/daily/2026-10-12.md", DIFFS, []).token == REQUEST.token
+    answer, error = check_answer(REQUEST, {"action": "approve", "seen": REQUEST.token})
+    assert error is None and answer is not None
+    _, error = check_answer(other, {"action": "approve", "seen": REQUEST.token})
+    assert error is not None and "changed since you opened it" in error
+    _, error = check_answer(REQUEST, {"action": "revise", "feedback": "x", "seen": "t"})
+    assert error is not None and "seen not allowed" in error

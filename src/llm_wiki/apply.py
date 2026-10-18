@@ -19,7 +19,6 @@ Rules (CLAUDE.md, decision 0001):
 from __future__ import annotations
 
 import os
-import re
 import tempfile
 from collections.abc import Collection, Sequence
 from pathlib import Path
@@ -27,8 +26,7 @@ from pathlib import Path
 from llm_wiki.domain.changes import RAW_DAILY_FOLDER, FileDiff, sha256_text
 from llm_wiki.ledger import LEDGER_PATH
 from llm_wiki.task_tracking import TASK_INDEX_PATH
-
-_ID_SUFFIX = re.compile(r" \^t-[0-9a-z]{6}$")
+from llm_wiki.tasks_syntax import line_changed_beyond_ids
 
 
 class ApplyError(RuntimeError):
@@ -65,16 +63,13 @@ def _target(vault: Path, path: str) -> Path:
 
 
 def _read(target: Path) -> str | None:
-    return target.read_text(encoding="utf-8") if target.is_file() else None
+    """Return the file's exact text: from bytes, so CRLF stays CRLF (as `vault_reader`)."""
+    return target.read_bytes().decode("utf-8") if target.is_file() else None
 
 
 def only_ids_added(before: str, after: str) -> bool:
-    """Return True if `after` only adds ` ^t-xxxxxx` to lines of `before`."""
-    old, new = before.split("\n"), after.split("\n")
-    return len(old) == len(new) and all(
-        n == o or (n.startswith(o) and _ID_SUFFIX.fullmatch(n[len(o) :]))
-        for o, n in zip(old, new, strict=True)
-    )
+    """Return True if `after` only adds ` ^t-xxxxxx` to task lines of `before`."""
+    return line_changed_beyond_ids(before, after) is None
 
 
 def _write(target: Path, text: str) -> None:

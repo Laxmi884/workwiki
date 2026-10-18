@@ -43,7 +43,7 @@ from llm_wiki.ingest.staging import (
 )
 from llm_wiki.middleware.redaction import RedactionMiddleware, secret_values
 from llm_wiki.middleware.tool_guard import ToolGuardMiddleware
-from llm_wiki.readonly_backend import ReadOnlyFilesystemBackend
+from llm_wiki.readonly_backend import ReadOnlyFilesystemBackend, hidden_vault_rule
 from llm_wiki.remember import RULES_PATH
 from llm_wiki.retries import is_transient
 from llm_wiki.routing import decision_log_path, impact_path
@@ -405,9 +405,10 @@ def build_ingest_agent(
         },
     )
     permissions = [
+        hidden_vault_rule(),
         FilesystemPermission(
             operations=["write"], paths=["/vault/**", "/skills/**"], mode="deny"
-        )
+        ),
     ]
     tools = [file_fact, update_summary, withdraw_fact, propose_page, map_task, ask_user]
     return create_deep_agent(

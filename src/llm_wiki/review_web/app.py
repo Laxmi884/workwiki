@@ -30,6 +30,7 @@ from llm_wiki.backend import (
     BackendError,
     ChatTurn,
     NoOpenReview,
+    ReviewBusy,
     UnknownThread,
     get_backend,
 )
@@ -148,7 +149,7 @@ def _answer(thread: str, answer: Any) -> JSONResponse:
         result = backend().answer(thread, answer)
     except UnknownThread:
         return JSONResponse({"error": f"no such review: {thread}"}, status_code=404)
-    except NoOpenReview as exc:
+    except (NoOpenReview, ReviewBusy) as exc:
         return JSONResponse({"error": str(exc)}, status_code=409)
     except BackendError as exc:  # e.g. the Agent Server is down or the run failed
         return JSONResponse({"error": str(exc)}, status_code=502)
@@ -158,16 +159,51 @@ def _answer(thread: str, answer: Any) -> JSONResponse:
     return JSONResponse({"status": result.status, "error": error})
 
 
+async def _json_body(request: Request) -> dict[str, Any] | JSONResponse:
+    """Return the POST's JSON body, or the refusal for a request another site sent.
+
+    Another site's page in the user's browser can POST here. With a "simple" content
+    type (text/plain, a form) the browser sends it without a CORS preflight, so only
+    JSON is taken: that forces the preflight, which `langgraph.json` `http.cors` fails
+    for foreign origins. Browsers also say where a request came from
+    (`Sec-Fetch-Site`); "cross-site" is refused outright.
+    """
+    if request.headers.get("sec-fetch-site") == "cross-site":
+        return JSONResponse({"error": "cross-site request refused"}, status_code=403)
+    content_type = request.headers.get("content-type", "").split(";")[0].strip()
+    if content_type.lower() != "application/json":
+        return JSONResponse({"error": "send JSON (application/json)"}, status_code=415)
+    try:
+        body = await request.json()
+    except ValueError:
+        return JSONResponse({"error": "the body is not valid JSON"}, status_code=400)
+    if not isinstance(body, dict):
+        return JSONResponse({"error": "send a JSON object"}, status_code=400)
+    return body
+
+
 async def answer(request: Request) -> JSONResponse:
     """Send the page's answer to the backend; the page then reloads.
 
     The backend blocks (SQLite or HTTP, the vault, a whole agent round on revise), so it
     runs in a worker thread; the plain `def` routes run there too (Starlette does that).
     """
-    body = await request.json()
-    return await run_in_threadpool(
-        _answer, request.path_params["thread_id"], body.get("answer")
-    )
+    body = await _json_body(request)
+    if isinstance(body, JSONResponse):
+        return body
+    answer = body.get("answer")
+    if _approves(answer) and not (isinstance(answer, dict) and answer.get("seen")):
+        return JSONResponse(
+            {"error": "approve from the review page: reload it and try again"},
+            status_code=400,
+        )
+    return await run_in_threadpool(_answer, request.path_params["thread_id"], answer)
+
+
+def _approves(answer: Any) -> bool:
+    """Return whether `answer` is an approval (a string or a dict, as the page sends)."""
+    action = answer if isinstance(answer, str) else (answer or {}).get("action")
+    return isinstance(action, str) and action.strip().lower() == "approve"
 
 
 def chat_page(request: Request) -> HTMLResponse:
@@ -191,7 +227,9 @@ def _chat_reply(message: str, history: list[ChatTurn]) -> JSONResponse:
 
 async def chat_send(request: Request) -> JSONResponse:
     """Answer one chat message (a command or a question) in a worker thread."""
-    body = await request.json()
+    body = await _json_body(request)
+    if isinstance(body, JSONResponse):
+        return body
     message = str(body.get("message", "")).strip()
     if not message:
         return JSONResponse({"error": "empty message"}, status_code=400)

@@ -1,6 +1,7 @@
 """The review page (0009 R1) and chat box (0010 S3) on a `Backend`."""
 
 import json
+from pathlib import Path
 
 import pytest
 from starlette.testclient import TestClient
@@ -55,7 +56,13 @@ def test_approve_some_files_then_the_page_shows_the_result(setup):
     log_id = next(f.id for f in backend.review(thread).review.files if f.path == LOG)
     res = client.post(
         f"/review/{thread}/answer",
-        json={"answer": {"action": "approve", "reject": [log_id]}},
+        json={
+            "answer": {
+                "action": "approve",
+                "reject": [log_id],
+                "seen": _seen(backend, thread),
+            }
+        },
     )
     assert res.json() == {"status": "done", "error": None}
     assert not (vault / LOG).exists()  # left out
@@ -64,15 +71,23 @@ def test_approve_some_files_then_the_page_shows_the_result(setup):
     page = client.get(f"/review/{thread}").text
     assert "Written to your wiki" in page and NOTE in page
 
-    again = client.post(f"/review/{thread}/answer", json={"answer": "approve"})
+    again = client.post(
+        f"/review/{thread}/answer", json={"answer": {"action": "approve", "seen": "x"}}
+    )
     assert again.status_code == 409 and "no review is waiting" in again.json()["error"]
 
 
 def test_a_bad_answer_is_shown_on_the_page(setup):
-    client, _, thread, _ = setup
+    client, backend, thread, _ = setup
     res = client.post(
         f"/review/{thread}/answer",
-        json={"answer": {"action": "approve", "reject": ["f99"]}},
+        json={
+            "answer": {
+                "action": "approve",
+                "reject": ["f99"],
+                "seen": _seen(backend, thread),
+            }
+        },
     )
     assert res.json()["status"] == "review"
     assert "unknown file ids" in res.json()["error"]
@@ -85,7 +100,8 @@ def test_unknown_review(setup):
     assert "No review here" in client.get("/review/ingest-nope").text
     assert (
         client.post(
-            "/review/ingest-nope/answer", json={"answer": "approve"}
+            "/review/ingest-nope/answer",
+            json={"answer": {"action": "approve", "seen": "x"}},
         ).status_code
         == 404
     )
@@ -199,13 +215,20 @@ def test_a_crash_comes_back_as_a_json_error(setup, monkeypatch):
     monkeypatch.setattr(backend, "pending", crash)
     monkeypatch.setattr(backend, "answer", crash)
     chat = client.post("/chat/send", json={"message": "/review", "history": []})
-    page = client.post(f"/review/{thread}/answer", json={"answer": "approve"})
+    page = client.post(
+        f"/review/{thread}/answer", json={"answer": {"action": "approve", "seen": "x"}}
+    )
     for res in (chat, page):
         assert res.status_code == 500
         assert "RuntimeError: no API key for openrouter" in res.json()["error"]
 
 
 # R2 (0009): every control is a `ReviewAnswer`; the page reloads with the new diffs.
+
+
+def _seen(backend, thread):
+    """The token the review page sends with an approval (I3)."""
+    return backend.review(thread).review.token
 
 
 def _answer(client, thread, answer):
@@ -338,7 +361,10 @@ def test_remembered_rule_and_alias_are_proposed_then_written_on_approve(setup):
     assert "Also known as <strong>stakeholders</strong>" in page
     assert "The rules you asked to remember" in page
 
-    res = client.post(f"/review/{thread}/answer", json={"answer": "approve"})
+    res = client.post(
+        f"/review/{thread}/answer",
+        json={"answer": {"action": "approve", "seen": _seen(backend, thread)}},
+    )
     assert res.json()["status"] == "done"
     assert (vault / RULES).read_text().endswith("## Rules\n- Don't file lunch plans\n")
     assert "aliases: [Atlas, atlas beta, BI migration, stakeholders]" in (
@@ -436,3 +462,84 @@ def test_questions_have_their_own_section_and_answers_go_to_the_agent(asked):
         == 1
     )
     assert backend.review(thread).review.revisions_left == 2
+
+
+def test_a_failed_approve_shows_the_run_stopped_not_written(setup, monkeypatch):
+    client, backend, thread, vault = setup
+
+    def refuse(*args, **kwargs):
+        raise RuntimeError("disk full")
+
+    monkeypatch.setattr(nodes, "apply_diffs", refuse)
+    res = client.post(
+        f"/review/{thread}/answer",
+        json={"answer": {"action": "approve", "seen": _seen(backend, thread)}},
+    )
+    assert res.status_code == 500 and "disk full" in res.json()["error"]
+    page = client.get(f"/review/{thread}").text
+    assert "This run stopped" in page and "Written to your wiki" not in page
+    assert "Nothing was written" not in page  # it may have been; git status tells
+
+
+# C2: another site's page in the user's browser must not answer a review. A
+# text/plain POST skips the CORS preflight, so the routes take JSON only, and refuse
+# what the browser marks cross-site.
+@pytest.mark.parametrize(
+    ("headers", "status"),
+    [
+        ({"content-type": "text/plain"}, 415),
+        ({"content-type": "application/x-www-form-urlencoded"}, 415),
+        ({"content-type": "application/json", "sec-fetch-site": "cross-site"}, 403),
+    ],
+)
+def test_posts_from_another_site_are_refused(setup, headers, status):
+    client, backend, thread, _ = setup
+    body = json.dumps({"answer": {"action": "approve", "seen": "x"}})
+    page = client.post(f"/review/{thread}/answer", content=body, headers=headers)
+    chat = client.post(
+        "/chat/send", content=json.dumps({"message": "/approve"}), headers=headers
+    )
+    assert (page.status_code, chat.status_code) == (status, status)
+    assert "error" in page.json()
+    assert backend.review(thread).status == "review"  # nothing was answered
+
+
+def test_the_pages_own_posts_still_work(setup):
+    client, _, thread, _ = setup
+    headers = {
+        "content-type": "application/json; charset=utf-8",
+        "sec-fetch-site": "same-origin",
+    }
+    res = client.post(
+        f"/review/{thread}/answer",
+        content=json.dumps({"answer": "reject"}),
+        headers=headers,
+    )
+    assert res.status_code == 200 and res.json()["status"] == "done"
+
+
+def test_the_server_allows_no_foreign_origin_but_studio():
+    # The Agent Server's CORS default is "*": any site could read the API's answers.
+    config = json.loads((Path(__file__).parents[2] / "langgraph.json").read_text())
+    cors = config["http"]["cors"]
+    assert cors["allow_origins"] == ["https://smith.langchain.com"]  # Studio
+    assert "allow_origin_regex" not in cors and not cors.get("allow_credentials")
+
+
+def test_the_page_approves_only_the_review_it_shows(setup):
+    client, backend, thread, vault = setup
+    page = client.get(f"/review/{thread}").text
+    token = backend.review(thread).review.token
+    assert f'data-seen="{token}"' in page
+    # no token: a request not from this page (or an old page) can't approve
+    res = client.post(f"/review/{thread}/answer", json={"answer": "approve"})
+    assert res.status_code == 400 and "reload" in res.json()["error"]
+    stale = {"action": "approve", "seen": "0" * 16}
+    res = client.post(f"/review/{thread}/answer", json={"answer": stale})
+    assert "changed since you opened it" in res.json()["error"]
+    assert backend.review(thread).status == "review"
+    res = client.post(
+        f"/review/{thread}/answer",
+        json={"answer": {"action": "approve", "seen": token}},
+    )
+    assert res.json() == {"status": "done", "error": None}

@@ -30,6 +30,8 @@ class Settings(BaseSettings):
             (block IDs on the task line) is built; "sidecar" is rejected until it is.
         model: `WIKI_MODEL`. Default "provider:model", e.g. "ollama:llama3.1:8b" or
             "anthropic:claude-haiku-5-5". A run's context `model` overrides it.
+        vault_roots: `WIKI_VAULT_ROOTS`, comma-separated. Folders whose subfolders a
+            run may also name as its vault (tests); empty by default (`resolve_vault`).
         state_dir: `WIKI_STATE_DIR`. Where run state lives (the runner's SQLite
             checkpoints); outside the vault, so sync never copies it. Default
             "~/.llm-wiki".
@@ -76,6 +78,7 @@ class Settings(BaseSettings):
     state_dir: Path = Path("~/.llm-wiki")
     backend: Literal["local", "server"] = "local"
     server_url: str = "http://127.0.0.1:2024"
+    vault_roots: Annotated[tuple[Path, ...], NoDecode] = ()
 
     @field_validator("vault_path")
     @classmethod
@@ -110,11 +113,51 @@ class Settings(BaseSettings):
             return value.strip().lower() or None  # blank: provider default
         return value
 
+    @field_validator("vault_roots", mode="before")
+    @classmethod
+    def _roots(cls, value: str | Sequence[str | Path]) -> tuple[Path, ...]:
+        items = value.split(",") if isinstance(value, str) else value
+        return tuple(
+            Path(str(p).strip()).expanduser().resolve() for p in items if str(p).strip()
+        )
+
     @field_validator("fallback_models", mode="before")
     @classmethod
     def _fallback_specs(cls, value: str | Sequence[str]) -> tuple[str, ...]:
         items = value.split(",") if isinstance(value, str) else value
         return tuple(ModelSpec.parse(s).spec for s in items if s.strip())
+
+
+class VaultNotAllowed(ValueError):
+    """A run named a vault this process may not touch."""
+
+
+def resolve_vault(
+    requested: str | Path | None, settings: Settings | None = None
+) -> Path:
+    """Return the vault a run may use: `WIKI_VAULT_PATH`, or one under `WIKI_VAULT_ROOTS`.
+
+    A graph run's context comes from whoever calls the Agent Server, so a requested
+    vault is only taken when it is the configured vault itself or a folder inside one
+    of the configured roots (tests put their vault copies there). A folder inside the
+    vault is refused: a run "on" `00_raw/` would bypass the raw-note rules. Symlinks
+    are resolved first.
+
+    Raises:
+        VaultNotAllowed: Any other path, or one that is not a folder.
+    """
+    settings = settings or get_settings()
+    if requested is None or not str(requested).strip():
+        return settings.vault_path
+    path = Path(requested).expanduser().resolve()
+    allowed = path == settings.vault_path or any(
+        path.is_relative_to(root) for root in settings.vault_roots
+    )
+    if not allowed or not path.is_dir():
+        raise VaultNotAllowed(
+            f"vault {path} is not WIKI_VAULT_PATH or inside WIKI_VAULT_ROOTS"
+        )
+    return path
 
 
 @cache

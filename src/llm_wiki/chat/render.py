@@ -85,6 +85,12 @@ def render_result(result: RunResult, link: str | None = None) -> str:
     """Return a run as a message: its review (with `link`), or how it ended."""
     if result.status == "review" and result.review is not None:
         return render_review(result.review, link)
+    if result.status == "failed":
+        return (
+            f"The run stopped at {', '.join(result.stopped_at)} before finishing "
+            "(details in the server log). Check the vault's `git status`, then start "
+            "again with `/ingest`."
+        )
     if result.status == "skipped":
         why = "; ".join(result.warnings) or "nothing to do"
         return f"Nothing to ingest: {why}"

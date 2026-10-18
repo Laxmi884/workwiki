@@ -305,6 +305,8 @@ def check_answer(
     file_ids = [f.id for f in request.files]
     if answer.action == "approve":
         error = _unknown("file", answer.reject, file_ids)
+        if answer.seen is not None and answer.seen != request.token:
+            error = "this review changed since you opened it; reload it and look again"
         if error is None:
             error = _check_required(request, answer.reject)
         if error is None:

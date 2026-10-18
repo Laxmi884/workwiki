@@ -43,7 +43,7 @@ from llm_wiki.ingest.agent import READ_TOOLS, RULES_PATH, model_middleware
 from llm_wiki.middleware.current_date import CurrentDateMiddleware
 from llm_wiki.middleware.redaction import RedactionMiddleware, secret_values
 from llm_wiki.middleware.tool_guard import ToolGuardMiddleware
-from llm_wiki.readonly_backend import ReadOnlyFilesystemBackend
+from llm_wiki.readonly_backend import ReadOnlyFilesystemBackend, hidden_vault_rule
 
 SKILLS_DIR = Path(__file__).parent / "skills"
 SUBAGENT_SKILLS_DIR = Path(__file__).parent / "subagent_skills"
@@ -84,11 +84,7 @@ Rules:
 def permissions() -> list[FilesystemPermission]:
     """Read the vault and skills (not .git/.obsidian); write nothing anywhere."""
     return [
-        FilesystemPermission(
-            operations=["read", "write"],
-            paths=["/vault/.git/**", "/vault/.obsidian/**"],
-            mode="deny",
-        ),
+        hidden_vault_rule(),
         FilesystemPermission(operations=["write"], paths=["/**"], mode="deny"),
     ]
 

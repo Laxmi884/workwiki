@@ -42,6 +42,17 @@ JWT = (
             "db: postgres://app:[REDACTED_SECRET]@db.local:5432/x",
         ),
         ("password: Winter2026!", "password: [REDACTED_SECRET]"),
+        ("passphrase: Winter2026!", "passphrase: [REDACTED_SECRET]"),
+        # JSON settings (LiveSync's data.json): any quoted value of a secret-named key
+        (
+            '{"passphrase": "correct horse battery staple"}',
+            '{"passphrase": "[REDACTED_SECRET]"}',
+        ),
+        ('"couchDB_PASSWORD":"plainword"', '"couchDB_PASSWORD":"[REDACTED_SECRET]"'),
+        (
+            "app token " + "xapp-1-" + "A0123ABCDEF-12345678-ab12cd",
+            "app token [REDACTED_SECRET]",
+        ),
         ("api_key='" + "a1" * 10 + "'", "api_key='[REDACTED_SECRET]'"),
         (f"Authorization: Bearer {JWT}", "Authorization: Bearer [REDACTED_SECRET]"),
         (
@@ -68,6 +79,7 @@ def test_secrets_are_replaced(text, left):
         "digest 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
         "cure rate for Q1 2026 by book year; 202503 data",
         "sk-learn and sk-short",
+        '{"tokens": 12, "passwordHint": ""}',
     ],
 )
 def test_ordinary_note_text_is_left_alone(text):

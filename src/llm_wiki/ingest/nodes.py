@@ -9,7 +9,7 @@ update; only `apply` writes. The pure logic lives in `daily_syntax`, `task_track
 from __future__ import annotations
 
 import datetime
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 from langchain_core.language_models import BaseChatModel
@@ -27,7 +27,7 @@ from llm_wiki import (
     vault_git,
 )
 from llm_wiki.apply import ApplyConflict, apply_diffs
-from llm_wiki.config import get_settings
+from llm_wiki.config import resolve_vault
 from llm_wiki.daily_syntax import parse_daily_note
 from llm_wiki.diffs import VaultReader, render_diffs, vault_reader
 from llm_wiki.domain.changes import (
@@ -57,11 +57,29 @@ from llm_wiki.model_setup import configured_fallbacks, configured_model
 
 
 def vault_path(runtime: Runtime[IngestContext]) -> Path:
-    """Return the run's vault: context `vault_path`, else `WIKI_VAULT_PATH`."""
-    context = runtime.context or {}
-    if context.get("vault_path"):
-        return Path(context["vault_path"]).expanduser().resolve()
-    return get_settings().vault_path
+    """Return the run's vault: context `vault_path` if allowed, else `WIKI_VAULT_PATH`.
+
+    Raises:
+        VaultNotAllowed: The context names a vault this process doesn't serve.
+    """
+    return resolve_vault((runtime.context or {}).get("vault_path"))
+
+
+def check_note_path(path: str) -> None:
+    """Refuse any note path but `00_raw/daily/<name>.md` (relative, no `..`).
+
+    Ingest treats the note as raw: a wiki page given as "the note" would get task IDs
+    and seen-line bookkeeping. FileNotFoundError, so callers say "no note at …".
+    """
+    parts = PurePosixPath(path).parts
+    if (
+        path.startswith("/")
+        or ".." in parts
+        or "/".join(parts[:2]) + "/" != RAW_DAILY_FOLDER
+        or len(parts) != 3
+        or not path.endswith(".md")
+    ):
+        raise FileNotFoundError(f"not a daily note (00_raw/daily/*.md): {path}")
 
 
 def report(runtime: Any, step: str, detail: str, state: str = "done") -> None:
@@ -122,6 +140,7 @@ def load_note(state: IngestState, runtime: Runtime[IngestContext]) -> dict[str, 
     `seen_lines` (already-ingested prose lines) for an edited one.
     """
     path = state["note_path"]
+    check_note_path(path)
     vault = vault_path(runtime)
     read = vault_reader(vault)
     text = read(path)

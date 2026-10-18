@@ -23,7 +23,11 @@ from typing import Any, NoReturn, TypeVar
 import httpx
 from langgraph_sdk import get_sync_client
 from langgraph_sdk.client import SyncLangGraphClient
-from langgraph_sdk.errors import NotFoundError, UnprocessableEntityError
+from langgraph_sdk.errors import (
+    ConflictError,
+    NotFoundError,
+    UnprocessableEntityError,
+)
 from langgraph_sdk.schema import StreamMode
 
 from llm_wiki.backend.base import (
@@ -32,6 +36,7 @@ from llm_wiki.backend.base import (
     Finished,
     NoOpenReview,
     NoteNotFound,
+    ReviewBusy,
     RunResult,
     StreamEvent,
     UnknownThread,
@@ -63,6 +68,8 @@ def _reachable(method: F) -> F:
     def wrapper(self: ServerBackend, *args: Any, **kwargs: Any) -> Any:
         try:
             return method(self, *args, **kwargs)
+        except ConflictError as exc:  # a run is already going on this thread
+            raise ReviewBusy("this review is already being answered") from exc
         except httpx.HTTPError as exc:
             raise BackendError(
                 f"the Agent Server at {self.url} failed: {type(exc).__name__}"
@@ -82,6 +89,8 @@ def _reachable_stream(method: F) -> F:
     def wrapper(self: ServerBackend, *args: Any, **kwargs: Any) -> Any:
         try:
             yield from method(self, *args, **kwargs)
+        except ConflictError as exc:  # a run is already going on this thread
+            raise ReviewBusy("this review is already being answered") from exc
         except httpx.HTTPError as exc:
             raise BackendError(
                 f"the Agent Server at {self.url} failed: {type(exc).__name__}"
@@ -203,7 +212,10 @@ class ServerBackend:
         interrupt = interrupts[0]["value"] if interrupts else None
         values = state.get("values")
         return run_result(
-            thread_id, values if isinstance(values, Mapping) else {}, interrupt
+            thread_id,
+            values if isinstance(values, Mapping) else {},
+            interrupt,
+            state.get("next") or (),
         )
 
     @_reachable

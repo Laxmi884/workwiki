@@ -7,6 +7,7 @@ back a `ReviewAnswer`. The request is the `interrupt()` payload, so it must stay
 from __future__ import annotations
 
 import datetime
+import hashlib
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -211,12 +212,21 @@ class ReviewRequest(BaseModel):
     task_ids_added: int = 0
     error: str | None = None
 
+    @property
+    def token(self) -> str:
+        """Name this review's proposed changes: the same files and digests, the same token.
+
+        An approval may carry it (`ReviewAnswer.seen`), so it approves only what was shown.
+        """
+        digests = "\n".join(f"{f.path} {f.digest}" for f in self.files)
+        return hashlib.sha256(digests.encode()).hexdigest()[:16]
+
 
 Action = Literal["approve", "reject", "revise", "edit", "answer"]
 
 # Which optional fields each action takes ("reject" is the file list of an approval).
 _FIELDS: dict[str, set[str]] = {
-    "approve": {"reject"},
+    "approve": {"reject", "seen"},
     "reject": set(),
     "revise": {"feedback", "remember", "answers"},
     "edit": {"file", "text"},
@@ -259,6 +269,9 @@ class ReviewAnswer(BaseModel):
         remember: revise: also remember the feedback as a rule.
         answers: revise: question ID → the user's answer; code adds them to the
             feedback, so feedback is optional when answers are given.
+        seen: approve: the `token` of the review the user was shown. If given, the
+            approval is refused when the review changed since (e.g. a revise from
+            another device). The review page and Slack always send it.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -274,12 +287,21 @@ class ReviewAnswer(BaseModel):
     aliases: dict[str, str] | None = None
     remember: bool = False
     answers: dict[str, str] | None = None
+    seen: str | None = None
 
     @model_validator(mode="after")
     def _fields_match_action(self) -> ReviewAnswer:
         given = {
             name
-            for name in ("reject", "feedback", "file", "text", "tasks", "answers")
+            for name in (
+                "reject",
+                "feedback",
+                "file",
+                "text",
+                "tasks",
+                "answers",
+                "seen",
+            )
             if getattr(self, name) not in (None, (), "", {})
         }
         # [] / {} are answers too: pick none, forget all

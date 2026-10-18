@@ -36,25 +36,28 @@ class RunResult(BaseModel):
 
     Attributes:
         thread_id: Pass it to `review` and `answer`.
-        status: "review" (waiting for an answer), "skipped" (nothing to do) or "done".
+        status: "review" (waiting for an answer), "skipped" (nothing to do), "done",
+            or "failed" (the run stopped with nodes still to run: an error).
         review: What to show the user while status is "review".
         action: The accepted answer once done: "approve" or "reject".
         approved: Digests of approved diffs once done.
         written: Vault paths written by apply once done.
         commit: The vault commit holding them (None: not a git repo, or nothing new).
         warnings: Everything the run reported.
+        stopped_at: The nodes a failed run had still to run (e.g. ("apply",)).
     """
 
     model_config = ConfigDict(frozen=True)
 
     thread_id: str
-    status: Literal["review", "skipped", "done"]
+    status: Literal["review", "skipped", "done", "failed"]
     review: ReviewRequest | None = None
     action: str | None = None
     approved: tuple[str, ...] = ()
     written: tuple[str, ...] = ()
     commit: str | None = None
     warnings: tuple[str, ...] = ()
+    stopped_at: tuple[str, ...] = ()
 
 
 class Finished(BaseModel):
@@ -85,18 +88,30 @@ def chat_messages(question: str, history: Sequence[ChatTurn]) -> list[Any]:
 
 
 def run_result(
-    thread_id: str, values: Mapping[str, Any], interrupt: Any | None
+    thread_id: str,
+    values: Mapping[str, Any],
+    interrupt: Any | None,
+    next_nodes: Sequence[str] = (),
 ) -> RunResult:
     """Read a RunResult from an ingest thread's state values and its open interrupt.
 
     Both backends use it: the runner's checkpointer and the server's thread state
-    hold the same keys.
+    hold the same keys. `next_nodes` is the state's `next`: nodes still to run with no
+    interrupt open means the run stopped on an error.
     """
     warnings = tuple(values.get("warnings", []))
     if interrupt is not None:
         request = ReviewRequest.model_validate(interrupt)
         return RunResult(
             thread_id=thread_id, status="review", review=request, warnings=warnings
+        )
+    if next_nodes:
+        return RunResult(
+            thread_id=thread_id,
+            status="failed",
+            action=values.get("review_action"),
+            warnings=warnings,
+            stopped_at=tuple(next_nodes),
         )
     if values.get("skip_reason"):
         return RunResult(thread_id=thread_id, status="skipped", warnings=warnings)
@@ -125,6 +140,10 @@ class UnknownThread(BackendError):
 
 class NoOpenReview(BackendError):
     """The thread exists but nothing is waiting for an answer."""
+
+
+class ReviewBusy(BackendError):
+    """Another answer to this review is still running (e.g. from another surface)."""
 
 
 class Backend(Protocol):
@@ -165,6 +184,7 @@ class Backend(Protocol):
         Raises:
             UnknownThread: No such thread on this vault.
             NoOpenReview: Nothing is waiting for an answer on it.
+            ReviewBusy: Another answer to it is still running.
         """
         ...
 
@@ -191,6 +211,7 @@ class Backend(Protocol):
         Raises (while iterating):
             UnknownThread: No such thread on this vault.
             NoOpenReview: Nothing is waiting for an answer on it.
+            ReviewBusy: Another answer to it is still running.
         """
         ...
 

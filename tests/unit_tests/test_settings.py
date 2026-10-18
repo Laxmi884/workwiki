@@ -142,3 +142,19 @@ def test_reasoning_effort_checked_at_startup(monkeypatch, tmp_path):
     monkeypatch.setenv("WIKI_REASONING_EFFORT", "lowest")
     with pytest.raises(pydantic.ValidationError, match="reasoning_effort"):
         Settings(_env_file=None, vault_path=tmp_path)
+
+
+def test_a_run_may_name_only_the_vault_or_one_under_a_vault_root(tmp_path):
+    from llm_wiki.config import VaultNotAllowed, resolve_vault
+
+    vault, roots, other = tmp_path / "vault", tmp_path / "tests", tmp_path / "other"
+    for d in (vault / "10_projects", roots / "copy", other):
+        d.mkdir(parents=True)
+    (roots / "escape").symlink_to(other)
+    settings = Settings(_env_file=None, vault_path=vault, vault_roots=str(roots))
+    assert resolve_vault(None, settings) == vault.resolve()
+    assert resolve_vault(str(vault), settings) == vault.resolve()
+    assert resolve_vault(roots / "copy", settings) == (roots / "copy").resolve()
+    for bad in (other, vault / "10_projects", roots / "escape", "/", roots / "missing"):
+        with pytest.raises(VaultNotAllowed):
+            resolve_vault(bad, settings)

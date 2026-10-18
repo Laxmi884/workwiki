@@ -11,6 +11,7 @@ read-only a property of the backend instead: whatever tool, subagent or eviction
 
 from __future__ import annotations
 
+from deepagents import FilesystemPermission
 from deepagents.backends import FilesystemBackend
 from deepagents.backends.protocol import (
     DeleteResult,
@@ -69,3 +70,15 @@ class ReadOnlyFilesystemBackend(FilesystemBackend):
         self, files: list[tuple[str, bytes]]
     ) -> list[FileUploadResponse]:
         return self.upload_files(files)
+
+
+# Git history and Obsidian's settings (LiveSync keeps its CouchDB password and vault
+# passphrase in .obsidian/plugins/…/data.json): no agent reads or lists them.
+HIDDEN_VAULT_PATHS = ("/vault/.git/**", "/vault/.obsidian/**")
+
+
+def hidden_vault_rule() -> FilesystemPermission:
+    """Return the rule every agent gets: `.git` and `.obsidian` are neither read nor written."""
+    return FilesystemPermission(
+        operations=["read", "write"], paths=list(HIDDEN_VAULT_PATHS), mode="deny"
+    )

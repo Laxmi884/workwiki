@@ -54,7 +54,7 @@ PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(
         r"\bAKCp[A-Za-z0-9]{50,}|\bcmVmdGtu[A-Za-z0-9]{40,}"
     ),  # JFrog key, reference token
-    re.compile(r"\bxox[abprs]-[A-Za-z0-9-]{10,}"),  # Slack
+    re.compile(r"\bxox[abeprs]-[A-Za-z0-9-]{10,}|\bxapp-[A-Za-z0-9-]{10,}"),  # Slack
     re.compile(r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b"),  # AWS access key id
     re.compile(r"\bAIza[0-9A-Za-z_-]{35}"),  # Google
     re.compile(r"\blsv2_(?:pt|sk)_[A-Za-z0-9_]{20,}"),  # LangSmith
@@ -65,8 +65,14 @@ PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"://[^/\s:@]+:([^/\s@]+)@"),  # password in a URL
     # key = value, when the value looks generated: 8+ characters with a digit, no spaces
     re.compile(
-        r"(?i)\b(?:password|passwd|pwd|secret|token|api[_-]?key|access[_-]?key)\b"
+        r"(?i)\b(?:password|passphrase|passwd|pwd|secret|token|api[_-]?key|access[_-]?key)\b"
         r"\s*[:=]\s*['\"]?((?=[^\s'\"]*\d)[^\s'\"]{8,})"
+    ),
+    # a JSON string under a secret-named key, whatever it looks like (app settings
+    # such as LiveSync's data.json: passphrases may be plain words with spaces)
+    re.compile(
+        r"(?i)\"[^\"\n]*(?:password|passphrase|passwd|secret|token|api[_-]?key)[^\"\n]*\""
+        r"\s*:\s*\"((?:[^\"\\\n]|\\.){4,})\""
     ),
 )
 

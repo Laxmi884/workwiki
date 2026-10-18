@@ -182,4 +182,4 @@ class IngestRunner:
         """Read where the thread stands from the checkpointer (no graph run)."""
         snapshot = self.graph.get_state(self._config(thread_id))
         interrupt = snapshot.interrupts[0].value if snapshot.interrupts else None
-        return run_result(thread_id, snapshot.values, interrupt)
+        return run_result(thread_id, snapshot.values, interrupt, snapshot.next)

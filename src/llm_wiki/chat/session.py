@@ -27,6 +27,7 @@ from llm_wiki.backend import (
     Finished,
     NoOpenReview,
     NoteNotFound,
+    ReviewBusy,
     RunResult,
     StreamEvent,
     UnknownThread,
@@ -172,7 +173,7 @@ def _command(
         finished = yield from _follow(
             backend.stream_answer(open_review.thread_id, answer)
         )
-    except (UnknownThread, NoOpenReview) as exc:  # answered elsewhere meanwhile
+    except (UnknownThread, NoOpenReview, ReviewBusy) as exc:  # answered elsewhere
         yield ChatReply(text=f"Can't answer that review here: {exc}")
         return
     yield _shown(finished.result, link_base, finished.progress)

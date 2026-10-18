@@ -30,14 +30,13 @@ from llm_wiki.domain.changes import (
     sha256_text,
 )
 from llm_wiki.frontmatter import split_frontmatter
-from llm_wiki.tasks_syntax import append_id
+from llm_wiki.tasks_syntax import append_id, line_changed_beyond_ids
 
 VaultReader = Callable[[str], str | None]
 
 # "## Name": level = number of "#", name compared case- and spacing-insensitively.
 _HEADING_RE = re.compile(r"^(?P<hashes>#{1,6})[ \t]+(?P<name>.*?)[ \t]*$")
 _FENCE_PREFIXES = ("```", "~~~")
-_ID_SUFFIX_RE = re.compile(r" \^t-[0-9a-z]{6}$")
 
 
 class RenderError(ValueError):
@@ -304,18 +303,11 @@ def _add_alias(text: str, edit: AddAlias) -> str:
 
 def _check_only_ids_added(before: str, after: str) -> None:
     """Decision 0001: a raw note may only gain ` ^t-xxxxxx` at the end of task lines."""
-    old = before.splitlines(keepends=True)
-    new = after.splitlines(keepends=True)
-    if len(old) != len(new):
+    line = line_changed_beyond_ids(before, after)
+    if line == 0:
         raise RenderError("raw note: line count changed")
-    for n, (a, b) in enumerate(zip(old, new, strict=True), start=1):
-        if a == b:
-            continue
-        a_body, b_body = a.rstrip("\r\n"), b.rstrip("\r\n")
-        ending_kept = a[len(a_body) :] == b[len(b_body) :]
-        suffix = _ID_SUFFIX_RE.search(b_body)
-        if not (ending_kept and suffix and b_body[: suffix.start()] == a_body.rstrip()):
-            raise RenderError(f"raw note: line {n} changed beyond adding a task ID")
+    if line is not None:
+        raise RenderError(f"raw note: line {line} changed beyond adding a task ID")
 
 
 def render_file(
