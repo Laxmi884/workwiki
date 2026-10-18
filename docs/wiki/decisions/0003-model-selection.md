@@ -36,3 +36,7 @@ code changes, both from the local environment and when creating assistants in La
 
 One typed string works the same in `.env`, in code and in Studio's assistant form, and validating it at
 startup turns a typo into an immediate error instead of a failed run later.
+
+## Addendum 2026-10-18: the cloud model stays DeepSeek Flash
+
+User: "deepseek is ok". `WIKI_MODEL=openrouter:deepseek/deepseek-v4.1-flash` with `WIKI_REASONING_EFFORT=low` is the production setting; eval baselines in progress.md (ingest 0.84 first pass, 1.0 after a revise; Q&A 0.956). The mechanism (context `model` over `WIKI_MODEL`, fallbacks) is unchanged.

@@ -6,6 +6,8 @@ Single source of truth for project status. Updated at the end of every session.
 
 Working mode (CLAUDE.md, since 2026-10-15): Claude builds in reviewed steps, each with a git-ignored notebook in `notebooks/` (1.1–6.2 exist, in building-block order by part, renumbered 2026-10-17; `notebooks/README.md` has the parts and the old→new map; `notebooks/_src/nb<part>.<step>.py` builds them, `_src/run.sh` executes; answer keys live outside the repo, e.g. the session scratchpad). Commit only after the user approves.
 
+**Production (2026-10-18):** the Docker stack (`compose.yml`: api + Postgres + Redis, `--profile slack` for the bot) now runs on the real vault `~/Work` (started with `WIKI_VAULT_PATH=$HOME/Work docker compose --profile slack up -d --wait`; `.env` still says `~/WorkDev`, so a bare `docker compose up` would use the dev vault). Rollover cron installed on the server: 07:00 America/Toronto, first run 2026-10-19 11:00 UTC. `README.md` (full) and `AGENTS.md` (setup runbook for coding agents) written. Left for the user: Docker Desktop at login; LiveSync still points at `~/WorkDev`.
+
 **Now (2026-10-18):** phases 5 and 6a–6b done (eval baselines: ingest 0.84 first pass / 1.0 after a revise, Q&A 0.956). Real notes may go to the cloud model (0016). Rollover committed (notebook 8.1); scheduling committed (`742122d`, [[decisions/0017-scheduling|0017]]; notebook 8.2; guide `docs/scheduling.md`). **Next:** real use on `~/Work` on the Docker server with a 07:00 rollover cron; LangSmith tracing stays on for now, user monitors the first runs (0016 addendum). `WIKI_TIMEZONE=America/Toronto` in `.env` and `.env.example`.
 
 **Slack adapter (2026-10-18):** step 1 (`f6b5b13`) and the review fixes (`7d988e5`) committed; step 2 (the bot) committed and phone-checked; Slack threads as conversations committed (`fbddb80`); decision 0018 written. **Step 3 (the notifier) built and committed 2026-10-18 (`5c509e1`)** (plan `docs/superpowers/plans/2026-10-18-slack-step3-notifier.md`; 856 unit pass; notebook 8.5): DMs a review opened elsewhere, clears buttons of one answered elsewhere. **Next:** user glances at the Slack DM on the phone; then step 4 (opt-in auto-ingest) or the production checklist (real vault `~/Work`, docker-image test fix, model choice). In the DM, commands start with `!` (Slack keeps `/` for its own). `WIKI_SERVER_TESTS=docker` fixed 2026-10-18 (36/36; see log), uncommitted.
@@ -30,7 +32,7 @@ Model: `openrouter:deepseek/deepseek-v4.1-flash` (~$0.001 per ingest, ~$0.002 pe
 
 ## Open decisions
 
-- Which cloud model to use alongside the local default (mechanism settled in [[decisions/0003-model-selection|0003]]). `WIKI_MODEL` is now `openrouter:deepseek/deepseek-v4.1-flash` (since 2026-10-16; the free Nemotron hung and returned provider errors); `gemma4:12b` misses person notes.
+- None. Model settled 2026-10-18: `openrouter:deepseek/deepseek-v4.1-flash` stays ([[decisions/0003-model-selection|0003]] addendum).
 
 ## Setup
 
