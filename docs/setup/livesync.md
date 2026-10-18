@@ -13,7 +13,8 @@ Mac: Obsidian + LiveSync ── CouchDB in Docker ◀───────┘
 ```
 
 Checked against the LiveSync server guide (`docs/setup_own_server.md`, updated 2026-09-29) on
-2026-10-15. Mac status that day: Docker 28 and Obsidian installed; Tailscale and Deno not installed.
+2026-10-15; steps 1–3 run for real on 2026-10-18 (CouchDB 3.5.3, LiveSync scripts at commit
+`f0ea5cb`).
 
 ## What it costs and what to know first
 
@@ -31,8 +32,8 @@ Checked against the LiveSync server guide (`docs/setup_own_server.md`, updated 2
 ## 1. Install the tools (Mac)
 
 ```sh
-brew install deno                 # LiveSync's setup scripts need Deno 2
-brew install --cask tailscale     # or the Mac App Store version
+brew install deno                     # steps 3 and 5 both run Deno 2 scripts
+brew install --cask tailscale-app     # pkg installer: asks for your Mac password; or the App Store version
 ```
 
 Open Tailscale, sign in (free Personal plan), and install Tailscale on the phone with the same
@@ -44,17 +45,15 @@ Keep credentials out of the repo:
 
 ```sh
 mkdir -p ~/.livesync/couchdb-data ~/.livesync/couchdb-etc && cd ~/.livesync
-cat > env <<'EOF'
-export username=wiki-admin
-export password=<a long random password>
-EOF
-chmod 600 env && . ./env
+umask 077
+printf 'export username=wiki-admin\nexport password=%s\n' "$(openssl rand -hex 24)" > env
+. ./env
 
 docker run --name couchdb-for-ols -d --restart always \
   -e COUCHDB_USER=$username -e COUCHDB_PASSWORD=$password \
   -v ~/.livesync/couchdb-data:/opt/couchdb/data \
   -v ~/.livesync/couchdb-etc:/opt/couchdb/etc/local.d \
-  -p 127.0.0.1:5984:5984 couchdb
+  -p 127.0.0.1:5984:5984 couchdb:3
 ```
 
 `127.0.0.1:` keeps CouchDB off your Wi-Fi network; only Tailscale (next step) reaches it.
@@ -66,11 +65,16 @@ end up owned by uid 5984).
 ```sh
 cd ~/.livesync && . ./env
 export hostname=http://localhost:5984 database=workdev
-curl -s https://raw.githubusercontent.com/vrtmrz/obsidian-livesync/main/utils/couchdb/couchdb-init.sh | bash
+REF=f0ea5cb3a0a52f4cde7cb4d1ff24d7fa24d56068   # a commit whose scripts you have read; main moves
+deno run --minimum-dependency-age=0 --allow-env --allow-net \
+  https://raw.githubusercontent.com/vrtmrz/obsidian-livesync/$REF/utils/couchdb/provision.ts
 ```
 
-Expect `CouchDB provisioning completed.` (it sets CORS, request sizes, and creates the `workdev`
-database).
+Upstream's `couchdb-init.sh` now only wraps this Deno script. Run it from the URL: it imports a
+sibling file, so a downloaded copy fails with "Module not found". Expect
+`CouchDB provisioning completed.` It enables single-node mode, sets CORS to Obsidian's origins and
+request sizes, and creates the `workdev` database. Settings land in
+`~/.livesync/couchdb-etc/docker.ini` and survive a restart.
 
 ## 4. Give it a private HTTPS address
 
@@ -79,8 +83,10 @@ tailscale serve --bg 5984
 tailscale serve status            # shows https://<mac-name>.<tailnet>.ts.net → localhost:5984
 ```
 
-Check from the phone's browser (Tailscale on): `https://<mac-name>.<tailnet>.ts.net/` should show
-CouchDB's JSON welcome.
+Check from the phone's browser (Tailscale on): `https://<mac-name>.<tailnet>.ts.net/` should
+ask for a username and password (Safari) or show `{"error":"unauthorized",…}`: provisioning requires a login
+even for `/`. That means it works; cancel, LiveSync gets the login from the setup link.
+The first `tailscale serve` prints a login.tailscale.com link and waits until you enable Serve there.
 
 ## 5. Make a setup link
 
@@ -89,28 +95,46 @@ cd ~/.livesync && . ./env
 export hostname=https://<mac-name>.<tailnet>.ts.net database=workdev
 export passphrase=<vault encryption passphrase: long, keep it safe>
 deno run --minimum-dependency-age=0 --allow-env \
-  https://raw.githubusercontent.com/vrtmrz/obsidian-livesync/main/utils/setup/generate_setup_uri.ts
+  https://raw.githubusercontent.com/vrtmrz/obsidian-livesync/$REF/utils/setup/generate_setup_uri.ts
 ```
 
 It prints an `obsidian://setuplivesync?...` link, a **URI passphrase** (shown once) and an ID
 recovery code. Save the passphrase and recovery code in a password manager. The link expires after
 the printed date (7-day window).
 
+The link plus its URI passphrase unlock everything (CouchDB login and vault passphrase). Never
+paste the output into a chat or ticket; if it leaks, change the CouchDB password and make a new link.
+
 ## 6. First device: the Mac's `~/WorkDev`
 
-1. Obsidian → open `~/WorkDev` → Settings → Community plugins → Browse → **Self-hosted LiveSync** →
-   install, enable.
+1. Obsidian → close every other vault window (the link goes to the window in front) → open
+   `~/WorkDev` → Settings → Community plugins → turn off Restricted mode → Browse →
+   **Self-hosted LiveSync** → install, **enable**. Installed but not enabled, the link gives
+   "Unrecognized URI".
 2. Open the `obsidian://setuplivesync?...` link (paste it in Safari) → enter the URI passphrase →
-   follow the prompts for a **new** remote: this Mac's files go up first.
-3. Make a test note; check it shows no errors in the LiveSync log.
+   **Initialise and overwrite remote** (this Mac's files go up first). Leave Customisation Sync and
+   Hidden File Sync off.
+3. The plugin's settings file holds the CouchDB password and passphrase; keep it out of git:
+   `echo .obsidian/plugins/obsidian-livesync/data.json >> ~/WorkDev/.gitignore`
+4. **Turn sync on.** The script's link sets no sync mode, so after setup nothing syncs by itself
+   (files written to disk just sit there). Settings → Self-hosted LiveSync → 🔄 Sync Settings →
+   **Synchronization Preset: LiveSync** → Apply.
+5. Write a file into the vault from a terminal (e.g. `05_generated/livesync-test.md`); it should
+   reach CouchDB within seconds. That is the path agent writes take.
 
 ## 7. Phone
 
-1. Install Obsidian and Tailscale (connected).
-2. Create an **empty** vault named WorkDev, install and enable Self-hosted LiveSync.
-3. On the Mac, LiveSync → **Copy setup URI** for another device (don't reuse the first link);
-   send it to the phone, and the passphrase through a different channel.
-4. Open the link on the phone, enter the passphrase, choose to fetch from the remote.
+1. Install Obsidian and Tailscale (connected). On first launch, decline Obsidian Sync and iCloud:
+   create a vault named WorkDev **on this iPhone**.
+2. Community plugins → turn off Restricted mode → install and **enable** Self-hosted LiveSync.
+3. On the Mac: Cmd-P → **Copy settings as a new setup URI** (the plain one) → new URI passphrase →
+   **Time-bound**. Send the link to the phone (AirDrop, Notes); type the passphrase yourself.
+   Delete the link from Notes afterwards.
+4. Open the link on the phone (or copy it and run **Use the copied setup URI**) → passphrase →
+   **Join this device** → **Overwrite all with remote files** → **Delete local files if not on
+   remote** (drops the new vault's `Welcome.md` instead of syncing it to the Mac).
+5. Sync Settings → Synchronization Preset: **LiveSync** (the phone only syncs while Obsidian is in
+   front anyway).
 
 Test both ways: edit on the phone → see it on the Mac; edit on the Mac → see it on the phone.
 
