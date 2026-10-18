@@ -52,3 +52,4 @@ Numbered, one per decision. Template: `decisions/_template.md`.
 - [[decisions/0013-bookkeeping-all-or-nothing|0013]]: the note's task IDs, `tasks.json`, `open-tasks.md` and the ledger are written with every approval, never left out one by one
 - [[decisions/0014-sync-core-async-edges|0014]]: our nodes, tools, runner and CLI stay sync; async only where the framework calls it; stream with sync APIs
 - [[decisions/0015-rules-can-name-pages|0015]]: a page `90_meta/rules.md` links as `[[slug]]` passes the naming check for any line
+- [[decisions/0016-real-notes-to-a-cloud-model|0016]]: real notes go to the cloud model (DeepSeek via OpenRouter); LangSmith tracing of real notes not decided
