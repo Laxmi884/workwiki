@@ -250,8 +250,9 @@ def withdraw_fact(
 ) -> Command:
     """Take back a fact you filed earlier in this review.
 
-    Use it when feedback says a fact is wrong or on the wrong page; then file it again
-    correctly if it is worth keeping.
+    Use it when feedback says a fact is wrong or on the wrong page. To move a fact,
+    file it on the new page first and withdraw the old one only once that worked: if
+    the new filing is refused, keep the old one and ask_user instead of losing it.
 
     Args:
         line: The note line the fact cited.
@@ -553,7 +554,8 @@ def build_brief(
         notes = "\n".join(f"- {f}" for f in feedback)
         parts.append(
             f"The user reviewed it and says:\n{notes}\nChange only what the feedback "
-            "asks: file what is missing, withdraw_fact what is wrong and file it again "
-            "where it belongs. Everything else stays staged as it is."
+            "asks: file what is missing; to move a fact, file it where it belongs "
+            "first, then withdraw_fact the old one (if the new filing is refused, keep "
+            "the old one). Everything else stays staged as it is."
         )
     return "\n\n".join(parts)

@@ -11,7 +11,7 @@ from langchain_core.messages import AIMessage
 from llm_wiki.daily_syntax import parse_daily_note
 from llm_wiki.diffs import apply_edit, vault_reader
 from llm_wiki.domain.changes import AddAlias, AppendToSection, CreateFile
-from llm_wiki.entity_index import load_index
+from llm_wiki.entity_index import build_index, load_index
 from llm_wiki.ingest import nodes, staging
 from llm_wiki.ingest.graph import builder as agent_builder
 from llm_wiki.ingest.staging import StagingContext, StagingError
@@ -891,8 +891,6 @@ def test_aliases_let_a_first_name_line_reach_a_new_page(corpus_ctx):
     ("aliases", "why"),
     [
         (["Martita"], "never says 'Martita'"),
-        (["marta ruiz"], "the title or given twice"),
-        (["Marta", "MARTA"], "the title or given twice"),
         (["Priya"], "already names person-priya-nair"),
         ([""], "short name"),
         (["Marta"] * 6, "at most 5"),
@@ -931,3 +929,40 @@ def test_file_fact_tells_the_model_the_fixed_sections_code_allows():
         assert named == [h.removeprefix("## ") for h in staging.SECTIONS[target]]
     schema = propose_page.tool_call_schema.model_json_schema()
     assert "aliases" in schema["properties"] and "aliases" not in schema["required"]
+
+
+def test_the_title_or_a_repeat_as_alias_is_dropped(corpus_ctx):
+    ctx, line = corpus_ctx
+    page = staging.stage_page(
+        ctx, [], slug="person-marta-ruiz", title="Marta Ruiz", line=line("joined"),
+        aliases=["marta ruiz", "Marta", "MARTA"],
+    )  # fmt: skip
+    assert "aliases:\n- Marta\n" in page.text
+
+
+def test_a_page_the_rules_link_may_take_any_line(corpus_ctx):
+    """Decision 0015: "Interview notes go on [[project-hiring-q4]]" lets code accept it."""
+    ctx, line = corpus_ctx
+    hiring = "10_projects/project-hiring-q4.md"
+    pages = {hiring: "---\ntype: project\ntitle: Hiring Q4\n---\n# Hiring Q4\n"}
+    rules = (
+        "# Rules\n\n- Interview notes go on [[project-hiring-q4]] under Interviews.\n"
+    )
+
+    def ctx_with(rules_text):
+        def read(path):
+            if path == "90_meta/rules.md":
+                return rules_text
+            return pages.get(path, ctx.read(path))
+
+        entities = build_index(pages.items())
+        return dataclasses.replace(ctx, read=read, entities=entities)
+
+    def interview(c):
+        return fact(c, target="project-hiring-q4", section="Interviews",
+                    text="Marta joined as a senior engineer.", line=line("joined"))  # fmt: skip
+
+    with pytest.raises(StagingError, match="doesn't name project-hiring-q4"):
+        interview(ctx_with(rules.replace("[[project-hiring-q4]]", "Hiring Q4")))
+    edits, _ = interview(ctx_with(rules))
+    assert edits[0].path == hiring

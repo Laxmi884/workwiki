@@ -29,7 +29,13 @@ from llm_wiki.backend.base import RunResult
 from llm_wiki.retries import is_transient
 from llm_wiki.runner import IngestRunner
 from tests.eval.corpus import load_labels, load_preferences, note_text
-from tests.eval.score import oracle_feedback, public, score, vault_checks
+from tests.eval.score import (
+    oracle_answers,
+    oracle_feedback,
+    public,
+    score,
+    vault_checks,
+)
 
 Reviewer = str  # "oracle" or "none"
 
@@ -88,21 +94,29 @@ def run_day(
     note = f"00_raw/daily/{day}.md"
     (vault / note).write_text(text)
 
+    def scored(res: RunResult) -> dict[str, Any]:
+        values = runner.graph.get_state(runner._config(thread_id)).values
+        asked = [q.model_dump() for q in res.review.questions] if res.review else []
+        return score(day, values.get("agent_filed", []), labels, lines, asked)
+
     res = _expect_review(runner.start(note, thread_id=thread_id), "start")
-    values = runner.graph.get_state(runner._config(thread_id)).values
-    first = score(day, values.get("agent_filed", []), labels, lines)
-    feedback = (
-        oracle_feedback(day, first, labels, active, lines)
-        if reviewer == "oracle"
-        else []
-    )
+    first = scored(res)
+    first_questions = [q.model_dump() for q in res.review.questions]  # type: ignore[union-attr]
+    feedback, answers = [], {}
+    if reviewer == "oracle":
+        feedback = oracle_feedback(day, first, labels, active, lines, vault)
+        answers = oracle_answers(day, first_questions, labels, vault)
     feedback += [f"Remember from now on: {rule}" for rule in taught]
     final, revised = first, False
-    if feedback and res.review is not None and res.review.revisions_left > 0:
-        answer = {"action": "revise", "feedback": "\n".join(feedback)}
+    if (feedback or answers) and res.review.revisions_left > 0:  # type: ignore[union-attr]
+        answer: dict[str, Any] = {"action": "revise"}
+        if feedback:
+            answer["feedback"] = "\n".join(feedback)
+        if answers:
+            answer["answers"] = answers
         res = _expect_review(runner.resume(thread_id, answer), "revise")
-        values = runner.graph.get_state(runner._config(thread_id)).values
-        final, revised = score(day, values.get("agent_filed", []), labels, lines), True
+        final, revised = scored(res), True
+    values = runner.graph.get_state(runner._config(thread_id)).values
     stats = values.get("agent_stats") or {}
     if taught:  # the user's "remember this", proposed in the same review (R3)
         res = _expect_review(
@@ -118,6 +132,7 @@ def run_day(
         "final": public(final),
         "revised": revised,
         "feedback": feedback,
+        "answers": answers,
         "filed": values.get("agent_filed", []),
         "questions": values.get("questions", []),
         "refusals": stats.get("refusals", 0),
@@ -199,6 +214,7 @@ def summarize(rows: list[dict[str, Any]]) -> dict[str, Any]:
         out[when] = {
             "recall": _ratio(sum(x["found"] for x in s), expected),
             "right_page": _ratio(sum(x["right"] for x in s), expected),
+            "asked": sum(len(x.get("asked", [])) for x in s),
             "extra_lines": sum(len(x["extra_lines"]) for x in s),
             "misplaced": sum(len(x["misplaced"]) for x in s),
             "chores_filed": sum(len(x["chores_filed"]) for x in s),

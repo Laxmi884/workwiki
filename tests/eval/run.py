@@ -205,6 +205,7 @@ def headline(report: dict[str, Any]) -> dict[str, Any]:
             s = ingest[when]
             head[f"{when} recall"] = s["recall"]["rate"]
             head[f"{when} right page"] = s["right_page"]["rate"]
+            head[f"{when} asked"] = s.get("asked")
             head[f"{when} extra lines"] = s["extra_lines"]
             head[f"{when} misplaced"] = s["misplaced"]
             head[f"{when} chores filed"] = s["chores_filed"]

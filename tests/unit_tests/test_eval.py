@@ -17,7 +17,9 @@ from tests.eval.corpus import (
 )
 from tests.eval.score import (
     key_score,
+    oracle_answers,
     oracle_feedback,
+    page_names,
     score,
     unsupported_numbers,
     vault_checks,
@@ -127,7 +129,8 @@ def test_two_days_end_to_end_with_a_scripted_model(tmp_path, monkeypatch, capsys
         # day 2, first pass: Sam's 1:1 line on Sam's page
         [call("file_fact", target="person-sam-ortiz", section="Notes",
               text="Wants to present the search design at the December all-hands.",
-              line=17)],
+              line=17),
+         call("ask_user", question="Who is Hana Kim: a new person page?", line=24)],
         # day 2, revise: the #win the oracle said was missing
         [call("file_fact", target="impact", section="Wins",
               text="The events index cut dashboard p95 from 1.8s to 1.1s.", line=21)],
@@ -152,6 +155,10 @@ def test_two_days_end_to_end_with_a_scripted_model(tmp_path, monkeypatch, capsys
     assert (two["first"]["found"], two["final"]["found"]) == (1, 2)
     assert two["refusals"] == 0 and two["final"]["right"] == 2
     assert "cut dashboard p95" in rounds.briefs[3]  # the oracle's feedback
+    assert two["first"]["asked"] == ["Hana Kim's API spec"]  # asked, not silent
+    assert two["answers"] == {"q1": "File it on impact or person-hana."}
+    assert "File it on impact or person-hana." in rounds.briefs[3]  # answer reached it
+    assert "belongs on decision-log or project-atlas" in rounds.briefs[1]
     impact = next((vault / "40_impact").rglob("*.md")).read_text()
     assert "1.8s to 1.1s" in impact
     for r in rows:
@@ -197,3 +204,32 @@ def test_two_days_end_to_end_with_a_scripted_model(tmp_path, monkeypatch, capsys
     printed = capsys.readouterr().out
     assert "2026-11-04: B missed ['p95 is 1.8s']" in printed
     assert "1.00 → 0.00  What was the original Atlas GA date?" in printed
+
+
+def test_the_oracle_names_pages_as_the_vault_has_them(tmp_path):
+    vault = make_vault(tmp_path / "v")
+    (vault / "20_people/person-marta-ruiz.md").write_text("# Marta Ruiz\n")
+    got = page_names(
+        ["person-marta", "impact-2026", "30_decisions/decision-", "*", "payments"],
+        vault,
+    )
+    assert got == ["person-marta-ruiz", "impact", "decision-log", "payments"]
+    assert page_names(["*"], vault) == []
+
+
+def test_the_oracle_answers_questions_from_the_labels():
+    labels = load_labels()
+    day = labels["days"]["2026-11-04"]
+    fact_line = next(f["line"] for f in day["facts"] if "cache layer" in f["anchor"])
+    chore_line = day["chore_lines"][0]
+    questions = [
+        {"id": "q1", "line": fact_line},
+        {"id": "q2", "line": chore_line},
+        {"id": "q3", "line": 12},  # a task line nobody labelled
+    ]
+    answers = oracle_answers("2026-11-04", questions, labels)
+    assert answers["q1"].startswith("File it on decision-log")
+    assert "chore" in answers["q2"] and answers["q3"].startswith("Leave it out")
+    lines = note_text("2026-11-04").splitlines()
+    s = score("2026-11-04", [], labels, lines, [{"line": fact_line}])
+    assert s["asked"] == ["not to add a cache layer"] and s["found"] == 0

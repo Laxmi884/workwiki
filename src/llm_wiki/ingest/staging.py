@@ -41,7 +41,13 @@ from dataclasses import dataclass, field
 import yaml
 
 from llm_wiki.daily_syntax import is_fence
-from llm_wiki.domain.changes import AppendToSection, CreateFile, Edit, ReplaceSection
+from llm_wiki.domain.changes import (
+    RULES_PATH,
+    AppendToSection,
+    CreateFile,
+    Edit,
+    ReplaceSection,
+)
 from llm_wiki.domain.daily import DailyNote
 from llm_wiki.domain.entities import EntityKind
 from llm_wiki.domain.task_index import TaskProposal
@@ -201,8 +207,16 @@ def _names(ctx: StagingContext, staged: Sequence[Edit], slug: str) -> list[str]:
 def _names_entity(
     ctx: StagingContext, staged: Sequence[Edit], slug: str, line: int
 ) -> bool:
-    """Return True if the task maps to `slug`, or the line's context or feedback names it."""
+    """Return True if the task maps to `slug`, a rule links it, or the context names it.
+
+    The context is the line, its parents, its heading and the user's feedback. A page
+    the user's rules link as `[[slug]]` may take any line (decision 0015): the user
+    named it for a kind of fact ("interview notes go on [[project-hiring-q4]]"), and
+    code can't tell kinds of facts apart.
+    """
     if ctx.task_projects.get(line) == slug:
+        return True
+    if slug in find_links(ctx.read(RULES_PATH) or ""):
         return True
     phrases = _names(ctx, staged, slug)
     texts = [*_context(ctx.note, line), *ctx.feedback]
@@ -506,9 +520,9 @@ def _check_aliases(
     """Return a new page's aliases, cleaned; each must be a name the note uses.
 
     Raises:
-        StagingError: Too many, empty or long, the title again or twice, not in the
-            note, or already a name of another page (existing or proposed): a name
-            shared by two pages links neither.
+        StagingError: Too many, empty or long, not in the note, or already a name
+            of another page (existing or proposed): a name shared by two pages links
+            neither. The title again, or an alias twice, is dropped.
     """
     if len(aliases) > MAX_ALIASES:
         raise StagingError(f"at most {MAX_ALIASES} aliases")
@@ -521,7 +535,7 @@ def _check_aliases(
         if not alias or len(alias) > MAX_NAME:
             raise StagingError("an alias must be a short name, e.g. a first name")
         if name_key(alias) in seen:
-            raise StagingError(f"{alias!r} is the title or given twice")
+            continue  # the title again, or twice: harmless, so not worth a refusal
         if not contains_phrase(note, alias):
             raise StagingError(
                 f"the note never says {alias!r}; aliases are names the note uses"

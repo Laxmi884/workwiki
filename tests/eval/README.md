@@ -29,8 +29,10 @@ copy the note into the vault → ingest until the review → score the first pas
   → approve → the graph's apply writes and git-commits → check the vault
 ```
 
-- **Reviewer:** `--reviewer oracle` (the default) writes the feedback a careful user would give, from the labels:
-  missed lines, wrong pages, and rules not followed once taught. `none` approves as is.
+- **Reviewer:** `--reviewer oracle` (the default) plays a careful user, from the labels. Its feedback lists missed
+  lines and wrong pages, each with the page it belongs on (by its slug in the vault, so the naming check accepts it),
+  plus rules not followed once taught. It also answers the agent's questions: where a labelled line goes, "don't
+  file" for a chore, "leave it out" for anything else. `none` approves as is.
 - **Preferences:** P1–P5 (`preferences.yaml`) are taught on their day. That day's revise feedback carries the rule,
   and the review's "remember" answer saves it to `90_meta/rules.md`. Later days are scored on following it.
 
@@ -53,6 +55,8 @@ copy the note into the vault → ingest until the review → score the first pas
 The headline (printed at the end; `compare` prints it for two runs):
 - `first`/`final recall` and `right page`: the share of the 82 labelled lines filed, and filed on an acceptable
   page. Before and after the one revise.
+- `asked`: labelled lines the agent didn't file but asked about. The guardrails tell it to ask when a line names no
+  page, so these aren't silent misses; the oracle answers them in the revise.
 - `extra lines`, `misplaced`, `chores filed`: noise. Extra lines aren't wrong in themselves, since the labels list
   what matters most, not everything.
 - `pref <name>`: how often a taught preference was followed (only days after it was taught). `state` is P5,

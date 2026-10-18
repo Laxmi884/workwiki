@@ -26,7 +26,6 @@ Model: `openrouter:deepseek/deepseek-v4.1-flash` (~$0.001 per ingest, ~$0.002 pe
 
 ## Open decisions
 
-- Rules vs the naming check: a remembered rule that names a page (P4: interviews → `[[project-hiring-q4]]`) can't be followed, because the check never reads rules (found by the 6b baseline, 2026-10-17).
 - Which cloud model to use alongside the local default (mechanism settled in [[decisions/0003-model-selection|0003]]). `WIKI_MODEL` is now `openrouter:deepseek/deepseek-v4.1-flash` (since 2026-10-16; the free Nemotron hung and returned provider errors); `gemma4:12b` misses person notes.
 
 ## Setup

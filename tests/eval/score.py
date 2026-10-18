@@ -3,6 +3,8 @@
 No model grades anything here. Per day, first pass and after one revise:
 - recall: labelled facts with a filing citing their line
 - right_page: of all labelled facts, those filed on an acceptable page
+- asked: labelled lines not filed that the agent asked the user about (it was told
+  to ask when a line names no page, so these aren't silent misses)
 - extra: cited lines with no label (chores counted apart)
 - misplaced: filings of a labelled line on a page that doesn't fit (e.g. an update
   copied into the decision log), even if another filing of it is right
@@ -66,11 +68,14 @@ def score(
     filed: list[dict[str, Any]],
     labels: dict[str, Any],
     note_lines: list[str],
+    questions: list[dict[str, Any]] = (),  # type: ignore[assignment]
 ) -> dict[str, Any]:
     """Score one day's filings (dicts: line, path, section, text) against its labels.
 
-    Keys starting with "_" hold the label dicts for `oracle_feedback`; reports drop them.
+    `questions` are the agent's questions (dicts with `line`). Keys starting with "_"
+    hold the label dicts for `oracle_feedback`; reports drop them.
     """
+    asked_lines = {q["line"] for q in questions}
     d = labels["days"][day]
     facts = d["facts"]
     missed, wrong = [], []
@@ -111,6 +116,7 @@ def score(
         "right": right,
         "expected": n,
         "missed": [f["anchor"] for f in missed],
+        "asked": [f["anchor"] for f in missed if f["line"] in asked_lines],
         "wrong_page": [(f["anchor"], p) for f, p in wrong],
         "chores_filed": chores,
         "extra_lines": sorted(cited - set(by_line) - set(d["chore_lines"])),
@@ -127,26 +133,57 @@ def public(scored: dict[str, Any]) -> dict[str, Any]:
     return {k: v for k, v in scored.items() if not k.startswith("_")}
 
 
+def page_names(pages: list[str], vault: Path | None) -> list[str]:
+    """Return what a user would call a label's acceptable pages: slugs or targets.
+
+    Labels hold path fragments ("person-marta", "impact-2026"); a user names the page
+    as it is in the vault ("person-marta-ruiz"), which is also what lets the naming
+    check accept the feedback. A fragment with no page yet stays as it is.
+    """
+    out: list[str] = []
+    stems = sorted(f.stem for f in vault.glob("[12]*/*.md")) if vault else []
+    for p in pages:
+        if p == "*":
+            continue
+        if p.startswith("impact"):
+            out.append("impact")
+        elif "decision" in p:
+            out.append("decision-log")
+        else:
+            out += [s for s in stems if p in s] or [p]
+    return list(dict.fromkeys(out))
+
+
+def _where(f: dict[str, Any], vault: Path | None) -> str:
+    names = page_names(f["pages"], vault)
+    return " or ".join(names) if names else "wherever it fits (a concept page is fine)"
+
+
 def oracle_feedback(
     day: str,
     scored: dict[str, Any],
     labels: dict[str, Any],
     active: set[str],
     note_lines: list[str],
+    vault: Path | None = None,
 ) -> list[str]:
     """Return the revise feedback a careful user would give, from the labels.
 
-    Missed facts, wrong pages, and (for preferences already taught) chores filed and
-    rules not followed.
+    Missed facts (with where they belong), wrong pages, and (for preferences already
+    taught) chores filed and rules not followed. With `vault`, pages are named by
+    their slugs there.
     """
     out = []
     for f in scored["_missed"]:
         quote = note_lines[f["line"] - 1].strip()
-        out.append(f'Line {f["line"]} ("{quote}") is worth keeping but wasn\'t filed.')
-    for f, paths in scored["_wrong"]:
-        want = ", ".join(p for p in f["pages"] if p != "*")
         out.append(
-            f"Line {f['line']} went to {', '.join(paths)}; it belongs on {want}."
+            f'Line {f["line"]} ("{quote}") is worth keeping but wasn\'t filed; it '
+            f"belongs on {_where(f, vault)}."
+        )
+    for f, paths in scored["_wrong"]:
+        out.append(
+            f"Line {f['line']} went to {', '.join(paths)}; it belongs on "
+            f"{_where(f, vault)}."
         )
     if "chores" in active:
         out += [
@@ -168,6 +205,30 @@ def oracle_feedback(
                 f"{pref.replace('_', ' ')} (see the rules)."
             )
     return list(dict.fromkeys(out))
+
+
+def oracle_answers(
+    day: str,
+    questions: list[dict[str, Any]],
+    labels: dict[str, Any],
+    vault: Path | None = None,
+) -> dict[str, str]:
+    """Return the user's answers to the agent's questions (id → text), from the labels.
+
+    A labelled line: where it belongs. A chore: don't file it. Anything else: leave
+    it out (the labels list what matters).
+    """
+    d = labels["days"][day]
+    facts = {f["line"]: f for f in d["facts"]}
+    answers = {}
+    for q in questions:
+        if (f := facts.get(q["line"])) is not None:
+            answers[q["id"]] = f"File it on {_where(f, vault)}."
+        elif q["line"] in d["chore_lines"]:
+            answers[q["id"]] = "It's a routine chore; don't file it."
+        else:
+            answers[q["id"]] = "Leave it out; it doesn't need filing."
+    return answers
 
 
 def section_lines(text: str, heading: str) -> list[str]:
