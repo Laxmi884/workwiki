@@ -76,8 +76,11 @@ def _wait_until_up(url: str, alive, deadline_s: float, log_path: Path) -> None:
 
 # Strict: the servers restore only LangGraph's safe types, as a future langgraph-api will
 # by default. Ingest state is plain JSON (ingest/state.py), so nothing of ours is needed.
+# Tracing is off under both names: compose loads the real `.env`, whose
+# LANGSMITH_TRACING_V2=true alone turns it on and exhausts the scripted model.
 SERVER_ENV = {
     "LANGSMITH_TRACING": "false",
+    "LANGSMITH_TRACING_V2": "false",
     "LANGGRAPH_STRICT_MSGPACK": "true",
     "WIKI_SERVER_TOKEN": "test-token",  # conftest sets the same for the clients
 }
@@ -151,6 +154,7 @@ def _docker_server(work: Path, shared: Path):
                         }
                     ),
                     "LANGSMITH_TRACING": "false",
+                    "LANGSMITH_TRACING_V2": "false",
                     "WIKI_VAULT_ROOTS": str(shared),  # the tests' vaults are inside
                     "WIKI_SERVER_TOKEN": "test-token",
                 },

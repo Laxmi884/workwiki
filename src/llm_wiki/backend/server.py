@@ -15,6 +15,7 @@ a failed run doesn't raise but returns `{"__error__": {"error": <exception class
 
 from __future__ import annotations
 
+import contextlib
 import functools
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from pathlib import Path
@@ -185,9 +186,20 @@ class ServerBackend:
     ) -> NoReturn:
         """Raise for a failed ingest run (a missing note deletes its new thread)."""
         if error.get("error") == "FileNotFoundError":  # from load_note
-            self._client.threads.delete(thread_id)
+            self._delete_when_idle(thread_id)
             raise NoteNotFound(f"no note at {note_path} in {self._vault}")
         _ingest_error(error)
+
+    def _delete_when_idle(self, thread_id: str) -> None:
+        """Delete `thread_id` once its runs have ended.
+
+        A stream's "error" part arrives while the server is still closing the run, and
+        the Postgres server refuses to delete a thread with a run in flight (HTTP 500).
+        """
+        for run in self._client.runs.list(thread_id):
+            with contextlib.suppress(httpx.HTTPError):  # a failed run may raise on join
+                self._client.runs.join(thread_id, run["run_id"])
+        self._client.threads.delete(thread_id)
 
     @_reachable
     def pending(self) -> list[RunResult]:
