@@ -32,3 +32,9 @@ The user agreed on 2026-10-17 to send real notes to the cloud model. What is sen
 
 Measured quality beats an untested local model, and the user judged the notes fine to share with the provider. The
 `init_chat_model` setup (0003) keeps a switch to a local model a one-line change once one passes the eval.
+
+## Addendum 2026-10-18: LangSmith tracing stays on for now
+
+User: "for now let the tracing be on i'll monitor initial runs". Real runs (ingest, assistant, and on the
+server the rollover cron, whose result holds task text) are traced to LangSmith unredacted. Revisit after the
+first runs; turning it off is `LANGSMITH_TRACING_V2=false` in `.env` (and a server restart).

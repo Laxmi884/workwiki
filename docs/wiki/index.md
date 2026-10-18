@@ -32,6 +32,7 @@ One note per concept. Template: `learnings/_template.md`.
 - [[learnings/redaction|Redaction]]: filter the request, not the state; why `PIIMiddleware` leaks in a deep agent; replacing the general-purpose subagent
 - [[learnings/offload|Offload]]: cap, page or offload; Deep Agents' built-in eviction for tool results and user messages; why no middleware of ours
 - [[learnings/evals|Evals]]: label once, run the real graph, score in code, compare; first vs final pass; one run is one sample
+- [[learnings/scheduling-and-time-zones|Scheduling and time zones]]: whose "today"; a cron runs a graph; server cron vs launchd; the image needed system zone files
 - [[learnings/code-only-jobs|Code-only jobs]]: rollover writes `00_raw/` without a review because no model text is involved; create-if-absent, catch up by ID
 
 ## Decisions
@@ -54,3 +55,4 @@ Numbered, one per decision. Template: `decisions/_template.md`.
 - [[decisions/0014-sync-core-async-edges|0014]]: our nodes, tools, runner and CLI stay sync; async only where the framework calls it; stream with sync APIs
 - [[decisions/0015-rules-can-name-pages|0015]]: a page `90_meta/rules.md` links as `[[slug]]` passes the naming check for any line
 - [[decisions/0016-real-notes-to-a-cloud-model|0016]]: real notes go to the cloud model (DeepSeek via OpenRouter); LangSmith tracing of real notes not decided
+- [[decisions/0017-scheduling|0017]]: rollover runs on an Agent Server cron or Mac launchd (`python -m llm_wiki.schedule`); `WIKI_TIMEZONE` decides "today"
