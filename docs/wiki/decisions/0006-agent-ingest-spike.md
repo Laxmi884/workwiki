@@ -92,6 +92,8 @@ load_note → assign_ids → track_tasks            (code, as today)
 - Risks: Nemotron (free) tool calling unverified, so try it in S1 and fall back to Claude for
   the spike; `ScriptedModel` needs tool calls for end-to-end tests (S2 tests the checks);
   `write_todos` and `task` are always present (core middleware), so the prompt says not to use them.
+  (2026-10-17: `write_todos` left the defaults in Deep Agents 0.7; `task` is now hidden and refused in code by
+  `ToolGuardMiddleware`, and the prompt line is gone: [[learnings/tool-allow-list]].)
 
 Steps (user writes the code): S1 minimal agent over the fixture vault (no writes, skills
 load, `Command` state update, model tool calling); S2 staging checks + tools, tests first;
