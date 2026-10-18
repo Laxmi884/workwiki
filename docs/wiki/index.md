@@ -35,6 +35,7 @@ One note per concept. Template: `learnings/_template.md`.
 - [[learnings/scheduling-and-time-zones|Scheduling and time zones]]: whose "today"; a cron runs a graph; server cron vs launchd; the image needed system zone files
 - [[learnings/code-only-jobs|Code-only jobs]]: rollover writes `00_raw/` without a review because no model text is involved; create-if-absent, catch up by ID
 - [[learnings/streaming-progress|Streaming a run as steps]]: v2 stream parts → one frozen `Progress`; custom events as the contract; generators that end with one `Finished`
+- [[learnings/reconcile-loop|Reconcile loop]]: poll the open state, compare with what Slack shows, fix new/gone/changed; idempotent and restart-safe
 - [[learnings/slack-surface|The Slack surface]]: Socket Mode, events and button payloads, task chunks, buttons as `Command(resume=…)` with a token, bearer auth on the server
 
 ## Decisions
@@ -58,3 +59,4 @@ Numbered, one per decision. Template: `decisions/_template.md`.
 - [[decisions/0015-rules-can-name-pages|0015]]: a page `90_meta/rules.md` links as `[[slug]]` passes the naming check for any line
 - [[decisions/0016-real-notes-to-a-cloud-model|0016]]: real notes go to the cloud model (DeepSeek via OpenRouter); LangSmith tracing of real notes not decided
 - [[decisions/0017-scheduling|0017]]: rollover runs on an Agent Server cron or Mac launchd (`python -m llm_wiki.schedule`); `WIKI_TIMEZONE` decides "today"
+- [[decisions/0018-slack-surface|0018]]: Slack DM bot over `Backend` (Socket Mode, one user, `!` commands, buttons with the review token, threads as conversations); Agent Server API behind `WIKI_SERVER_TOKEN`
