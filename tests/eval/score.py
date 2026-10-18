@@ -299,6 +299,7 @@ def key_score(answer: str, keys: list[list[str]] | str) -> float:
     must say the notes don't say.
     """
     text = answer.casefold().replace("’", "'")
+    text = re.sub(r"\*+|`", "", text)  # "decided **not** to add" says "not to add"
     if keys == "unanswerable":
         return float(any(p in text for p in NOT_SAID))
     hits = sum(any(w.casefold() in text for w in group) for group in keys)

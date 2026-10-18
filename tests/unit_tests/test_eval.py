@@ -113,6 +113,10 @@ def test_key_score():
     assert key_score("GA moved to Dec 9.", [["dec 9"], ["go/no-go"]]) == 0.5
     assert key_score("The notes don’t say.", "unanswerable") == 1.0
     assert key_score("Lena Park.", "unanswerable") == 0.0
+    assert (
+        key_score("We decided **not** to add a `cache`.", [["not to add a cache"]])
+        == 1.0
+    )
 
 
 def test_two_days_end_to_end_with_a_scripted_model(tmp_path, monkeypatch, capsys):

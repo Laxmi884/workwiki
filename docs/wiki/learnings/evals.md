@@ -51,6 +51,10 @@ labelled filings and no reviewer.
   parent bullet that does. So a scripted "wrong page" filing has to be one code accepts. The first smoke script put
   a line about the events index on Sam's page and was refused.
 - One run is one sample: 0006 saw differences under ~10 points between runs of the same setup.
+- The first real runs mostly found bugs in our code, not the model: 10 of 27 calls refused on day 1 (a short-name check, a stale tool description, missing aliases), and a rule the naming check couldn't honour (0015). Fixing them cut refusals 39 → 9 and time in half.
+- An oracle that only says "line 7 is worth keeping" scores the agent's correct questions as misses: it has to answer like a user (name the page, answer the questions) and count `asked` apart.
+- A scorer can be wrong too: "decided **not** to add" failed a substring match until markdown was stripped. Read the low-scoring answers before believing the number.
+- OpenRouter's `usage` lags by minutes, so a spend stop that reads it overshoots; a key credit limit is the real cap.
 - Off by default:
   - LangSmith tracing (`--trace`); otherwise `.env` might turn it on;
   - fallback models (`--fallbacks`).
