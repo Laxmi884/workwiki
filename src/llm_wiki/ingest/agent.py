@@ -41,6 +41,7 @@ from llm_wiki.ingest.staging import (
     StagingContext,
     StagingError,
 )
+from llm_wiki.middleware.tool_guard import ToolGuardMiddleware
 from llm_wiki.readonly_backend import ReadOnlyFilesystemBackend
 from llm_wiki.remember import RULES_PATH
 from llm_wiki.retries import is_transient
@@ -68,7 +69,7 @@ fact or to rewrite its Current state.
 4. Stage everything with the tools: `file_fact`, `update_summary`, `propose_page`, \
 `map_task` (tasks marked `project ?`), `ask_user`. Make several tool calls in one turn whenever you can (e.g. all facts of a \
 meeting at once): every turn costs the user a request.
-5. Finish with one short line saying what you filed. Do not use write_todos or task.
+5. Finish with one short line saying what you filed.
 
 Rules:
 - Use only what the note says. Never invent details, numbers, reasons or people.
@@ -393,16 +394,10 @@ def build_ingest_agent(
             operations=["write"], paths=["/vault/**", "/skills/**"], mode="deny"
         )
     ]
+    tools = [file_fact, update_summary, withdraw_fact, propose_page, map_task, ask_user]
     return create_deep_agent(
         model=model,
-        tools=[
-            file_fact,
-            update_summary,
-            withdraw_fact,
-            propose_page,
-            map_task,
-            ask_user,
-        ],
+        tools=tools,
         system_prompt=SYSTEM_PROMPT,
         skills=["/skills/"],
         memory=[RULES_VIRTUAL] if (vault / RULES_PATH).is_file() else None,
@@ -410,6 +405,10 @@ def build_ingest_agent(
         permissions=permissions,
         middleware=[
             *model_middleware(fallbacks),
+            # No `task`: a subagent would stage edits outside this agent's stats.
+            ToolGuardMiddleware(
+                [*READ_TOOLS, *(t.name for t in tools)], refusals_key="refusals"
+            ),
             FilesystemMiddleware(
                 backend=backend, tools=READ_TOOLS, _permissions=permissions
             ),

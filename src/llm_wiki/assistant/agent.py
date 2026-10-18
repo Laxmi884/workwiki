@@ -14,7 +14,9 @@ through `find_tasks` (code reads the task index). Review synthesis goes to the
 `review-writer` subagent, which returns a sourced `BragDraft`. No writes in phase 4: saving a brief
 comes in phase 7 through the reviewed, committed path ingest uses.
 
-Both agents get today's date on every model call (`CurrentDateMiddleware`). Deep Agents'
+Both agents get today's date on every model call (`CurrentDateMiddleware`), and each
+may call only the tools listed for it (`ToolGuardMiddleware`: the main agent also has
+`task`, for the review-writer). Deep Agents'
 built-in general-purpose subagent doesn't: it inherits only middleware that replaces one
 of its default slots, so the prompt asks for absolute dates when handing work over.
 """
@@ -37,6 +39,7 @@ from llm_wiki.diffs import vault_reader
 from llm_wiki.domain.brag import BragDraft
 from llm_wiki.ingest.agent import READ_TOOLS, RULES_PATH, model_middleware
 from llm_wiki.middleware.current_date import CurrentDateMiddleware
+from llm_wiki.middleware.tool_guard import ToolGuardMiddleware
 from llm_wiki.readonly_backend import ReadOnlyFilesystemBackend
 
 SKILLS_DIR = Path(__file__).parent / "skills"
@@ -49,7 +52,7 @@ You collect evidence for the user's performance review from their work vault at 
 /subagent_skills/evidence/SKILL.md first, then the pages it lists, and return the \
 structured draft: every accomplishment in the period as one item with its date and \
 source link, numbers exactly as written, and the gaps. Use only what the vault says; \
-leave out anything you can't source. Do not use write_todos.
+leave out anything you can't source.
 """
 
 SYSTEM_PROMPT = """\
@@ -74,7 +77,6 @@ Rules:
 - The user's rules (90_meta/rules.md, in your context if present) beat the skills.
 - When you hand work to a subagent, give periods as dates (2026-10-01 to 2026-12-31), \
 not "last month": a subagent may not know today's date.
-- Do not use write_todos.
 """
 
 
@@ -91,13 +93,17 @@ def permissions() -> list[FilesystemPermission]:
 
 
 def review_writer(
-    backend: Any, rules: list[FilesystemPermission], date: CurrentDateMiddleware
+    backend: Any,
+    rules: list[FilesystemPermission],
+    date: CurrentDateMiddleware,
+    tool_names: list[str],
 ) -> dict[str, Any]:
     """Return the review-writer subagent spec: read-only, its own skill, a BragDraft.
 
     Custom subagents inherit neither skills nor middleware, so it gets its own skill
     folder, the same read-only filesystem tools and today's date ("since July" needs
-    the year); permissions are set explicitly too.
+    the year); permissions are set explicitly too. `tool_names` are the tools it may
+    call (the main agent's, without `task`).
     """
     return {
         "name": "review-writer",
@@ -110,6 +116,7 @@ def review_writer(
         "skills": ["/subagent_skills/"],
         "middleware": [
             date,
+            ToolGuardMiddleware(tool_names),
             FilesystemMiddleware(backend=backend, tools=READ_TOOLS, _permissions=rules),
         ],
         "permissions": rules,
@@ -145,9 +152,11 @@ def build_assistant(
     )
     rules = permissions()
     date = CurrentDateMiddleware(today)
+    tools = [make_find_tasks(vault_reader(vault))]
+    names = [*READ_TOOLS, *(t.name for t in tools)]
     return create_deep_agent(
         model=model,
-        tools=[make_find_tasks(vault_reader(vault))],
+        tools=tools,
         system_prompt=SYSTEM_PROMPT,
         skills=["/skills/"],
         memory=[RULES_VIRTUAL] if (vault / RULES_PATH).is_file() else None,
@@ -156,9 +165,10 @@ def build_assistant(
         middleware=[
             *model_middleware(fallbacks),
             date,
+            ToolGuardMiddleware([*names, "task"]),
             FilesystemMiddleware(backend=backend, tools=READ_TOOLS, _permissions=rules),
         ],
-        subagents=[review_writer(backend, rules, date)],
+        subagents=[review_writer(backend, rules, date, names)],
         checkpointer=checkpointer,
         context_schema=context_schema,
         name="assistant",

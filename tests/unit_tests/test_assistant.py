@@ -124,7 +124,7 @@ def test_scripted_run_reads_but_never_writes(vault_copy):
     assert replies[0].startswith("1 tasks:") and "Ship beta" in replies[0]
     assert "Atlas" in replies[1]
     assert "denied" in replies[2].lower() or "permission" in replies[2].lower()
-    assert "write_file" in replies[3] and "not a valid tool" in replies[3]
+    assert replies[3].startswith("REFUSED: write_file is not one of your tools")
     assert result["messages"][-1].content.startswith("Ship beta is open")
     assert _snapshot(vault_copy) == before
 

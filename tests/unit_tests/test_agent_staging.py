@@ -189,15 +189,16 @@ def test_scripted_agent_run_reaches_the_review(vault_copy, monkeypatch):
     paths = [f.path for f in result.review.files]
     assert "20_people/person-sam-ortiz.md" in paths
     assert not any(p.endswith("x.md") for p in paths)
-    assert result.review.warnings[-1] == (
-        "code refused 1 of the agent's calls (details in the trace)"
+    assert result.review.warnings[-1] == (  # impact/Notes, write_file, write_todos
+        "code refused 3 of the agent's calls (details in the trace)"
     )
     assert not any("Is BI a project?" in w for w in result.review.warnings)
     (question,) = result.review.questions
     assert (question.id, question.line, question.text) == ("q1", 23, "Is BI a project?")
     assert question.quote == "Decided to keep the old BI tool until Q1 #decision"
     values = runner.graph.get_state(runner._config(result.thread_id)).values
-    assert values["agent_stats"]["refusals"] == 1
+    assert values["agent_stats"]["refusals"] == 3
+    assert "write_todos: not allowed" in values["agent_stats"]["refused"]
     assert [
         {k: v for k, v in f.items() if k != "added"} for f in values["agent_filed"]
     ] == [
