@@ -94,6 +94,7 @@ Copy `.env.example`. The ones you need:
 | `WIKI_TIMEZONE` | IANA name, so "today" is your day even in a UTC container |
 | `WIKI_SERVER_TOKEN` | The Agent Server answers only clients that send this bearer token |
 | `LANGSMITH_API_KEY` | The licensed server image needs it to start; tracing is a separate switch |
+| `WIKI_REVIEW_URL` | Your phone-reachable review page (`https://<mac>.<tailnet>.ts.net:8443`); without it Slack has no "Open review page" button |
 | `SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN`, `WIKI_SLACK_USER_ID` | Only for the Slack bot |
 
 The model is swappable (`init_chat_model`); a local model through Ollama works too.

@@ -49,6 +49,8 @@ Prerequisites: Python 3.11+, [uv](https://docs.astral.sh/uv/), Docker (for the s
    - `WIKI_SERVER_TOKEN`: generate with
      `python -c "import secrets; print('WIKI_SERVER_TOKEN=' + secrets.token_urlsafe(32))" >> .env`
      (make sure `.env` ends with a newline first).
+   - `WIKI_REVIEW_URL` (only with Slack/phone): the tailnet HTTPS address of the review page; unset hides
+     Slack's "Open review page" button.
    - `LANGSMITH_API_KEY`: the licensed server image will not start without it. Tracing is separate:
      `LANGSMITH_TRACING_V2` / `LANGSMITH_TRACING` (set both to `false` to stop sending traces).
 3. **Vault shape.** Walk the user through `docs/setup/obsidian.md` (folders, template, Obsidian
