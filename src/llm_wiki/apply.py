@@ -1,6 +1,6 @@
 """Write approved diffs to the vault (phase 3d): only what was approved, only once.
 
-Rules (CLAUDE.md, decision 0001):
+Rules (decision 0001):
 - Only diffs whose digest the user approved are written; a digest that matches no diff
   is an error (the approval is for something else).
 - Before anything is written, every approved file must still match the text it was

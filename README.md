@@ -16,7 +16,7 @@ the browser, the terminal or Slack.
   no model call.
 
 It is also a learning project for LangGraph and Deep Agents: an ingest `StateGraph` with human approval,
-and an assistant built with `create_deep_agent`. The design history is in [`docs/wiki/`](docs/wiki/index.md).
+and an assistant built with `create_deep_agent`. The design history is in [`docs/wiki/decisions/`](docs/wiki/decisions/).
 
 ## What you get
 
@@ -134,4 +134,4 @@ real model and cost a little; read them before running.
 
 Where things are: `src/llm_wiki/ingest/` (the graph), `assistant/` (the deep agent), `backend/` (local and
 server), `review_web/` (the page), `slack/`, `domain/` (frozen Pydantic models). Project status, decisions
-and what was learned: [`docs/wiki/`](docs/wiki/index.md). Coding agents: see [`AGENTS.md`](AGENTS.md).
+and what was learned: [`docs/wiki/decisions/`](docs/wiki/decisions/). Coding agents: see [`AGENTS.md`](AGENTS.md).

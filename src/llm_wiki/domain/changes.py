@@ -4,7 +4,7 @@ Nodes emit edits; `render_diffs` (phase 2b) applies all edits for one file to it
 text and produces one `FileDiff`. Phase 3 shows diffs for approval and applies them only
 if the file still hashes to `before_sha256`.
 
-Where each edit may write is part of its type (CLAUDE.md, decision 0001):
+Where each edit may write is part of its type (decision 0001):
 - `AppendId` only touches `00_raw/daily/` (the one code-only write to raw notes).
 - `AppendToSection`, `CreateFile` and `ReplaceSection` only touch the agent-owned
   folders, never `90_meta/`.

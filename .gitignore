@@ -169,3 +169,11 @@ Building a Local AI Wiki.pdf
 # Learning notebooks (user, 2026-10-15)
 notebooks/
 .playwright-mcp/
+
+# Maintainer's private working notes (kept on disk, not published). The design decisions in
+# docs/wiki/decisions/ are public.
+CLAUDE.md
+docs/wiki/index.md
+docs/wiki/log.md
+docs/wiki/progress.md
+docs/wiki/learnings/
