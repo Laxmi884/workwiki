@@ -53,7 +53,9 @@ class Reply:
         self._user = user
         self._stream: ChatStream | None = None
         self._shown: Progress | None = None
-        self._sent = ""
+        self._segment = ""  # the answer text streamed since the last restart
+        self._gap = False  # the answer restarted: the next text opens a new paragraph
+        self._started = False  # some answer text has been streamed
         self._expired = False
 
     @property
@@ -64,10 +66,9 @@ class Reply:
     def show(self, progress: Progress) -> None:
         """Send what changed since the last call: step chunks, then new answer text."""
         chunks = task_chunks(self._shown, progress)
-        delta = text_delta(self._sent, progress.text)
+        delta = self._next(progress.text)
         self._shown = progress
         if self._expired or not (chunks or delta):
-            self._sent += delta
             return
         stream = self._open()
         try:
@@ -77,7 +78,6 @@ class Reply:
             if not _expired(exc):
                 raise
             self._expired = True  # finish() falls back to chat.update
-        self._sent += delta
 
     def finish(
         self,
@@ -96,7 +96,7 @@ class Reply:
                 blocks=message_blocks(text, blocks),
             )
             return response.get("ts")
-        rest = text_delta(self._sent, text)
+        rest = self._next(text)
         if not self._expired:
             try:
                 self._stream.stop(markdown_text=rest or None, blocks=blocks)
@@ -130,6 +130,23 @@ class Reply:
             self._client.chat_postMessage(
                 channel=self._channel, thread_ts=self._thread_ts, text=text
             )
+
+    def _next(self, text: str) -> str:
+        """Return what to stream so the reader sees `text`; remember its segment.
+
+        Text only grows within a segment. A tool call resets it to "" and the
+        answer starts over; Slack can't unsend, so the new segment goes after a
+        blank line, and only its new tokens are sent from then on.
+        """
+        if not text:
+            self._segment, self._gap = "", self._started
+            return ""
+        delta = text_delta(self._segment, text)
+        if self._gap:
+            delta, self._gap = "\n\n" + delta, False
+        self._segment = text
+        self._started = self._started or bool(delta)
+        return delta
 
     def _open(self) -> ChatStream:
         if self._stream is None:

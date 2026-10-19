@@ -48,6 +48,27 @@ def test_answer_text_streams_as_it_grows_and_is_not_repeated():
     assert slack.text().count("Atlas beta moved.") == 1
 
 
+def test_an_answer_that_restarts_after_a_tool_call_streams_without_repeats():
+    # a preamble, the tool step resets the text to "", then the answer streams token by token
+    slack = FakeSlack()
+    r = reply(slack)
+    ask = step_plan("ask")
+    steps = [
+        "Let me check.",
+        "",
+        "7",
+        "7 tasks",
+        "7 tasks:",
+        "7 tasks: a",
+        "7 tasks: a b",
+    ]
+    for text in steps:
+        r.show(ask.model_copy(update={"text": text}))
+    r.finish("7 tasks: a b")
+    assert slack.text().count("7 tasks") == 1
+    assert slack.text() == "Let me check.\n\n7 tasks: a b"
+
+
 def test_an_expired_stream_finishes_with_chat_update():
     slack = FakeSlack()
     r = reply(slack)
