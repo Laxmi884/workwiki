@@ -1,5 +1,8 @@
 # Free sync for the vault: Self-hosted LiveSync + CouchDB + Tailscale
 
+Part of the [setup guide](README.md) (step 5). This page uses the dev vault `~/WorkDev` and the CouchDB
+database `workdev` as its example; for your real vault, use your folder and another database name.
+
 Goal: write notes on any device (phone, laptop) and have them in the vault on the Mac, where the
 agent runs; approved agent edits flow back. Free, end-to-end encrypted, nothing exposed to the
 internet. Try it on `~/WorkDev` first; touch `~/Work` only once this works.

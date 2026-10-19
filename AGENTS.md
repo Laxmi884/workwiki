@@ -51,7 +51,8 @@ Prerequisites: Python 3.11+, [uv](https://docs.astral.sh/uv/), Docker (for the s
      (make sure `.env` ends with a newline first).
    - `LANGSMITH_API_KEY`: the licensed server image will not start without it. Tracing is separate:
      `LANGSMITH_TRACING_V2` / `LANGSMITH_TRACING` (set both to `false` to stop sending traces).
-3. **Vault shape.** The vault needs `00_raw/daily/`, `50_templates/daily.md` (`template: daily-v1`) and
+3. **Vault shape.** Walk the user through `docs/setup/obsidian.md` (folders, template, Obsidian
+   settings); `docs/setup/README.md` is the overall order and shows how the devices connect. The vault needs `00_raw/daily/`, `50_templates/daily.md` (`template: daily-v1`) and
    the folders listed in `docs/wiki/decisions/0002-daily-note-format.md`. Check, do not create files in a
    real vault without asking.
 4. **Quick try without a server:**
@@ -70,7 +71,9 @@ Prerequisites: Python 3.11+, [uv](https://docs.astral.sh/uv/), Docker (for the s
 7. **Optional: Slack bot**: follow `docs/setup/slack.md` (the user creates the Slack app from
    `src/llm_wiki/slack/manifest.yml`). Start with
    `WIKI_VAULT_PATH=<path> docker compose --profile slack up -d --wait`.
-8. **Optional: phone sync**: `docs/setup/livesync.md` (LiveSync + CouchDB + Tailscale).
+8. **Optional: phone and other devices**: `docs/setup/livesync.md` (LiveSync + CouchDB + Tailscale; the
+   Mac is the hub; use a database name different from the dev vault's) and its section 9 for the review
+   page on the phone.
 
 ## Working on the code
 
@@ -98,7 +101,7 @@ Prerequisites: Python 3.11+, [uv](https://docs.astral.sh/uv/), Docker (for the s
 | `src/llm_wiki/rollover.py`, `schedule.py` | the morning note and its scheduler |
 | `compose.yml`, `langgraph.json` | how the server runs |
 | `tests/fixtures/vault/` | invented fixture vault |
-| `docs/setup/`, `docs/scheduling.md` | user setup guides |
+| `docs/setup/` (start at `README.md`), `docs/scheduling.md` | user setup guides |
 | `docs/wiki/` | status, decisions, learnings |
 
 ## Common problems

@@ -107,8 +107,13 @@ The model is swappable (`init_chat_model`); a local model through Ollama works t
 - Secrets live only in `.env` (git-ignored). Nothing prints them.
 - Slack keeps the messages the bot sends (summaries of your notes) in your workspace.
 
-## Other setup guides
+## Setup guides
 
+Start with [`docs/setup/README.md`](docs/setup/README.md): the order to do things in, a picture of how the
+devices connect, and what has to be running for what.
+
+- [`docs/setup/obsidian.md`](docs/setup/obsidian.md): create the vault, the folder layout, the daily
+  template and Obsidian's settings.
 - [`docs/setup/livesync.md`](docs/setup/livesync.md): sync the vault to your phone (LiveSync, CouchDB,
   Tailscale), and open the review page there.
 - [`docs/setup/slack.md`](docs/setup/slack.md): the Slack bot.
