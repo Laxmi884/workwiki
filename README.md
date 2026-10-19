@@ -1,6 +1,6 @@
-# llm-wiki
+# workwiki
 
-A personal work wiki that an LLM keeps for you. You write plain daily notes in Obsidian. An agent reads
+A personal work wiki agent: it turns your daily notes into a reviewed, LLM-maintained Markdown wiki, a morning agenda and a brag sheet for performance reviews. You write plain daily notes in Obsidian. An agent reads
 each note, files what matters into a Markdown wiki (projects, people, decisions, impact), and **shows you
 every change for approval before it writes anything**. Then you can ask questions about your work, from
 the browser, the terminal or Slack.

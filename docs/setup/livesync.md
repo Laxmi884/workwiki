@@ -12,7 +12,7 @@ iPhone / other laptop ──(Obsidian + LiveSync plugin)──┐
                                                       │ https://<mac>.<tailnet>.ts.net  (Tailscale, private)
 Mac: Obsidian + LiveSync ── CouchDB in Docker ◀───────┘
        │ files on disk
-       └── llm-wiki agent reads/writes ~/WorkDev
+       └── workwiki agent reads/writes ~/WorkDev
 ```
 
 Checked against the LiveSync server guide (`docs/setup_own_server.md`, updated 2026-09-29) on

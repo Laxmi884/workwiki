@@ -111,7 +111,7 @@ With the Docker server running (see the main [`README.md`](../../README.md)) and
 
 1. Open `http://127.0.0.1:8123/review` and start an ingest of the note (or type `/ingest` in `/chat`).
 2. Read the proposed changes, approve, then see new pages appear in Obsidian and one new commit in
-   `git log` from `llm-wiki`.
+   `git log` from `workwiki`.
 
 ## Tips
 

@@ -1,4 +1,4 @@
-# AGENTS.md: setting up and working on llm-wiki
+# AGENTS.md: setting up and working on workwiki
 
 For coding agents (Claude Code, Codex, Cursor, …) helping someone install, run or change this repo.
 Humans: start with [`README.md`](README.md). This file is the runbook plus the rules that must not be
