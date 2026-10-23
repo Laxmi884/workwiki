@@ -235,6 +235,8 @@ def test_qa_langsmith_writes_the_report_like_a_local_run(tmp_path, monkeypatch, 
 
     monkeypatch.setenv("LANGSMITH_TRACING", "false")
     monkeypatch.setenv("LANGSMITH_TRACING_V2", "false")
+    monkeypatch.setenv("WIKI_REASONING_EFFORT", "medium")
+    run.get_settings.cache_clear()
     vault = make_vault(tmp_path / "vault")
     model = ToolScript(messages=iter([AIMessage("It was Nov 18.")]))
     monkeypatch.setattr(run, "configured_model", lambda name: model)
@@ -244,6 +246,7 @@ def test_qa_langsmith_writes_the_report_like_a_local_run(tmp_path, monkeypatch, 
     def offline(target, *, data=langsmith_qa.DATASET, repetitions, metadata):
         assert data == "llm-wiki-qa" and repetitions == 1
         assert metadata["vault"] == str(vault) and "commit" in metadata["code"]
+        assert metadata["reasoning_effort"] == "medium"
         return real(
             untraced(target),
             data=local_examples(langsmith_qa.examples()[:1]),
@@ -255,6 +258,7 @@ def test_qa_langsmith_writes_the_report_like_a_local_run(tmp_path, monkeypatch, 
     run.main(["qa", str(vault), "--langsmith", "--out", str(out), "--model", "x:y"])
     report = json.loads((out / "report.json").read_text())
     assert report["meta"]["qa_model"] == "x:y"
+    assert report["meta"]["qa_reasoning_effort"] == "medium"
     assert report["qa"]["summary"]["key_facts"] == 1.0
     assert report["qa"]["rows"][0]["answer"] == "It was Nov 18."
     assert report["qa"]["experiment"]["repetitions"] == 1

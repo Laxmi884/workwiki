@@ -134,6 +134,7 @@ def _ask_langsmith(
         repetitions=args.repetitions,
         metadata={
             "model": report["meta"]["qa_model"],
+            "reasoning_effort": report["meta"]["qa_reasoning_effort"],
             "code": code_version(),
             "vault": str(vault),
         },
@@ -228,6 +229,7 @@ def cmd_qa(args: argparse.Namespace) -> None:
         json.loads(report_file.read_text()) if report_file.exists() else {"meta": {}}
     )
     report["meta"]["qa_model"] = args.model or get_settings().model
+    report["meta"]["qa_reasoning_effort"] = get_settings().reasoning_effort
     out.mkdir(parents=True, exist_ok=True)
     if args.langsmith:  # the experiment is traced to LangSmith by design
         _ask_langsmith(out, report, vault, args)
