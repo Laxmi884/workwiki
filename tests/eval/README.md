@@ -11,7 +11,13 @@ uv run python -m tests.eval.run run --days 2 --skip-qa          # a quick look
 uv run python -m tests.eval.run run --model openrouter:<id>     # another model
 uv run python -m tests.eval.run qa ~/.llm-wiki/evals/<run>/vault    # questions only
 uv run python -m tests.eval.run compare ~/.llm-wiki/evals/<A> ~/.llm-wiki/evals/<B>
+uv run python -m tests.eval.run dataset --dry-run               # LangSmith Q&A dataset: what would change
+uv run python -m tests.eval.run dataset                         # make it match the repo YAML
 ```
+
+`dataset` (decision 0019) mirrors `qa.yaml` + `qa_keys.yaml` to the LangSmith dataset `llm-wiki-qa`, keyed by the
+question text: new questions are added, edited ones updated, removed ones deleted, and a rerun with no YAML change
+does nothing. Edit the YAML, never the dataset in LangSmith. Needs `LANGSMITH_API_KEY`; no model, no cost.
 
 `.env` is loaded first (`WIKI_MODEL`, `WIKI_REASONING_EFFORT`, provider keys). Off by default, on with a flag:
 - `--trace` sends traces to LangSmith project `llm-wiki-eval`. They hold the corpus text unredacted, but the corpus
@@ -49,6 +55,7 @@ copy the note into the vault → ingest until the review → score the first pas
 | `ingest_eval.py` | One day through `IngestRunner`; totals |
 | `qa_eval.py` | Questions to `build_assistant`, clock pinned to 2026-11-28 |
 | `run.py` | CLI; writes `<out>/report.json` after every day and question |
+| `langsmith_qa.py` | The questions as LangSmith examples; `plan` (by code) and `sync` for the `dataset` command |
 
 ## Reading a report
 

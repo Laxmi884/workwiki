@@ -5,6 +5,7 @@
     uv run python -m tests.eval.run run --days 2 --skip-qa
     uv run python -m tests.eval.run qa <run dir>/vault   # Q&A only
     uv run python -m tests.eval.run compare <run A> <run B>
+    uv run python -m tests.eval.run dataset --dry-run    # LangSmith Q&A dataset (0019)
 
 Each run writes `<out>/report.json` (saved after every day and question) and keeps the
 finished vault in `<out>/vault/` (a git repo: one commit per approved day). `<out>`
@@ -30,7 +31,7 @@ import langsmith as ls
 from llm_wiki.config import get_settings, load_env_file
 from llm_wiki.ingest import nodes
 from llm_wiki.model_setup import configured_fallbacks, configured_model
-from tests.eval import ingest_eval, qa_eval
+from tests.eval import ingest_eval, langsmith_qa, qa_eval
 from tests.eval.corpus import ROOT, load_labels, make_vault
 
 TRACE_PROJECT = "llm-wiki-eval"
@@ -253,6 +254,21 @@ def cmd_compare(args: argparse.Namespace) -> None:
             print(f"{qa_a[r['q']]:.2f} → {r['score']:.2f}  {r['q']}")
 
 
+def cmd_dataset(args: argparse.Namespace) -> None:
+    """Make the LangSmith dataset match the repo's questions; print what changed."""
+    changes = langsmith_qa.sync(ls.Client(), args.name, dry_run=args.dry_run)
+    verb = "would" if args.dry_run else "did"
+    if changes.empty:
+        print(f"{args.name}: matches the repo YAML, nothing to do")
+        return
+    print(
+        f"{args.name}: {verb} create {len(changes.create)}, "
+        f"update {len(changes.update)}, delete {len(changes.delete)}"
+    )
+    for e in changes.create + changes.update:
+        print(f"  {e['inputs']['question']}")
+
+
 def main(argv: list[str] | None = None) -> int:
     """Parse the command line and run the subcommand."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
@@ -289,6 +305,13 @@ def main(argv: list[str] | None = None) -> int:
     compare.add_argument("a", type=Path)
     compare.add_argument("b", type=Path)
     compare.set_defaults(func=cmd_compare)
+
+    dataset = sub.add_parser("dataset", help="sync the LangSmith Q&A dataset (0019)")
+    dataset.add_argument("--name", default=langsmith_qa.DATASET)
+    dataset.add_argument(
+        "--dry-run", action="store_true", help="read only: show what would change"
+    )
+    dataset.set_defaults(func=cmd_dataset)
 
     args = parser.parse_args(argv)
     load_env_file()
