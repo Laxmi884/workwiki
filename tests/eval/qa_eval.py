@@ -39,6 +39,26 @@ def answer(agent: Any, question: str) -> str:
     return str(result["messages"][-1].text)
 
 
+def ask(
+    vault: Path,
+    model: BaseChatModel,
+    question: str,
+    *,
+    fallbacks: Sequence[BaseChatModel] = (),
+) -> str:
+    """Answer one question with a fresh assistant; retry once on a transient error."""
+    for attempt in range(2):
+        try:
+            agent = build_assistant(
+                vault, model, fallbacks=fallbacks, today=lambda: CORPUS_TODAY
+            )
+            return answer(agent, question)
+        except Exception as exc:
+            if attempt or not is_transient(exc):
+                raise
+    raise AssertionError("unreachable")
+
+
 def run_qa(
     vault: Path,
     model: BaseChatModel,
@@ -53,18 +73,10 @@ def run_qa(
         row: dict[str, Any] = {"q": item["q"], "reference": item["answer"]}
         started = time.monotonic()
         with get_usage_metadata_callback() as usage, count_calls() as calls:
-            for attempt in range(2):
-                try:
-                    agent = build_assistant(
-                        vault, model, fallbacks=fallbacks, today=lambda: CORPUS_TODAY
-                    )
-                    row["answer"] = answer(agent, item["q"])
-                    row.pop("error", None)
-                    break
-                except Exception as exc:  # noqa: BLE001 - recorded, the run goes on
-                    row["error"] = f"{type(exc).__name__}: {exc}"[:500]
-                    if attempt or not is_transient(exc):
-                        break
+            try:
+                row["answer"] = ask(vault, model, item["q"], fallbacks=fallbacks)
+            except Exception as exc:  # noqa: BLE001 - recorded, the run goes on
+                row["error"] = f"{type(exc).__name__}: {exc}"[:500]
         row["score"] = key_score(row.get("answer", ""), item["keys"])
         row["unanswerable"] = item["keys"] == "unanswerable"
         row["seconds"] = round(time.monotonic() - started, 1)

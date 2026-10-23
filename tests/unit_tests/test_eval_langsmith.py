@@ -1,9 +1,17 @@
 """The Q&A dataset mirrored to LangSmith (0019): planned by code, synced without the network."""
 
+import datetime
+import uuid
 from types import SimpleNamespace
 
-from tests.eval import langsmith_qa
-from tests.eval.corpus import load_questions
+import langsmith as ls
+from langchain_core.messages import AIMessage
+from langsmith import schemas
+
+from tests.eval import langsmith_qa, qa_eval
+from tests.eval.corpus import load_questions, make_vault
+
+from .scripted_model import ToolScript
 
 
 def ex(q, answer="A", keys=(("a",),), id_=None):
@@ -114,3 +122,141 @@ def test_sync_applies_an_edited_question():
     client = FakeClient(existing=uploaded)
     langsmith_qa.sync(client)
     assert client.calls == [("update_examples", ["0"])]
+
+
+def test_the_evaluator_is_key_score():
+    ref = {"answer": "Jan 5", "keys": [["jan 5"], ["lena"]]}
+    assert langsmith_qa.key_facts({"answer": "Lena starts Jan 5."}, ref) == {
+        "key": "key_facts",
+        "score": 1.0,
+    }
+    assert langsmith_qa.key_facts({"answer": "In January."}, ref)["score"] == 0.0
+    unanswerable = {"answer": "", "keys": "unanswerable"}
+    assert (
+        langsmith_qa.key_facts({"answer": "The notes don't say."}, unanswerable)[
+            "score"
+        ]
+        == 1.0
+    )
+    assert langsmith_qa.key_facts(None, ref)["score"] == 0.0  # the target failed
+
+
+def untraced(run):
+    """Turn tracing off inside the target.
+
+    `upload_results=False` sets tracing to "local", but LangChain's tracer inside the
+    agent still uploads its runs then; a test must send nothing.
+    """
+
+    def inner(inputs):
+        with ls.tracing_context(enabled=False):
+            return run(inputs)
+
+    return inner
+
+
+def local_examples(rows):
+    """Dataset examples as LangSmith would hand them back, without the network."""
+    dataset = uuid.uuid4()
+    return [
+        schemas.Example(
+            id=uuid.uuid4(),
+            dataset_id=dataset,
+            created_at=datetime.datetime.now(datetime.UTC),
+            **row,
+        )
+        for row in rows
+    ]
+
+
+def test_an_experiment_scores_the_real_assistant_like_the_local_run(
+    tmp_path, monkeypatch
+):
+    """`langsmith.evaluate` offline: real assistant, scripted model, rows for report.json."""
+    monkeypatch.setenv("LANGSMITH_TRACING", "false")
+    monkeypatch.setenv("LANGSMITH_TRACING_V2", "false")
+    vault = make_vault(tmp_path / "vault")
+    picked = [
+        e
+        for e in langsmith_qa.examples()
+        if e["inputs"]["question"].startswith(
+            ("What was the original Atlas GA date", "What is Lena's last name")
+        )
+    ]
+    model = ToolScript(
+        messages=iter(
+            [
+                AIMessage("It was Nov 18."),
+                AIMessage("Lena Park."),  # a confident answer to an unanswerable one
+                AIMessage("November 18."),
+                AIMessage("The notes don't say."),
+            ]
+        )
+    )
+    results = langsmith_qa.experiment(
+        untraced(langsmith_qa.target(vault, model)),
+        data=local_examples(picked),
+        repetitions=2,
+        upload_results=False,
+    )
+    rows = langsmith_qa.rows(results)
+    assert [(r["q"][:12], r["answer"], r["score"]) for r in rows] == [
+        ("What was the", "It was Nov 18.", 1.0),
+        ("What is Lena", "Lena Park.", 0.0),
+        ("What was the", "November 18.", 1.0),
+        ("What is Lena", "The notes don't say.", 1.0),
+    ]
+    assert [r["unanswerable"] for r in rows] == [False, True, False, True]
+    summary = qa_eval.summarize(rows)  # the local report's summary works unchanged
+    assert summary["key_facts"] == 0.75 and summary["unanswerable_ok"] == "1/2"
+    assert summary["model_calls"] == 4 and summary["failed"] == []
+
+
+def test_a_failed_question_is_a_row_with_the_error(tmp_path, monkeypatch):
+    monkeypatch.setenv("LANGSMITH_TRACING", "false")
+    monkeypatch.setenv("LANGSMITH_TRACING_V2", "false")
+
+    def broken(inputs):
+        raise ValueError("model down")
+
+    results = langsmith_qa.experiment(
+        broken, data=local_examples(langsmith_qa.examples()[:1]), upload_results=False
+    )
+    [row] = langsmith_qa.rows(results)
+    assert row["score"] == 0.0 and "model down" in row["error"]
+    assert qa_eval.summarize([row])["failed"] == [row["q"]]
+
+
+def test_qa_langsmith_writes_the_report_like_a_local_run(tmp_path, monkeypatch, capsys):
+    """`run.py qa --langsmith`: the experiment's rows land in report.json."""
+    import json
+
+    from tests.eval import run
+
+    monkeypatch.setenv("LANGSMITH_TRACING", "false")
+    monkeypatch.setenv("LANGSMITH_TRACING_V2", "false")
+    vault = make_vault(tmp_path / "vault")
+    model = ToolScript(messages=iter([AIMessage("It was Nov 18.")]))
+    monkeypatch.setattr(run, "configured_model", lambda name: model)
+    monkeypatch.setattr(run, "load_env_file", lambda: None)
+    real = langsmith_qa.experiment
+
+    def offline(target, *, data=langsmith_qa.DATASET, repetitions, metadata):
+        assert data == "llm-wiki-qa" and repetitions == 1
+        assert metadata["vault"] == str(vault) and "commit" in metadata["code"]
+        return real(
+            untraced(target),
+            data=local_examples(langsmith_qa.examples()[:1]),
+            upload_results=False,
+        )
+
+    monkeypatch.setattr(langsmith_qa, "experiment", offline)
+    out = tmp_path / "out"
+    run.main(["qa", str(vault), "--langsmith", "--out", str(out), "--model", "x:y"])
+    report = json.loads((out / "report.json").read_text())
+    assert report["meta"]["qa_model"] == "x:y"
+    assert report["qa"]["summary"]["key_facts"] == 1.0
+    assert report["qa"]["rows"][0]["answer"] == "It was Nov 18."
+    assert report["qa"]["experiment"]["repetitions"] == 1
+    assert run.headline(report)["qa key facts"] == 1.0
+    assert "experiment:" in capsys.readouterr().out

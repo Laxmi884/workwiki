@@ -19,6 +19,13 @@ uv run python -m tests.eval.run dataset                         # make it match 
 question text: new questions are added, edited ones updated, removed ones deleted, and a rerun with no YAML change
 does nothing. Edit the YAML, never the dataset in LangSmith. Needs `LANGSMITH_API_KEY`; no model, no cost.
 
+`qa <vault> --langsmith [--repetitions N]` runs the questions as a LangSmith experiment on that dataset (sync it
+first): the same assistant (`qa_eval.ask`), scored by `key_score` as a code evaluator, one question at a time. The
+rows also go into `<out>/report.json`, so `compare` and the headline work as before. Pass a new `--out`, or the
+vault's own run report gets its `qa` section replaced. Costs what a local Q&A pass costs, times N (about $0.27 a
+pass with DeepSeek Flash). The experiment is traced to LangSmith by design (invented corpus only); `--trace` doesn't
+apply.
+
 `.env` is loaded first (`WIKI_MODEL`, `WIKI_REASONING_EFFORT`, provider keys). Off by default, on with a flag:
 - `--trace` sends traces to LangSmith project `llm-wiki-eval`. They hold the corpus text unredacted, but the corpus
   is invented.
@@ -55,7 +62,7 @@ copy the note into the vault → ingest until the review → score the first pas
 | `ingest_eval.py` | One day through `IngestRunner`; totals |
 | `qa_eval.py` | Questions to `build_assistant`, clock pinned to 2026-11-28 |
 | `run.py` | CLI; writes `<out>/report.json` after every day and question |
-| `langsmith_qa.py` | The questions as LangSmith examples; `plan` (by code) and `sync` for the `dataset` command |
+| `langsmith_qa.py` | The questions as LangSmith examples; `plan` (by code) and `sync` for `dataset`; `target`, `key_facts`, `experiment`, `rows` for `qa --langsmith` |
 
 ## Reading a report
 

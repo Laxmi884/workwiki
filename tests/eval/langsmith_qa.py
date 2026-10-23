@@ -1,16 +1,30 @@
-"""Mirror the Q&A questions to the LangSmith dataset `llm-wiki-qa` (0019).
+"""Mirror the Q&A questions to the LangSmith dataset `llm-wiki-qa` and run them as experiments (0019).
 
 The repo YAML (`qa.yaml`, `qa_keys.yaml`) stays the source: `sync` makes the dataset
 match it, keyed by the question text, and changes nothing when they already match.
 Only the invented corpus goes up; real notes never become examples.
+
+`experiment` runs the questions through `langsmith.evaluate`: the target is the same
+`qa_eval.ask` the local run uses, the evaluator is `score.key_score` (no LLM judge),
+and `rows` turns the results into `report.json` rows, so both give the same score.
 """
 
 from __future__ import annotations
 
+import time
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
+import langsmith
+from langchain_core.callbacks import get_usage_metadata_callback
+from langchain_core.language_models import BaseChatModel
+
+from tests.eval import qa_eval
 from tests.eval.corpus import load_questions
+from tests.eval.ingest_eval import count_calls
+from tests.eval.score import key_score
 
 DATASET = "llm-wiki-qa"
 DESCRIPTION = (
@@ -89,3 +103,81 @@ def sync(client: Any, name: str = DATASET, *, dry_run: bool = False) -> Plan:
     if changes.delete:
         client.delete_examples(changes.delete)
     return changes
+
+
+def key_facts(
+    outputs: dict[str, Any] | None, reference_outputs: dict[str, Any]
+) -> dict[str, Any]:
+    """LangSmith evaluator: `key_score` of the answer against the example's key facts."""
+    answer = (outputs or {}).get("answer", "")
+    return {"key": "key_facts", "score": key_score(answer, reference_outputs["keys"])}
+
+
+def target(
+    vault: Path, model: BaseChatModel, *, fallbacks: Sequence[BaseChatModel] = ()
+) -> Callable[[dict[str, Any]], dict[str, Any]]:
+    """Return the experiment target: one question in, the answer plus its cost out."""
+
+    def answer_question(inputs: dict[str, Any]) -> dict[str, Any]:
+        started = time.monotonic()
+        with get_usage_metadata_callback() as usage, count_calls() as calls:
+            answer = qa_eval.ask(vault, model, inputs["question"], fallbacks=fallbacks)
+        return {
+            "answer": answer,
+            "seconds": round(time.monotonic() - started, 1),
+            "model_calls": calls.calls,
+            "tokens": {
+                k: sum(u.get(k, 0) for u in usage.usage_metadata.values())
+                for k in ("input_tokens", "output_tokens")
+            },
+        }
+
+    return answer_question
+
+
+def experiment(
+    run: Callable[[dict[str, Any]], dict[str, Any]],
+    *,
+    data: Any = DATASET,
+    repetitions: int = 1,
+    metadata: dict[str, Any] | None = None,
+    upload_results: bool = True,
+) -> Any:
+    """Run every example in `data` through `run`, `repetitions` times, scored by `key_facts`.
+
+    One question at a time (`max_concurrency=0`), like the local run. Returns
+    LangSmith's `ExperimentResults`; `upload_results=False` keeps it all local (tests).
+    """
+    return langsmith.evaluate(
+        run,
+        data=data,
+        evaluators=[key_facts],
+        experiment_prefix="qa",
+        metadata=metadata,
+        num_repetitions=repetitions,
+        max_concurrency=0,
+        upload_results=upload_results,
+    )
+
+
+def rows(results: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Return one `report.json` row per run, shaped like `qa_eval.run_qa`'s rows."""
+    out = []
+    for r in results:
+        run, ref = r["run"], r["example"].outputs or {}
+        outputs = run.outputs or {}
+        scores = {e.key: e.score for e in r["evaluation_results"]["results"]}
+        row: dict[str, Any] = {
+            "q": r["example"].inputs["question"],
+            "reference": ref.get("answer"),
+            "answer": outputs.get("answer", ""),
+            "score": scores.get("key_facts") or 0.0,
+            "unanswerable": ref.get("keys") == "unanswerable",
+            "seconds": outputs.get("seconds", 0.0),
+            "model_calls": outputs.get("model_calls", 0),
+            "tokens": outputs.get("tokens", {"input_tokens": 0, "output_tokens": 0}),
+        }
+        if run.error:
+            row["error"] = str(run.error)[:500]
+        out.append(row)
+    return out

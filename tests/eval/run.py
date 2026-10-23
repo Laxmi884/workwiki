@@ -6,6 +6,7 @@
     uv run python -m tests.eval.run qa <run dir>/vault   # Q&A only
     uv run python -m tests.eval.run compare <run A> <run B>
     uv run python -m tests.eval.run dataset --dry-run    # LangSmith Q&A dataset (0019)
+    uv run python -m tests.eval.run qa <vault> --langsmith --out <dir>   # as an experiment
 
 Each run writes `<out>/report.json` (saved after every day and question) and keeps the
 finished vault in `<out>/vault/` (a git repo: one commit per approved day). `<out>`
@@ -122,6 +123,41 @@ def _ask_all(
     )
 
 
+def _ask_langsmith(
+    out: Path, report: dict[str, Any], vault: Path, args: argparse.Namespace
+) -> None:
+    """Ask the questions as a LangSmith experiment (0019); the rows go in the report too."""
+    fallbacks = configured_fallbacks() if args.fallbacks else ()
+    run = langsmith_qa.target(vault, configured_model(args.model), fallbacks=fallbacks)
+    results = langsmith_qa.experiment(
+        run,
+        repetitions=args.repetitions,
+        metadata={
+            "model": report["meta"]["qa_model"],
+            "code": code_version(),
+            "vault": str(vault),
+        },
+    )
+    rows = langsmith_qa.rows(results)
+    try:
+        url = results.url
+    except ValueError:  # results not uploaded (tests): no experiment page
+        url = None
+    report["qa"] = {
+        "summary": qa_eval.summarize(rows),
+        "rows": rows,
+        "experiment": {
+            "name": results.experiment_name,
+            "url": url,
+            "repetitions": args.repetitions,
+        },
+    }
+    save(out, report)
+    for row in rows:
+        print(f"  {row['score']:.2f}  {row['seconds']:>5}s  {row['q']}", flush=True)
+    print("experiment:", results.experiment_name, url or "", flush=True)
+
+
 def cmd_run(args: argparse.Namespace) -> None:
     """Ingest the corpus into a fresh vault, then ask it the questions."""
     settings = get_settings()
@@ -192,8 +228,12 @@ def cmd_qa(args: argparse.Namespace) -> None:
         json.loads(report_file.read_text()) if report_file.exists() else {"meta": {}}
     )
     report["meta"]["qa_model"] = args.model or get_settings().model
-    with tracing(args.trace):
-        _ask_all(out, report, vault, args)
+    out.mkdir(parents=True, exist_ok=True)
+    if args.langsmith:  # the experiment is traced to LangSmith by design
+        _ask_langsmith(out, report, vault, args)
+    else:
+        with tracing(args.trace):
+            _ask_all(out, report, vault, args)
     print(json.dumps(headline(report), indent=1))
 
 
@@ -299,6 +339,14 @@ def main(argv: list[str] | None = None) -> int:
     qa = sub.add_parser("qa", help="ask an existing vault the questions")
     common(qa)
     qa.add_argument("vault", type=Path)
+    qa.add_argument(
+        "--langsmith",
+        action="store_true",
+        help=f"run as an experiment on the LangSmith dataset {langsmith_qa.DATASET}",
+    )
+    qa.add_argument(
+        "--repetitions", type=int, default=1, help="with --langsmith: runs per question"
+    )
     qa.set_defaults(func=cmd_qa)
 
     compare = sub.add_parser("compare", help="compare two run folders")
