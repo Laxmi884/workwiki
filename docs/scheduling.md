@@ -13,6 +13,15 @@ To run it on its own, pick **one** of the two schedulers below. Both are set up 
 `python -m llm_wiki.schedule`. (Running both does no harm, since rollover never overwrites, but it
 wastes a run.)
 
+## Weekdays only
+
+Add `--weekdays` to either `install` to skip Saturdays and Sundays. The check is in rollover itself
+(`--weekdays` on its command line, `"weekdays": true` in the server run's input), so a weekend
+login (launchd) or a Friday run caught up on Saturday (server) writes nothing either. Nothing is
+lost: Monday's note carries every task still open, from the task index. Working on a weekend? Run
+`uv run python -m llm_wiki.rollover` by hand first; if Obsidian makes the note first, it has no
+carried tasks, and rollover won't overwrite it.
+
 | | Agent Server cron (Docker) | launchd (macOS) |
 |---|---|---|
 | Runs when | The server is up | The Mac is on |
@@ -47,6 +56,7 @@ Then register the schedule (once; it lives in the server's database and survives
 
 ```sh
 uv run python -m llm_wiki.schedule server install --at 07:00 --url http://127.0.0.1:8123
+uv run python -m llm_wiki.schedule server install --at 07:00 --weekdays --url http://127.0.0.1:8123
 uv run python -m llm_wiki.schedule server show   --url http://127.0.0.1:8123
 uv run python -m llm_wiki.schedule server remove --url http://127.0.0.1:8123
 ```

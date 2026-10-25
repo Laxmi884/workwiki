@@ -6,7 +6,8 @@ The node calls `rollover.roll_over`; no model. State is plain JSON (decision 001
     output  {"result": <Rollover as JSON>}
 
 With no `date`, the day is today in `timezone`, else `WIKI_TIMEZONE`, else the server's
-local time (UTC in our image), so the cron passes its own time zone. The vault is the
+local time (UTC in our image), so the cron passes its own time zone. With `weekdays`,
+a Saturday or Sunday is skipped (`result.weekend`). The vault is the
 run's context `vault_path`, else `WIKI_VAULT_PATH`. A `RolloverError` fails the run.
 """
 
@@ -24,11 +25,12 @@ from llm_wiki.rollover import roll_over
 
 
 class RolloverState(TypedDict, total=False):
-    """Input `date`, `timezone`, `commit`; output `result`."""
+    """Input `date`, `timezone`, `commit`, `weekdays`; output `result`."""
 
     date: str | None
     timezone: str | None
     commit: bool
+    weekdays: bool
     result: dict[str, Any]
 
 
@@ -47,7 +49,12 @@ def run(state: RolloverState, runtime: Runtime[RolloverContext]) -> dict[str, An
         if state.get("date")
         else clock.today(state.get("timezone"))
     )
-    result = roll_over(vault, day, commit=state.get("commit", True))
+    result = roll_over(
+        vault,
+        day,
+        commit=state.get("commit", True),
+        weekdays_only=state.get("weekdays", False),
+    )
     return {"result": result.model_dump(mode="json")}
 
 

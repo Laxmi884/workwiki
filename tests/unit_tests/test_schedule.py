@@ -85,6 +85,15 @@ def test_graph_without_a_date_uses_today_in_the_given_zone(vault, monkeypatch):
     assert out["result"]["path"] == "00_raw/daily/2026-10-20.md"
 
 
+def test_graph_with_weekdays_skips_a_saturday(vault):
+    out = graph.invoke(
+        {"date": "2026-10-24", "weekdays": True, "commit": False},
+        context={"vault_path": str(vault)},
+    )
+    assert out["result"]["weekend"] is True
+    assert not (vault / out["result"]["path"]).exists()
+
+
 # --- server cron -----------------------------------------------------------------
 
 
@@ -132,6 +141,13 @@ def test_server_install_replaces_only_our_cron_and_passes_the_zone():
     assert remove_server(client) == 1 and set(client.crons.crons) == {"x"}
 
 
+def test_server_install_weekdays_runs_monday_to_friday_and_tells_the_run():
+    cron = install_server(FakeClient(), 7, 0, "America/Toronto", weekdays=True)
+    assert cron["schedule"] == "0 7 * * 1-5"
+    # a run missed on Friday may start on Saturday; rollover itself skips it
+    assert cron["input"] == {"timezone": "America/Toronto", "weekdays": True}
+
+
 def test_zone_from_flag_then_setting_then_this_machine(monkeypatch, tmp_path):
     monkeypatch.setenv("WIKI_TIMEZONE", "Europe/Paris")
     assert pick_zone("Asia/Kolkata") == "Asia/Kolkata"
@@ -157,7 +173,7 @@ def test_at_takes_a_24_hour_time(text):
 # --- launchd ---------------------------------------------------------------------
 
 
-def _plist(tmp_path):
+def _plist(tmp_path, **more):
     return launchd_plist(
         python="/repo/.venv/bin/python",
         workdir=Path("/repo"),
@@ -166,7 +182,15 @@ def _plist(tmp_path):
         minute=0,
         log=tmp_path / "rollover.log",
         path_env="/usr/local/bin:/usr/bin:/bin",
+        **more,
     )
+
+
+def test_plist_with_weekdays_passes_the_flag(tmp_path):
+    # the check is in rollover, so a Saturday login (RunAtLoad) skips too
+    job = plistlib.loads(_plist(tmp_path, weekdays=True))
+    assert job["ProgramArguments"][-1] == "--weekdays"
+    assert job["StartCalendarInterval"] == {"Hour": 7, "Minute": 0}
 
 
 def test_plist_runs_rollover_daily_at_load_and_logs(tmp_path):

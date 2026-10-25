@@ -6,6 +6,9 @@ uv run python -m llm_wiki.schedule server show | remove
 uv run python -m llm_wiki.schedule launchd install --at 07:00
 uv run python -m llm_wiki.schedule launchd show | remove
 
+`install --weekdays` skips Saturdays and Sundays; the check is in rollover itself, so
+catch-up runs and launchd's run at login skip them too.
+
 Use one, not both (rollover is idempotent, so both would only waste a run). `install`
 replaces an earlier rollover schedule of the same kind. Guide: `docs/scheduling.md`.
 
@@ -97,16 +100,22 @@ def server_crons(client: Any) -> list[dict[str, Any]]:
     return list(client.crons.search(metadata=JOB, limit=100))
 
 
-def install_server(client: Any, hour: int, minute: int, zone: str) -> dict[str, Any]:
-    """Replace our rollover crons with one at hour:minute in `zone`; return it."""
+def install_server(
+    client: Any, hour: int, minute: int, zone: str, *, weekdays: bool = False
+) -> dict[str, Any]:
+    """Replace our rollover crons with one at hour:minute in `zone`; return it.
+
+    With `weekdays` the cron runs Monday to Friday, and the run is told too: a run
+    missed on Friday starts when the server does, maybe on Saturday.
+    """
     for cron in server_crons(client):
         client.crons.delete(cron["cron_id"])
     return dict(
         client.crons.create(
             GRAPH,
-            schedule=f"{minute} {hour} * * *",
+            schedule=f"{minute} {hour} * * {'1-5' if weekdays else '*'}",
             timezone=zone,
-            input={"timezone": zone},
+            input={"timezone": zone, **({"weekdays": True} if weekdays else {})},
             metadata=JOB,
         )
     )
@@ -132,11 +141,17 @@ def launchd_plist(
     minute: int,
     log: Path,
     path_env: str,
+    weekdays: bool = False,
 ) -> bytes:
-    """Return the LaunchAgent plist that runs rollover daily at hour:minute."""
+    """Return the LaunchAgent plist that runs rollover daily at hour:minute.
+
+    With `weekdays`, rollover gets `--weekdays` and skips the weekend itself, so a
+    weekend login (`RunAtLoad`) writes nothing either.
+    """
+    args = [python, "-m", "llm_wiki.rollover", "--vault", str(vault)]
     job = {
         "Label": LABEL,
-        "ProgramArguments": [python, "-m", "llm_wiki.rollover", "--vault", str(vault)],
+        "ProgramArguments": args + (["--weekdays"] if weekdays else []),
         "WorkingDirectory": str(workdir),
         "EnvironmentVariables": {"PATH": path_env},  # launchd's own PATH is minimal
         "StartCalendarInterval": {"Hour": hour, "Minute": minute},
@@ -190,6 +205,10 @@ def remove_launchd(agents_dir: Path = AGENTS_DIR, run: Runner = subprocess.run) 
 # --- CLI -------------------------------------------------------------------------
 
 
+def _days(args: argparse.Namespace) -> str:
+    return "weekdays" if args.weekdays else "daily"
+
+
 def _client(url: str) -> Any:
     from langgraph_sdk import get_sync_client
 
@@ -203,8 +222,11 @@ def _server(args: argparse.Namespace) -> None:
     if args.action == "install":
         hour, minute = parse_at(args.at)
         zone = pick_zone(args.timezone)
-        cron = install_server(client, hour, minute, zone)
-        print(f"Rollover cron on {args.url}: daily at {hour:02d}:{minute:02d} {zone}")
+        cron = install_server(client, hour, minute, zone, weekdays=args.weekdays)
+        print(
+            f"Rollover cron on {args.url}: {_days(args)} at {hour:02d}:{minute:02d} "
+            f"{zone}"
+        )
         print(f"next run: {cron.get('next_run_date')} (cron {cron['cron_id']})")
     elif args.action == "remove":
         print(f"Removed {remove_server(client)} rollover cron(s) from {args.url}.")
@@ -236,9 +258,13 @@ def _launchd(args: argparse.Namespace) -> None:
             minute=minute,
             log=LOG_PATH.expanduser(),
             path_env=os.environ.get("PATH", "/usr/bin:/bin"),
+            weekdays=args.weekdays,
         )
         install_launchd(plist)
-        print(f"Rollover LaunchAgent: daily at {hour:02d}:{minute:02d} (Mac clock)")
+        print(
+            f"Rollover LaunchAgent: {_days(args)} at {hour:02d}:{minute:02d} "
+            "(Mac clock)"
+        )
         print(f"for {vault}; job {path}; log {LOG_PATH}")
     elif args.action == "remove":
         print("Removed." if remove_launchd() else "No rollover LaunchAgent installed.")
@@ -255,6 +281,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     server = kinds.add_parser("server", help="a cron on the Agent Server")
     server.add_argument("action", choices=["install", "show", "remove"])
     server.add_argument("--at", default="07:00", help="HH:MM, 24-hour (default 07:00)")
+    server.add_argument("--weekdays", action="store_true", help="skip weekends")
     server.add_argument(
         "--timezone", help="IANA name (default: WIKI_TIMEZONE, else this machine's)"
     )
@@ -264,6 +291,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     launchd = kinds.add_parser("launchd", help="a LaunchAgent on this Mac")
     launchd.add_argument("action", choices=["install", "show", "remove"])
     launchd.add_argument("--at", default="07:00", help="HH:MM, 24-hour (default 07:00)")
+    launchd.add_argument("--weekdays", action="store_true", help="skip weekends")
     launchd.add_argument("--vault", help="vault folder (default: WIKI_VAULT_PATH)")
     args = parser.parse_args(argv)
     load_env_file()

@@ -3,6 +3,7 @@
 
 uv run python -m llm_wiki.rollover
 uv run python -m llm_wiki.rollover --vault ~/WorkDev --date 2026-10-19
+uv run python -m llm_wiki.rollover --weekdays   # what a weekdays-only schedule runs
 
 Creates `00_raw/daily/<date>.md` from `50_templates/daily.md` **only if it does not
 exist**, with `## Carried over` holding the open and in-progress tasks from the task
@@ -78,12 +79,14 @@ class Rollover(BaseModel):
         stale: Open tasks first seen more than 14 days ago, oldest first; not carried.
         commit: The vault commit of the new note, if one was made.
         warnings: Changed notes, template placeholders left as written, commit trouble.
+        weekend: True when skipped: a Saturday or Sunday, and only weekdays roll over.
     """
 
     model_config = ConfigDict(frozen=True)
 
     path: str
     created: bool
+    weekend: bool = False
     carried: tuple[str, ...] = ()
     stale: tuple[Keyed, ...] = ()
     commit: str | None = None
@@ -241,16 +244,22 @@ def _notes(vault: Path) -> list[tuple[DailyNote, str]]:
     return out
 
 
-def roll_over(vault: Path, day: datetime.date, *, commit: bool = True) -> Rollover:
+def roll_over(
+    vault: Path, day: datetime.date, *, commit: bool = True, weekdays_only: bool = False
+) -> Rollover:
     """Create the note for `day` unless it exists; return what was done.
 
     Stale tasks are reported either way. The written file is read back and its
-    `## Carried over` task IDs compared with what was carried.
+    `## Carried over` task IDs compared with what was carried. With `weekdays_only`,
+    a Saturday or Sunday is skipped before anything is read; Monday's note carries
+    the same tasks, since they come from the index.
 
     Raises:
         RolloverError: Broken task index, no template, or no `## Carried over` heading.
     """
     rel = f"{RAW_DAILY_FOLDER}{day.isoformat()}.md"
+    if weekdays_only and day.weekday() >= 5:  # noqa: PLR2004  (5 = Saturday)
+        return Rollover(path=rel, created=False, weekend=True)
     index, problem = task_tracking.load_task_index(
         _read(vault, task_tracking.TASK_INDEX_PATH)
     )
@@ -317,6 +326,9 @@ def main(argv: list[str] | None = None) -> int:
         help="the day to create, YYYY-MM-DD (default: today in WIKI_TIMEZONE)",
     )
     parser.add_argument("--no-commit", action="store_true", help="don't git-commit it")
+    parser.add_argument(
+        "--weekdays", action="store_true", help="skip Saturdays and Sundays"
+    )
     args = parser.parse_args(argv)
     load_env_file()
     vault = (
@@ -326,11 +338,18 @@ def main(argv: list[str] | None = None) -> int:
     )
     day = args.date or clock.today()
     try:
-        result = roll_over(vault, day, commit=not args.no_commit)
+        result = roll_over(
+            vault, day, commit=not args.no_commit, weekdays_only=args.weekdays
+        )
     except RolloverError as exc:
         print(f"rollover: {exc}", file=sys.stderr)
         return 1
 
+    if result.weekend:
+        print(
+            f"{result.path}: a {day:%A}, and only weekdays roll over; nothing written."
+        )
+        return 0
     if result.created:
         done = f"Created {result.path}: {len(result.carried)} task(s) carried"
         print(done + (f" (commit {result.commit[:7]})." if result.commit else "."))

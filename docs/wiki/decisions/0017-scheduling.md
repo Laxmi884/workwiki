@@ -43,3 +43,13 @@ Both, user's choice:
 
 Rollover is idempotent and code-only, so where it runs doesn't matter; what matters is that it runs
 on the user's day. One setting gives the same "today" in a UTC container and on a laptop.
+
+## Addendum 2026-10-23: weekdays only
+
+User asked "should the rollover cron be only for weekdays?", then "build it with the check inside
+rollover". `schedule … install --weekdays` (opt-in; default stays daily). The rule is in code:
+`roll_over(..., weekdays_only=True)` returns `weekend=True` for Saturday and Sunday before reading
+anything; the CLI takes `--weekdays`, the graph input `weekdays`. Why not only the schedule: launchd's
+`RunAtLoad` fires at a weekend login, and a server cron missed on Friday runs when the server starts,
+maybe on Saturday. The server cron also uses `* * 1-5` so `show` reads true. No tasks are lost:
+carried tasks come from the task index, so Monday carries Friday's open tasks.

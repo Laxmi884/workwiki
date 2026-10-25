@@ -322,6 +322,29 @@ def test_cli_prints_what_it_did_and_the_stale_list(vault, capsys):
     )
 
 
+@pytest.mark.parametrize("date", ["2026-10-24", "2026-10-25"])  # Saturday, Sunday
+def test_weekdays_only_skips_the_weekend_without_reading(vault, date):
+    # no task index: a broken one would raise, so the skip comes before any read
+    result = roll_over(vault, datetime.date.fromisoformat(date), weekdays_only=True)
+    assert result.weekend is True and result.created is False
+    assert not (vault / f"00_raw/daily/{date}.md").exists()
+
+
+def test_weekdays_only_still_rolls_over_a_weekday(vault):
+    _index(vault, **{"t-aaaaaa": _task("Ship the export")})
+    result = roll_over(vault, DAY, commit=False, weekdays_only=True)
+    assert result.created is True and result.weekend is False
+
+
+def test_cli_weekdays_says_it_skipped(vault, capsys):
+    args = ["--vault", str(vault), "--date", "2026-10-24", "--weekdays", "--no-commit"]
+    assert main(args) == 0
+    assert capsys.readouterr().out == (
+        "00_raw/daily/2026-10-24.md: a Saturday, and only weekdays roll over;"
+        " nothing written.\n"
+    )
+
+
 def test_cli_error_exits_1(vault, capsys):
     (vault / rollover.TEMPLATE_PATH).unlink()
     assert main(["--vault", str(vault), "--date", "2026-10-19"]) == 1
