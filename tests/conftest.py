@@ -1,9 +1,29 @@
+import os
 import shutil
 from pathlib import Path
 
 import pytest
 
 FIXTURE_VAULT = Path(__file__).parent / "fixtures" / "vault"
+TRACING_FLAGS = ("LANGSMITH_TRACING", "LANGSMITH_TRACING_V2", "LANGCHAIN_TRACING_V2")
+
+
+@pytest.fixture(autouse=True)
+def _environment_restored_and_untraced():
+    """Each test gets the environment the run started with, tracing off, and gives it back.
+
+    Defined first, so it is set up before the other fixtures' `setenv`s and torn down
+    after them. A CLI test's `load_env_file` copies the developer's `.env` into
+    `os.environ`; without the restore it leaked into every later test. Tracing is off
+    because tests send nothing to LangSmith, and because tracing serializes a scripted
+    model's answer iterator, which uses it up (2026-10-25). Set to "false", not
+    removed: `load_env_file` never overrides a variable that is already set.
+    """
+    saved = dict(os.environ)
+    os.environ.update(dict.fromkeys(TRACING_FLAGS, "false"))
+    yield
+    os.environ.clear()
+    os.environ.update(saved)
 
 
 @pytest.fixture(scope="session")
